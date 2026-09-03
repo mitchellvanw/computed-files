@@ -106,6 +106,7 @@
   .pill.edited { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
   .event { transition: opacity .4s ease, transform .4s ease; }
   .event[hidden] { display: none; }
+  .measuring, .measuring * { transition: none !important; }
   .event.enter { opacity: 0; transform: translateY(6px); }
   .step-dot { width: 2.25rem; height: 4px; border-radius: 2px; background: var(--line); transition: background .3s; }
   .step-dot[aria-current="step"] { background: var(--sum); }
@@ -154,7 +155,7 @@
     </div>
 
     <!-- the live document -->
-    <div class="rounded-lg border border-line bg-ground overflow-hidden shadow-[0_1px_0_var(--line)]">
+    <div id="hero-card" class="rounded-lg border border-line bg-ground overflow-hidden shadow-[0_1px_0_var(--line)]">
       <div class="flex items-center justify-between px-4 py-2 border-b border-line bg-ground-2 font-mono text-xs text-ink-2">
         <span>CLAUDE.md</span>
         <span id="report" class="text-ink-2">check → exit 0</span>
@@ -607,7 +608,26 @@ cargo run -- add-sh && cargo run -- trust</code></pre>
   function play(from) { stop(); cur = from; show(cur); setPaused(false); timer = setTimeout(tick, 2200); }
   $('replay').addEventListener('click', () => play(0));
   pauseBtn.addEventListener('click', () => timer ? stop() : resume());
-  show(0); setPaused(true);
+  // Pin the card to its tallest state so the steps never move the page.
+  const card = $('hero-card');
+  function reserve() {
+    card.classList.add('measuring');
+    card.style.minHeight = '';
+    gw.classList.add('open'); ge.classList.add('open');
+    let h = 0;
+    events.forEach((_, k) => {
+      events.forEach((e, j) => { e.hidden = j !== k; });
+      h = Math.max(h, card.offsetHeight);
+    });
+    card.style.minHeight = h + 'px';
+    show(cur);
+    void card.offsetHeight;
+    card.classList.remove('measuring');
+  }
+  reserve(); setPaused(true);
+  let rt = null;
+  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(reserve, 150); });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(reserve);
   if (!reduce) setTimeout(() => play(0), 900);
 
   // watch loop
