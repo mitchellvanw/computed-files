@@ -23,7 +23,7 @@ A region is the span between an opener and a closer. Both are whole-line HTML co
 ├── docs
 └── src
 ```
-<!-- /computed in=9f3a1c0b7d2e4f60 out=41c0d9e8b3a2f715 -->
+<!-- /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->
 ````
 
 The prose around the markers is the author's. The body between them belongs to the tool.
