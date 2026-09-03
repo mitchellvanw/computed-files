@@ -112,7 +112,7 @@
   .step-dot[aria-current="step"] { background: var(--sum); }
 
   /* svg diagrams */
-  .fig svg { max-width: 100%; height: auto; display: block; }
+  .fig svg { max-width: 100%; height: auto; display: block; margin-inline: auto; }
   .fig .box { fill: var(--ground-2); stroke: var(--line); }
   .fig .box-own { fill: var(--wash); stroke: var(--wash-2); }
   .fig .t { fill: var(--ink); font-size: 12.5px; }
@@ -234,7 +234,7 @@
       <p class="mt-3">Every closer here carries both. The input sum is a hash over the opener line and a snapshot of the inputs. The output sum is a hash over the body. Between them they answer the two questions a stale file poses, from the rendered file alone. No cache directory, nothing to lose on clone.</p>
     </div>
     <figure class="fig">
-      <svg viewBox="0 0 690 250" role="img" aria-label="The opener line and an input snapshot are hashed into sum; the written body is hashed into out. Both land in the closing marker.">
+      <svg width="690" height="250" viewBox="0 0 690 250" role="img" aria-label="The opener line and an input snapshot are hashed into sum; the written body is hashed into out. Both land in the closing marker.">
         <defs>
           <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
         </defs>
@@ -282,7 +282,7 @@
     <h2 class="text-2xl mb-3">Six things a region can be</h2>
     <p>After a render, each region has one status. The tool reaches it from the prior file and the fresh load, in this order. Nothing else is consulted.</p>
     <figure class="fig mt-8 overflow-x-auto">
-      <svg viewBox="0 0 900 400" role="img" aria-label="Decision tree from loader result through hand-edit check, prior region, input sum and body comparison to the statuses error, edited, new, stale, rewritten and fresh." class="min-w-[720px]">
+      <svg width="900" height="400" viewBox="0 0 900 400" role="img" aria-label="Decision tree from loader result through hand-edit check, prior region, input sum and body comparison to the statuses error, edited, new, stale, rewritten and fresh." class="min-w-[720px]">
         <defs>
           <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
         </defs>
@@ -402,7 +402,7 @@
     <h2 class="text-2xl mb-3">Copy was the wrong default</h2>
     <p>The prior-art survey recommended a template rendered to a sibling, the way the rest of the ecosystem does it. The prototype still works that way. It showed that in copy mode, every prose edit made to the rendered file is reverted on the next run, because the template wins. For <code>CLAUDE.md</code>, prose edits by agents and people are the normal case. So v0 is in-place only.</p>
     <figure class="fig mt-8 overflow-x-auto">
-      <svg viewBox="0 0 960 260" role="img" aria-label="Copy layout: a template renders to CLAUDE.md, and a prose edit to CLAUDE.md is reverted on the next run. In-place layout: one file, where prose edits are kept and region edits are refused." class="min-w-[720px]">
+      <svg width="960" height="260" viewBox="0 0 960 260" role="img" aria-label="Copy layout: a template renders to CLAUDE.md, and a prose edit to CLAUDE.md is reverted on the next run. In-place layout: one file, where prose edits are kept and region edits are refused." class="min-w-[720px]">
         <defs>
           <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
         </defs>
@@ -467,7 +467,7 @@
       <button id="fire" type="button" class="mt-5 font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Change a file</button>
     </div>
     <figure class="fig">
-      <svg viewBox="0 0 560 330" role="img" aria-label="Watch loop: a file event settles, then renders and writes; the write echoes back as an event, matches the last write and is dropped by the own-write guard." id="watch-svg">
+      <svg width="620" height="330" viewBox="0 0 620 330" role="img" aria-label="Watch loop: a file event settles, then renders and writes; the write echoes back as an event, matches the last write and is dropped by the own-write guard." id="watch-svg">
         <defs>
           <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
         </defs>
@@ -480,36 +480,36 @@
           <text x="272" y="50" class="t" text-anchor="middle">settle</text>
           <text x="272" y="66" class="t2" text-anchor="middle">150 ms quiet</text>
 
-          <path d="M332 52 L402 52" class="edge" marker-end="url(#ar4)"/>
-          <rect x="404" y="30" width="136" height="44" rx="6" class="box"/>
+          <path d="M332 52 L392 52" class="edge" marker-end="url(#ar4)"/>
+          <rect x="394" y="30" width="156" height="44" rx="6" class="box"/>
           <text x="472" y="50" class="t" text-anchor="middle">rendered file?</text>
           <text x="472" y="66" class="t2" text-anchor="middle">is the path CLAUDE.md</text>
 
           <!-- no: render -->
           <path d="M472 74 L472 130" class="edge" marker-end="url(#ar4)"/>
           <text x="480" y="106" class="t2">no</text>
-          <rect x="404" y="132" width="136" height="44" rx="6" class="box-own"/>
+          <rect x="394" y="132" width="156" height="44" rx="6" class="box-own"/>
           <text x="472" y="152" class="t" text-anchor="middle">render + write</text>
           <text x="472" y="168" class="t2" text-anchor="middle">tmp, then rename</text>
           <!-- echo back -->
-          <path id="echo" d="M404 154 C300 154 120 154 80 120 C60 105 60 90 80 74" class="edge edge-dashed" marker-end="url(#ar4)"/>
-          <text x="230" y="146" class="t2" text-anchor="middle">the write echoes back as an event</text>
+          <path id="echo" d="M394 154 C300 154 120 154 80 120 C60 105 60 90 80 74" class="edge edge-dashed" marker-end="url(#ar4)"/>
+          <text x="230" y="140" class="t2" text-anchor="middle">the write echoes back as an event</text>
 
           <!-- yes: guard -->
-          <path d="M540 52 C580 52 580 240 540 240" class="edge" marker-end="url(#ar4)"/>
-          <text x="548" y="150" class="t2">yes</text>
-          <rect x="404" y="218" width="136" height="44" rx="6" class="box"/>
+          <path d="M550 52 C596 52 596 240 550 240" class="edge" marker-end="url(#ar4)"/>
+          <text x="562" y="150" class="t2">yes</text>
+          <rect x="394" y="218" width="156" height="44" rx="6" class="box"/>
           <text x="472" y="238" class="t" text-anchor="middle">== last write?</text>
           <text x="472" y="254" class="t2" text-anchor="middle">own-write guard</text>
 
-          <path d="M404 240 L300 240" class="edge edge-sum" marker-end="url(#ar4)"/>
+          <path d="M394 240 L300 240" class="edge edge-sum" marker-end="url(#ar4)"/>
           <text x="352" y="232" class="t2 tsum" text-anchor="middle">yes</text>
           <rect x="180" y="218" width="118" height="44" rx="6" class="leaf"/>
           <text x="239" y="244" class="t tsum" text-anchor="middle">dropped</text>
 
           <path d="M472 262 L472 296" class="edge edge-warn" marker-end="url(#ar4)"/>
           <text x="480" y="284" class="t2 twarn">no</text>
-          <rect x="404" y="298" width="136" height="28" rx="6" class="leaf-warn"/>
+          <rect x="394" y="298" width="156" height="28" rx="6" class="leaf-warn"/>
           <text x="472" y="317" class="t twarn" text-anchor="middle">someone else · check</text>
 
           <!-- the runner, hidden until fired -->
