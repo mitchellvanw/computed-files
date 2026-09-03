@@ -64,4 +64,4 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 - [Sums are full SHA-256](docs/adr/0010-sha-256-sums.md)
 - [The tree loader honours `.gitignore` without a flag](docs/adr/0011-gitignore-is-not-a-flag.md)
 
-<!-- /computed in=b366f3062266d2095e7418ed428e00b4decc69f8df1858d79491a318e9714694 out=dab14b7f7c1f04840e7bf094746072bf01bbf2b3acf25cbec5ee2569764f48f4 -->
+<!-- /computed in=1e8d787e4c0352a4afd02b09b836d958f76e450cabc9a23620d5864908e4f3e9 out=dab14b7f7c1f04840e7bf094746072bf01bbf2b3acf25cbec5ee2569764f48f4 -->

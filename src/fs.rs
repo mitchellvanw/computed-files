@@ -125,6 +125,7 @@ mod tests {
         fs::write(r.join("src/scratch.md"), "").unwrap();
         fs::write(r.join("target/debug/bin"), "").unwrap();
         fs::write(r.join("docs/tmp/kept.md"), "").unwrap();
+        fs::write(r.join("docs/target"), "").unwrap();
         fs::write(r.join("tmp/dropped.md"), "").unwrap();
         fs::write(r.join("Zed.md"), "").unwrap();
         fs::write(r.join("a.md"), "").unwrap();
@@ -150,6 +151,7 @@ mod tests {
                 "Zed.md",
                 "a.md",
                 "docs/",
+                "docs/target",
                 "docs/tmp/",
                 "docs/tmp/kept.md",
                 "src/",

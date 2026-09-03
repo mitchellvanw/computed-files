@@ -11,7 +11,7 @@ The ignore state is covered by the snapshot without being read into it. The snap
 ## Considered Options
 
 - **An opt-in `gitignore` flag, default off.** Rejected. Every real use of a tree region in a repository wants the ignore rules; a default that lists `target/` is a default nobody chooses, and the dogfood openers in this repository would all grow the flag. It also contradicts the spec's tree section, which has said since v0 that the loader is gitignore-aware.
-- **An accepted flag that changes nothing.** Rejected. A flag whose presence and absence render the same bytes is a lie in the grammar, and the closed attribute set is the one thing that lets a reader trust an opener.
+- **An accepted flag that changes nothing.** Rejected. A flag whose presence and absence render the same bytes is a lie in the grammar, and the closed flag set is the one thing that lets a reader trust an opener.
 - **Snapshot the `.gitignore` bytes as well as the listing.** Rejected. A comment edit would drift every tree region in the repository for no change in the rendered body, and the spec fixes the snapshot as the listing alone.
 - **Always on inside a repository, no flag.** Chosen. It is what the code has done since the walk was written; this record pins it and adds the tests that were missing: one per pattern class, and the drift on a `.gitignore` edit end to end.
 
