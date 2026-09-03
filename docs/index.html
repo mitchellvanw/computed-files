@@ -127,10 +127,6 @@
   .fig .tsum { fill: var(--sum); }
   .fig .twarn { fill: var(--warn); }
 
-  /* watch loop runner */
-  .runner { fill: var(--sum); opacity: 0; }
-  .runner.go { opacity: 1; }
-
   @media (prefers-reduced-motion: reduce) {
     .doc .region, .doc .grow, .doc .hash, .pill, .event, .step-dot { transition: none; }
   }
@@ -143,7 +139,7 @@
   <!-- ─────────────────────────── hero ─────────────────────────── -->
   <header class="pt-14 sm:pt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:items-start">
     <div class="max-w-[30rem]">
-      <p class="font-mono text-sm text-ink-2 m-0 flex items-center gap-3"><span>computed</span><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">github.com/mitchellvanw/computed-files</a></p>
+      <p class="font-mono text-sm text-ink-2 m-0 flex items-center gap-3"><span>computed</span><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">mitchellvanw/computed-files</a></p>
       <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">The document is a view. The truth lives somewhere else.</h1>
       <p class="text-ink-2 text-[1.05rem]">A Markdown file with regions the tool owns, such as a directory tree or the output of a command. Everything else stays as you typed it. Two hashes in each closing marker say whether a region still matches what it was rendered from.</p>
       <p class="text-ink-2 text-[1.05rem] mt-4">Three things that happen in a repo, and what the file does about each.</p>
@@ -165,29 +161,30 @@
           <span class="ln">## Layout</span>
           <span class="ln"></span>
           <div id="r-layout" class="region">
-            <span class="ln marker">&lt;!-- computed tree src=. depth=2 name=layout --&gt;</span>
-            <span class="ln">```</span>
+            <span class="ln marker">&lt;!-- computed tree src=. depth=2 name=layout | do not edit; run computed --&gt;</span>
+            <span class="ln">```text</span>
             <span class="ln">.</span>
             <span class="ln">├── CLAUDE.md</span>
-            <span class="ln">├── data.csv</span>
+            <span class="ln">├── docs</span>
+            <span class="ln">├── scripts</span>
             <span class="ln">└── src</span>
             <span class="ln">    ├── lib.rs</span>
             <span class="ln" id="l-main">    └── main.rs</span>
             <div class="grow" id="g-watcher"><div><span class="ln">    └── watcher.rs</span></div></div>
             <span class="ln">```</span>
             <div class="grow" id="g-edit"><div><span class="ln text-warn">&lt;!-- an agent added this line by hand --&gt;</span></div></div>
-            <span class="ln marker">&lt;!-- /computed sum=<span class="hash" id="h-sum">ce8c101b</span> out=<span class="hash" id="h-out">079d3f2c</span> --&gt;</span>
+            <span class="ln marker">&lt;!-- /computed in=<span class="hash" id="h-sum">ab558c86…</span> out=<span class="hash" id="h-out">d53ea485…</span> --&gt;</span>
           </div>
           <span class="ln"></span>
-          <span class="ln">## Data files</span>
+          <span class="ln">## Decisions</span>
           <span class="ln"></span>
           <div class="region">
-            <span class="ln marker">&lt;!-- computed csv src=data.csv name=data --&gt;</span>
-            <span class="ln">| name | count |</span>
-            <span class="ln">|------|-------|</span>
-            <span class="ln">| docs | 1     |</span>
-            <span class="ln">| src  | 2     |</span>
-            <span class="ln marker">&lt;!-- /computed sum=42e56a14 out=a491e3d4 --&gt;</span>
+            <span class="ln marker">&lt;!-- computed exec cmd=scripts/adr-index.sh inputs=docs/adr/*.md name=adrs | do not edit; run computed --&gt;</span>
+            <span class="ln"></span>
+            <span class="ln">- [Rust for the prototype](docs/adr/0001-rust-for-the-prototype.md)</span>
+            <span class="ln">- [Two sums in the closer](docs/adr/0002-two-sum-closer.md)</span>
+            <span class="ln"></span>
+            <span class="ln marker">&lt;!-- /computed in=1e8d787e… out=dab14b7f… --&gt;</span>
           </div>
           <span class="ln"></span>
           <span class="ln">Run tests with `cargo test`.</span>
@@ -198,12 +195,12 @@
             <span class="pill fresh" id="pill-layout">fresh</span>
           </div>
           <div class="flex items-center justify-between gap-2">
-            <span class="font-mono text-xs text-ink-2">data</span>
+            <span class="font-mono text-xs text-ink-2">adrs</span>
             <span class="pill fresh">fresh</span>
           </div>
           <div class="border-t border-line pt-3 mt-1 flex flex-col gap-2" id="events" aria-live="polite">
             <p class="event m-0 text-ink-2" data-step="0">Nothing has happened yet. Both regions match their sums.</p>
-            <p class="event m-0" data-step="1" hidden><span class="text-ink-2">Someone runs</span> <code class="text-xs">touch src/watcher.rs</code><span class="text-ink-2">. Nobody edited the file, but the tree is an input, so <code class="text-xs">sum=</code> changes and <code class="text-xs">run</code> regenerates the region.</span></p>
+            <p class="event m-0" data-step="1" hidden><span class="text-ink-2">Someone runs</span> <code class="text-xs">touch src/watcher.rs</code><span class="text-ink-2">. Nobody edited the file, but the tree is an input, so <code class="text-xs">in=</code> changes and <code class="text-xs">run</code> regenerates the region.</span></p>
             <p class="event m-0" data-step="2" hidden><span class="text-ink-2">An agent appends a line inside the region. The body no longer hashes to <code class="text-xs">out=</code>. The tool refuses to overwrite it and exits 1.</span></p>
             <p class="event m-0" data-step="3" hidden><span class="text-ink-2">You run</span> <code class="text-xs">computed run --force</code><span class="text-ink-2">. The hand edit is discarded, both sums are recomputed, and <code class="text-xs">check</code> passes again.</span></p>
           </div>
@@ -245,17 +242,17 @@
           <rect x="10" y="62" width="200" height="60" rx="4" class="box"/>
           <text x="22" y="82" class="t">snapshot</text>
           <text x="22" y="99" class="t2">tree: sorted visible paths</text>
-          <text x="22" y="114" class="t2">csv: the file's bytes</text>
+          <text x="22" y="114" class="t2">exec: the declared inputs</text>
 
           <rect x="10" y="170" width="200" height="50" rx="4" class="box-own"/>
           <text x="22" y="191" class="t">body as written</text>
-          <text x="22" y="208" class="t2">the fenced tree, the table</text>
+          <text x="22" y="208" class="t2">the fenced tree, the command output</text>
 
           <!-- hash boxes -->
           <rect x="290" y="52" width="90" height="38" rx="19" class="box"/>
-          <text x="335" y="76" class="t" text-anchor="middle">fnv1a</text>
+          <text x="335" y="76" class="t" text-anchor="middle">sha256</text>
           <rect x="290" y="176" width="90" height="38" rx="19" class="box"/>
-          <text x="335" y="200" class="t" text-anchor="middle">fnv1a</text>
+          <text x="335" y="200" class="t" text-anchor="middle">sha256</text>
 
           <!-- arrows in -->
           <path d="M210 37 C250 37 250 71 290 71" class="edge" marker-end="url(#ar)"/>
@@ -265,7 +262,7 @@
           <!-- closer -->
           <rect x="430" y="100" width="250" height="60" rx="4" class="box"/>
           <text x="445" y="123" class="t">&lt;!-- /computed</text>
-          <text x="455" y="143" class="t"><tspan class="tsum">sum=</tspan>2e155539 <tspan class="tsum">out=</tspan>35e54bc1 --&gt;</text>
+          <text x="455" y="143" class="t"><tspan class="tsum">in=</tspan>e07c41d2… <tspan class="tsum">out=</tspan>9b31f0aa… --&gt;</text>
 
           <path d="M380 71 C410 71 410 118 445 118" class="edge edge-sum" marker-end="url(#ar)"/>
           <text x="392" y="60" class="t2 tsum">what it read</text>
@@ -277,124 +274,108 @@
     </figure>
   </section>
 
-  <!-- ─────────────────────────── decision tree ─────────────────────────── -->
+  <!-- ─────────────────────────── states ─────────────────────────── -->
   <section class="mt-24">
-    <h2 class="text-2xl mb-3">Six things a region can be</h2>
-    <p>After a render, each region has one status. The tool reaches it from the prior file and the fresh load, in this order, and nothing else goes into it.</p>
+    <h2 class="text-2xl mb-3">Six states a region can be in</h2>
+    <p>Every state is derived from the file and its inputs alone, in this order. No loader runs to find out.</p>
     <figure class="fig mt-8 overflow-x-auto">
-      <svg width="900" height="400" viewBox="0 0 900 400" role="img" aria-label="Decision tree from loader result through hand-edit check, prior region, input sum and body comparison to the statuses error, edited, new, stale, rewritten and fresh." class="min-w-[720px]">
+      <svg width="900" height="400" viewBox="0 0 900 400" role="img" aria-label="Decision chain: a closer without sums is unrendered; a body that does not hash to out= is edited; a region with no snapshot is volatile; an input sum that differs is stale; otherwise fresh." class="min-w-[720px]">
         <defs>
           <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
         </defs>
         <g class="text-ink-2">
-          <!-- q1 loader -->
-          <rect x="10" y="150" width="130" height="52" rx="6" class="box"/>
-          <text x="75" y="172" class="t" text-anchor="middle">loader ran</text>
-          <text x="75" y="189" class="t2" text-anchor="middle">tree · csv · sh</text>
-          <!-- error leaf -->
-          <path d="M75 202 L75 330" class="edge edge-warn" marker-end="url(#ar2)"/>
-          <text x="82" y="270" class="t2 twarn">failed</text>
-          <rect x="10" y="332" width="130" height="52" rx="6" class="leaf-warn"/>
-          <text x="75" y="354" class="t twarn" text-anchor="middle">error</text>
-          <text x="75" y="371" class="t2" text-anchor="middle">last good body kept</text>
+          <!-- q1 sums present -->
+          <rect x="10" y="150" width="140" height="52" rx="6" class="box"/>
+          <text x="80" y="172" class="t" text-anchor="middle">closer has sums?</text>
+          <text x="80" y="189" class="t2" text-anchor="middle">in= and out= present</text>
+          <path d="M80 202 L80 330" class="edge" marker-end="url(#ar2)"/>
+          <text x="87" y="270" class="t2">no</text>
+          <rect x="10" y="332" width="140" height="52" rx="6" class="leaf-neutral"/>
+          <text x="80" y="354" class="t" text-anchor="middle">unrendered</text>
+          <text x="80" y="371" class="t2" text-anchor="middle">rendered regardless</text>
 
-          <!-- q2 edited -->
-          <path d="M140 176 L210 176" class="edge" marker-end="url(#ar2)"/>
-          <text x="150" y="168" class="t2">ok</text>
-          <rect x="212" y="150" width="150" height="52" rx="6" class="box"/>
-          <text x="287" y="172" class="t" text-anchor="middle">prior body</text>
-          <text x="287" y="189" class="t2" text-anchor="middle">hashes to out= ?</text>
-          <!-- edited leaf -->
-          <path d="M287 202 L287 330" class="edge edge-warn" marker-end="url(#ar2)"/>
-          <text x="294" y="262" class="t2 twarn">no, and</text>
-          <text x="294" y="277" class="t2 twarn">no --force</text>
-          <rect x="212" y="332" width="150" height="52" rx="6" class="leaf-warn"/>
-          <text x="287" y="354" class="t twarn" text-anchor="middle">edited</text>
-          <text x="287" y="371" class="t2" text-anchor="middle">left as is · exit 1</text>
+          <path d="M150 176 L230 176" class="edge" marker-end="url(#ar2)"/>
+          <text x="190" y="168" class="t2" text-anchor="middle">yes</text>
 
-          <!-- q3 prior -->
-          <path d="M362 176 L432 176" class="edge" marker-end="url(#ar2)"/>
-          <text x="372" y="168" class="t2">yes</text>
-          <rect x="434" y="150" width="130" height="52" rx="6" class="box"/>
-          <text x="499" y="172" class="t" text-anchor="middle">prior region</text>
-          <text x="499" y="189" class="t2" text-anchor="middle">exists ?</text>
-          <!-- new leaf -->
-          <path d="M499 150 L499 40" class="edge" marker-end="url(#ar2)"/>
-          <text x="506" y="100" class="t2">no</text>
-          <rect x="434" y="10" width="130" height="30" rx="6" class="leaf-neutral"/>
-          <text x="499" y="30" class="t" text-anchor="middle">new</text>
+          <!-- q2 body -->
+          <rect x="232" y="150" width="160" height="52" rx="6" class="box"/>
+          <text x="312" y="172" class="t" text-anchor="middle">body hashes to out=?</text>
+          <text x="312" y="189" class="t2" text-anchor="middle">the hand-edit test</text>
+          <path d="M312 202 L312 330" class="edge edge-warn" marker-end="url(#ar2)"/>
+          <text x="319" y="270" class="t2 twarn">no</text>
+          <rect x="232" y="332" width="160" height="52" rx="6" class="leaf-warn"/>
+          <text x="312" y="354" class="t twarn" text-anchor="middle">edited</text>
+          <text x="312" y="371" class="t2" text-anchor="middle">refused · exit 1</text>
 
-          <!-- q4 same sum -->
-          <path d="M564 176 L634 176" class="edge" marker-end="url(#ar2)"/>
-          <text x="574" y="168" class="t2">yes</text>
-          <rect x="636" y="150" width="120" height="52" rx="6" class="box"/>
-          <text x="696" y="172" class="t" text-anchor="middle">same sum= ?</text>
-          <text x="696" y="189" class="t2" text-anchor="middle">inputs unchanged</text>
-          <!-- stale leaf -->
-          <path d="M696 202 L696 330" class="edge edge-sum" marker-end="url(#ar2)"/>
-          <text x="703" y="270" class="t2 tsum">no</text>
-          <rect x="636" y="332" width="120" height="52" rx="6" class="leaf"/>
-          <text x="696" y="354" class="t tsum" text-anchor="middle">stale</text>
-          <text x="696" y="371" class="t2" text-anchor="middle">regenerated</text>
+          <path d="M392 176 L462 176" class="edge" marker-end="url(#ar2)"/>
+          <text x="427" y="168" class="t2" text-anchor="middle">yes</text>
 
-          <!-- q5 same body -->
-          <path d="M756 176 L826 176" class="edge" marker-end="url(#ar2)"/>
-          <text x="766" y="168" class="t2">yes</text>
-          <rect x="828" y="150" width="62" height="52" rx="6" class="box"/>
-          <text x="859" y="172" class="t" text-anchor="middle">same</text>
-          <text x="859" y="189" class="t2" text-anchor="middle">body ?</text>
-          <!-- fresh -->
-          <path d="M859 150 L859 40" class="edge edge-sum" marker-end="url(#ar2)"/>
-          <text x="866" y="100" class="t2 tsum">yes</text>
-          <rect x="828" y="10" width="62" height="30" rx="6" class="leaf"/>
-          <text x="859" y="30" class="t tsum" text-anchor="middle">fresh</text>
-          <!-- rewritten -->
-          <path d="M859 202 L859 330" class="edge edge-warn" marker-end="url(#ar2)"/>
-          <text x="866" y="270" class="t2 twarn">no</text>
-          <rect x="776" y="332" width="120" height="52" rx="6" class="leaf-warn"/>
-          <text x="836" y="354" class="t twarn" text-anchor="middle">rewritten</text>
-          <text x="836" y="371" class="t2" text-anchor="middle">undeclared input</text>
+          <!-- q3 snapshot -->
+          <rect x="464" y="150" width="150" height="52" rx="6" class="box"/>
+          <text x="539" y="172" class="t" text-anchor="middle">has a snapshot?</text>
+          <text x="539" y="189" class="t2" text-anchor="middle">volatile exec has none</text>
+          <path d="M539 150 L539 64" class="edge" marker-end="url(#ar2)"/>
+          <text x="546" y="110" class="t2">no</text>
+          <rect x="464" y="10" width="150" height="52" rx="6" class="leaf-neutral"/>
+          <text x="539" y="32" class="t" text-anchor="middle">volatile</text>
+          <text x="539" y="49" class="t2" text-anchor="middle">re-run on every run</text>
+
+          <path d="M614 176 L694 176" class="edge" marker-end="url(#ar2)"/>
+          <text x="654" y="168" class="t2" text-anchor="middle">yes</text>
+
+          <!-- q4 input sum -->
+          <rect x="696" y="150" width="160" height="52" rx="6" class="box"/>
+          <text x="776" y="172" class="t" text-anchor="middle">in= matches inputs?</text>
+          <text x="776" y="189" class="t2" text-anchor="middle">opener + snapshot</text>
+          <path d="M776 202 L776 330" class="edge edge-sum" marker-end="url(#ar2)"/>
+          <text x="783" y="270" class="t2 tsum">no</text>
+          <rect x="696" y="332" width="160" height="52" rx="6" class="leaf"/>
+          <text x="776" y="354" class="t tsum" text-anchor="middle">stale</text>
+          <text x="776" y="371" class="t2" text-anchor="middle">regenerated</text>
+          <path d="M776 150 L776 64" class="edge edge-sum" marker-end="url(#ar2)"/>
+          <text x="783" y="110" class="t2 tsum">yes</text>
+          <rect x="696" y="10" width="160" height="52" rx="6" class="leaf"/>
+          <text x="776" y="32" class="t tsum" text-anchor="middle">fresh</text>
+          <text x="776" y="49" class="t2" text-anchor="middle">left untouched</text>
         </g>
       </svg>
-      <figcaption class="mt-3">Only <code>fresh</code> passes <code>check</code>. <code>run</code> writes for new, stale and rewritten, and exits 1 for edited and error. An <code>exec</code> region marked <code>volatile</code> has no inputs to sum, so it lands on rewritten every time. That is the one known gap.</figcaption>
+      <figcaption class="mt-3">Only <code>fresh</code> passes <code>check</code>. <code>run</code> renders stale, volatile and unrendered regions and refuses an edited one until <code>--force</code>. A region can be stale and edited at once, and is still refused. A loader failure is not a state. The old body and sums stay, the run exits 1.</figcaption>
     </figure>
-
-    <div class="mt-10 grid gap-x-10 gap-y-6 md:grid-cols-2">
+    <div class="mt-10 grid gap-8 md:grid-cols-2">
       <div>
-        <h3 class="text-lg mb-2">Hand edits are refused, not reverted</h3>
+        <h3 class="text-lg font-medium mb-2">Hand edits are refused, not reverted</h3>
         <p>An agent that edited a region had a reason. Overwriting it on the next run loses that work without a trace. The region stays, the run exits 1, and regenerating takes an explicit <code>--force</code> or deleting the sum.</p>
       </div>
       <div>
-        <h3 class="text-lg mb-2">A failed loader keeps the last good body</h3>
-        <p>Deleting <code>data.csv</code> does not blank the table. Body and sums stay as they were, the run exits 1 so CI notices, and restoring the file repairs it on the next run.</p>
+        <h3 class="text-lg font-medium mb-2">A failed loader keeps the last good body</h3>
+        <p>Deleting an input does not blank the region. Body and sums stay as they were, the run exits 1 so CI notices, and restoring the file repairs it on the next run.</p>
       </div>
     </div>
   </section>
 
   <!-- ─────────────────────────── loaders and sinks ─────────────────────────── -->
   <section class="mt-24">
-    <h2 class="text-2xl mb-3">Loaders read, sinks shape</h2>
-    <p>A loader returns text plus the snapshot the input sum is taken over. A sink turns that text into what lands in the file. Every loader has a default sink; any opener can name another with <code>sink=</code>.</p>
+    <h2 class="text-2xl mb-3">Two loaders, two sinks</h2>
+    <p>A loader returns text plus the snapshot the input sum is taken over. A sink turns that text into the body that lands in the file. Each loader has a default sink, and an opener can pick the other with <code>as=</code>.</p>
     <div class="mt-8 grid gap-4 md:grid-cols-[1fr_auto_1fr_auto_1fr] items-stretch font-mono text-sm">
       <div class="grid gap-2">
-        <div class="rounded border border-line bg-ground-2 p-3"><div>tree <span class="text-ink-2">src=. depth=</span></div><div class="text-ink-2 text-xs mt-1">snapshot: sorted paths</div></div>
-        <div class="rounded border border-line bg-ground-2 p-3"><div>csv <span class="text-ink-2">src=file</span></div><div class="text-ink-2 text-xs mt-1">snapshot: file bytes</div></div>
-        <div class="rounded border border-warn bg-warn-soft p-3"><div>sh <span class="text-ink-2">cmd="…" lang=</span></div><div class="text-ink-2 text-xs mt-1">snapshot: none · volatile · off until <code>.computed-trust</code></div></div>
+        <div class="rounded border border-line bg-ground-2 p-3"><div>tree <span class="text-ink-2">src= depth= all dirs</span></div><div class="text-ink-2 text-xs mt-1">snapshot: the listed paths · honours .gitignore</div></div>
+        <div class="rounded border border-warn bg-warn-soft p-3"><div>exec <span class="text-ink-2">cmd= inputs= | volatile</span></div><div class="text-ink-2 text-xs mt-1">snapshot: the input files' bytes · runs only in a trusted clone</div></div>
       </div>
       <div class="hidden md:flex items-center text-ink-3" aria-hidden="true">→</div>
       <div class="rounded border border-line p-3 flex flex-col justify-center gap-1">
-        <div>text <span class="text-ink-2">+ lang</span></div>
-        <div class="text-ink-2">or rows</div>
-        <div class="text-ink-2 text-xs mt-2">and the snapshot, hashed with the opener into <span class="text-sum">sum=</span></div>
+        <div>text<span class="text-ink-2">, normalised</span></div>
+        <div class="text-ink-2 text-xs">LF endings, no trailing newline, no marker lines</div>
+        <div class="text-ink-2 text-xs mt-2">and the snapshot, hashed with the opener into <span class="text-sum">in=</span></div>
       </div>
       <div class="hidden md:flex items-center text-ink-3" aria-hidden="true">→</div>
       <div class="grid gap-2">
-        <div class="rounded border border-wash-2 bg-wash p-3"><div>fence</div><div class="text-ink-2 text-xs mt-1">``` block · default for tree</div></div>
-        <div class="rounded border border-wash-2 bg-wash p-3"><div>table</div><div class="text-ink-2 text-xs mt-1">Markdown table · default for csv</div></div>
-        <div class="rounded border border-wash-2 bg-wash p-3"><div>raw</div><div class="text-ink-2 text-xs mt-1">text as is · default for sh</div></div>
+        <div class="rounded border border-wash-2 bg-wash p-3"><div>fence</div><div class="text-ink-2 text-xs mt-1">``` block with lang= · default for tree</div></div>
+        <div class="rounded border border-wash-2 bg-wash p-3"><div>raw</div><div class="text-ink-2 text-xs mt-1">text as is · default for exec</div></div>
       </div>
     </div>
     <p class="mt-6 text-ink-2">Relative paths resolve against the directory of the file holding the marker, not the repository root or the shell's working directory. So a region reads the same from a pre-commit hook, from CI, or from a terminal, and moving the file moves its regions with it.</p>
+    <p class="mt-3 text-ink-2">An <code>exec</code> region runs only in a repository you have trusted on this machine with <code>computed trust</code>. The grant lives in your config directory, so nothing inside a clone can grant itself. CI passes <code>run --trust</code> for one invocation. <code>check</code> never runs a loader, so it needs no trust at all.</p>
   </section>
 
   <!-- ─────────────────────────── one file ─────────────────────────── -->
@@ -432,97 +413,67 @@
     </figure>
   </section>
 
-  <!-- ─────────────────────────── writes + watch ─────────────────────────── -->
-  <section class="mt-24 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+  <!-- ─────────────────────────── hooks ─────────────────────────── -->
+  <section class="mt-24 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start">
     <div>
-      <h2 class="text-2xl mb-3">The watcher ignores itself</h2>
-      <p>Every write goes through a temp file and <code>rename(2)</code>, and nothing is written when the bytes would be identical. So <code>run</code> twice is a no-op and the mtime never moves.</p>
-      <p class="mt-3">That matters for <code>watch</code>. Its own write comes back as a change event. The loop remembers the last text it wrote and drops any event on the rendered file whose content matches. A non-matching change to that file is someone else's edit, so it runs <code>check</code> rather than overwrite.</p>
-      <p class="mt-3">The watcher is a convenience. <code>run</code> in a pre-commit hook and <code>check</code> in CI do the real work, so this is a static binary rather than a daemon.</p>
-      <button id="fire" type="button" class="mt-5 font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Change a file</button>
+      <h2 class="text-2xl mb-3">Pre-commit runs, CI checks</h2>
+      <p>The pre-commit hook runs <code>computed run</code>. When it rewrites a file the commit fails and you re-stage, the same way rustfmt behaves. CI runs <code>computed check</code>, which compares sums and exits 1 on drift without running anything from the repo.</p>
+      <p class="mt-3">The hook has to run on every commit, not only when a Markdown file is staged. A change under <code>src/</code> makes the tree region stale without touching <code>CLAUDE.md</code>, and a filename-filtered hook would never see it.</p>
+      <p class="mt-3">Every write goes through a temp file and <code>rename(2)</code>, and nothing is written when the bytes would be identical. So <code>run</code> twice is a no-op and the mtime never moves. There is no watcher. A daemon is a convenience over <code>run</code>, and it waits until dogfooding shows agents reading stale regions between commits.</p>
     </div>
-    <figure class="fig">
-      <svg width="620" height="330" viewBox="0 0 620 330" role="img" aria-label="Watch loop: a file event settles, then renders and writes; the write echoes back as an event, matches the last write and is dropped by the own-write guard." id="watch-svg">
-        <defs>
-          <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
-        </defs>
-        <g class="text-ink-2">
-          <rect x="20" y="30" width="120" height="44" rx="22" class="box"/>
-          <text x="80" y="57" class="t" text-anchor="middle">file event</text>
-
-          <path d="M140 52 L210 52" class="edge" marker-end="url(#ar4)"/>
-          <rect x="212" y="30" width="120" height="44" rx="6" class="box"/>
-          <text x="272" y="50" class="t" text-anchor="middle">settle</text>
-          <text x="272" y="66" class="t2" text-anchor="middle">150 ms quiet</text>
-
-          <path d="M332 52 L392 52" class="edge" marker-end="url(#ar4)"/>
-          <rect x="394" y="30" width="156" height="44" rx="6" class="box"/>
-          <text x="472" y="50" class="t" text-anchor="middle">rendered file?</text>
-          <text x="472" y="66" class="t2" text-anchor="middle">is the path CLAUDE.md</text>
-
-          <!-- no: render -->
-          <path d="M472 74 L472 130" class="edge" marker-end="url(#ar4)"/>
-          <text x="480" y="106" class="t2">no</text>
-          <rect x="394" y="132" width="156" height="44" rx="6" class="box-own"/>
-          <text x="472" y="152" class="t" text-anchor="middle">render + write</text>
-          <text x="472" y="168" class="t2" text-anchor="middle">tmp, then rename</text>
-          <!-- echo back -->
-          <path id="echo" d="M394 154 C300 154 120 154 80 120 C60 105 60 90 80 74" class="edge edge-dashed" marker-end="url(#ar4)"/>
-          <text x="230" y="140" class="t2" text-anchor="middle">the write echoes back as an event</text>
-
-          <!-- yes: guard -->
-          <path d="M550 52 C596 52 596 240 550 240" class="edge" marker-end="url(#ar4)"/>
-          <text x="562" y="150" class="t2">yes</text>
-          <rect x="394" y="218" width="156" height="44" rx="6" class="box"/>
-          <text x="472" y="238" class="t" text-anchor="middle">== last write?</text>
-          <text x="472" y="254" class="t2" text-anchor="middle">own-write guard</text>
-
-          <path d="M394 240 L300 240" class="edge edge-sum" marker-end="url(#ar4)"/>
-          <text x="352" y="232" class="t2 tsum" text-anchor="middle">yes</text>
-          <rect x="180" y="218" width="118" height="44" rx="6" class="leaf"/>
-          <text x="239" y="244" class="t tsum" text-anchor="middle">dropped</text>
-
-          <path d="M472 262 L472 296" class="edge edge-warn" marker-end="url(#ar4)"/>
-          <text x="480" y="284" class="t2 twarn">no</text>
-          <rect x="394" y="298" width="156" height="28" rx="6" class="leaf-warn"/>
-          <text x="472" y="317" class="t twarn" text-anchor="middle">someone else · check</text>
-
-          <!-- the runner, hidden until fired -->
-          <circle r="5" class="runner" id="runner">
-            <animateMotion id="run-motion" dur="4.2s" begin="indefinite" fill="freeze" calcMode="linear" keyPoints="0;1" keyTimes="0;1"
-              path="M80 52 L272 52 L472 52 L472 154 C300 154 120 154 80 120 C60 105 60 90 80 74 L80 52 L272 52 L472 52 C580 52 580 240 540 240 L472 240 L300 240 L239 240"/>
-          </circle>
-        </g>
-      </svg>
-      <figcaption class="mt-3" id="watch-cap">The current loop polls every 250 ms; the real one will use the notify crate. The guard logic is what the prototype had to prove.</figcaption>
-    </figure>
+    <div class="grid gap-4">
+      <div>
+        <p class="font-mono text-xs text-ink-2 m-0 mb-2">.pre-commit-config.yaml</p>
+        <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>repos:
+  - repo: local
+    hooks:
+      - id: computed
+        name: computed run
+        entry: computed run
+        language: system
+        always_run: true
+        pass_filenames: false</code></pre>
+      </div>
+      <div>
+        <p class="font-mono text-xs text-ink-2 m-0 mb-2">.github/workflows/ci.yml</p>
+        <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>- run: cargo build --release
+- run: ./target/release/computed check</code></pre>
+      </div>
+    </div>
   </section>
 
   <!-- ─────────────────────────── try it ─────────────────────────── -->
   <section class="mt-24 grid gap-10 md:grid-cols-2">
     <div>
       <h2 class="text-2xl mb-3">Try it</h2>
-      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo run -- demo     <span class="text-ink-2"># scratch repo under .scratch/</span>
-cargo run -- run      <span class="text-ink-2"># render, atomic publish</span>
-cargo run -- check    <span class="text-ink-2"># exit 1 on drift, never writes</span>
-cargo run -- watch    <span class="text-ink-2"># poll → settle → guard → render</span>
+      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install --git \
+  https://github.com/mitchellvanw/computed-files
 
-<span class="text-ink-2"># act like someone else in the repo</span>
-cargo run -- add-file
-cargo run -- edit-region layout
-cargo run -- rm-csv
-cargo run -- add-sh && cargo run -- trust</code></pre>
-      <p class="mt-4 text-ink-2">Each free-play command prints the next command to run, so you can follow the README scenarios without reading ahead.</p>
+computed trust          <span class="text-ink-2"># once per clone</span>
+computed run            <span class="text-ink-2"># render stale regions</span>
+computed check          <span class="text-ink-2"># exit 1 on drift, runs nothing</span>
+computed run --dry-run  <span class="text-ink-2"># the diff run would write</span>
+computed run --force    <span class="text-ink-2"># overwrite a hand edit</span>
+computed clean          <span class="text-ink-2"># empty regions, keep markers</span></code></pre>
+      <p class="mt-4 text-ink-2">With no paths it walks the current directory for <code>.md</code> files, using the same ignore rules as the tree loader.</p>
     </div>
     <div>
-      <h2 class="text-2xl mb-3">Where the code is behind the decisions</h2>
-      <p class="text-ink-2">Four ADRs are accepted. The prototype has not caught up with all of them.</p>
-      <ul class="mt-4 grid gap-3 list-none p-0 m-0 text-[0.98rem]">
-        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">0002</code><span>The ADR names the input sum <code>in=</code>. The code writes <code>sum=</code>.</span></li>
-        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">0003</code><span>In-place is the only layout. The code still renders <code>.tmpl</code> to a sibling.</span></li>
-        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">0004</code><span><code>inputs=</code> on exec regions and <code>COMPUTED_ROOT</code> do not exist yet.</span></li>
-        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">tree</code><span>Skips <code>.git</code> and <code>*.tmp</code>, nothing else. The real loader honours <code>.gitignore</code> through the ignore crate.</span></li>
-        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">hash</code><span>32-bit FNV-1a. Fine for a prototype, not for a format files will carry.</span></li>
+      <h2 class="text-2xl mb-3">Two regions to start with</h2>
+      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>## Layout
+
+&lt;!-- computed tree src=. depth=2 name=layout --&gt;
+&lt;!-- /computed --&gt;
+
+## Decisions
+
+&lt;!-- computed exec cmd="grep -h '^# ' docs/adr/*.md"
+     inputs=docs/adr/*.md name=adrs --&gt;
+&lt;!-- /computed --&gt;</code></pre>
+      <p class="mt-4 text-ink-2">Empty closers mean unrendered. The first <code>run</code> fills both and writes the sums.</p>
+      <ul class="mt-4 grid gap-2 list-none p-0 m-0 text-[0.98rem]">
+        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 0</code><span>Nothing to report.</span></li>
+        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 1</code><span>The content said no: drift, a refused edit, a failed loader, an untrusted region.</span></li>
+        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 2</code><span>The tool could not answer: a usage or marker parse error.</span></li>
       </ul>
     </div>
   </section>
@@ -545,10 +496,10 @@ cargo run -- add-sh && cargo run -- trust</code></pre>
   const stepsEl = $('steps');
 
   const STEPS = [
-    { report: 'check → exit 0', region: '', pill: ['fresh', 'fresh'], sum: ['ce8c101b', ''], out: ['079d3f2c', ''], watcher: false, edit: false },
-    { report: 'run → exit 0 · wrote', region: 'is-stale', pill: ['stale', 'stale · regenerated'], sum: ['2e155539', 'flip'], out: ['35e54bc1', 'flip'], watcher: true, edit: false },
-    { report: 'run → exit 1 · write skipped', region: 'is-edited', pill: ['edited', 'edited · refused'], sum: ['2e155539', ''], out: ['35e54bc1', 'bad'], watcher: true, edit: true },
-    { report: 'run --force → exit 0 · wrote', region: 'is-stale', pill: ['stale', 'hand edit discarded'], sum: ['2e155539', ''], out: ['35e54bc1', 'flip'], watcher: true, edit: false },
+    { report: 'check → exit 0', region: '', pill: ['fresh', 'fresh'], sum: ['ab558c86…', ''], out: ['d53ea485…', ''], watcher: false, edit: false },
+    { report: 'run → exit 0 · written', region: 'is-stale', pill: ['stale', 'stale · regenerated'], sum: ['e07c41d2…', 'flip'], out: ['9b31f0aa…', 'flip'], watcher: true, edit: false },
+    { report: 'run → exit 1 · refused', region: 'is-edited', pill: ['edited', 'edited · refused'], sum: ['e07c41d2…', ''], out: ['9b31f0aa…', 'bad'], watcher: true, edit: true },
+    { report: 'run --force → exit 0 · written', region: 'is-stale', pill: ['stale', 'hand edit discarded'], sum: ['e07c41d2…', ''], out: ['9b31f0aa…', 'flip'], watcher: true, edit: false },
   ];
 
   STEPS.forEach((_, i) => {
@@ -568,6 +519,7 @@ cargo run -- add-sh && cargo run -- trust</code></pre>
     sum.textContent = s.sum[0]; sum.className = 'hash ' + s.sum[1];
     out.textContent = s.out[0]; out.className = 'hash ' + s.out[1];
     gw.classList.toggle('open', s.watcher);
+    $('l-main').textContent = s.watcher ? '    ├── main.rs' : '    └── main.rs';
     ge.classList.toggle('open', s.edit);
     events.forEach((e, k) => {
       const on = k === i;
@@ -614,20 +566,6 @@ cargo run -- add-sh && cargo run -- trust</code></pre>
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(reserve);
   if (!reduce) setTimeout(() => play(0), 900);
 
-  // watch loop
-  const runner = $('runner'), motion = $('run-motion'), fire = $('fire'), cap = $('watch-cap');
-  const capText = cap.textContent;
-  fire.addEventListener('click', () => {
-    if (reduce || !motion.beginElement) {
-      cap.textContent = 'A change to src/ renders and writes. The write comes back as an event on CLAUDE.md, matches the last write, and is dropped.';
-      return;
-    }
-    runner.classList.add('go');
-    motion.beginElement();
-    cap.textContent = 'Rendering, then the write echoes back and hits the guard.';
-    setTimeout(() => { cap.textContent = 'Dropped. One change, one write, no second render.'; }, 4300);
-    setTimeout(() => { runner.classList.remove('go'); cap.textContent = capText; }, 7500);
-  });
 })();
 </script>
 </body>
