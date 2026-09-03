@@ -11,3 +11,4 @@ pub mod loader;
 pub mod sink;
 pub mod render;
 pub mod cli;
+pub mod fs;
