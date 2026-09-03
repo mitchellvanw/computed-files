@@ -1,0 +1,625 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>computed</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style type="text/tailwindcss">
+  :root {
+    color-scheme: light;
+    --ground: #f6f7f5;
+    --ground-2: #eceeea;
+    --ink: #1c221e;
+    --ink-2: #5d665f;
+    --ink-3: #98a19a;
+    --line: #d5dad5;
+    --wash: #e3eee7;
+    --wash-2: #cfe3d7;
+    --sum: #0e6b54;
+    --sum-soft: #d7ebe1;
+    --warn: #b4531f;
+    --warn-soft: #f3e0d3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground: #141816;
+      --ground-2: #1b201d;
+      --ink: #e4e9e5;
+      --ink-2: #a3ada6;
+      --ink-3: #66706a;
+      --line: #2c332f;
+      --wash: #1a2a22;
+      --wash-2: #244235;
+      --sum: #58bf9a;
+      --sum-soft: #1c3a2f;
+      --warn: #e58b57;
+      --warn-soft: #3d2517;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #141816;
+    --ground-2: #1b201d;
+    --ink: #e4e9e5;
+    --ink-2: #a3ada6;
+    --ink-3: #66706a;
+    --line: #2c332f;
+    --wash: #1a2a22;
+    --wash-2: #244235;
+    --sum: #58bf9a;
+    --sum-soft: #1c3a2f;
+    --warn: #e58b57;
+    --warn-soft: #3d2517;
+  }
+
+  @theme inline {
+    --color-ground: var(--ground);
+    --color-ground-2: var(--ground-2);
+    --color-ink: var(--ink);
+    --color-ink-2: var(--ink-2);
+    --color-ink-3: var(--ink-3);
+    --color-line: var(--line);
+    --color-wash: var(--wash);
+    --color-wash-2: var(--wash-2);
+    --color-sum: var(--sum);
+    --color-sum-soft: var(--sum-soft);
+    --color-warn: var(--warn);
+    --color-warn-soft: var(--warn-soft);
+    --font-sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+
+  @layer base {
+    html { background: var(--ground); }
+    body { background: var(--ground); color: var(--ink); font-family: var(--font-sans); font-size: 17px; line-height: 1.55; margin: 0; -webkit-font-smoothing: antialiased; }
+    h1, h2, h3 { text-wrap: balance; font-weight: 600; letter-spacing: -0.01em; }
+    p { max-width: 66ch; }
+    code, pre, kbd { font-family: var(--font-mono); }
+    :focus-visible { outline: 2px solid var(--sum); outline-offset: 3px; }
+    figure { margin: 0; }
+    figcaption { color: var(--ink-2); font-size: 0.92rem; max-width: 66ch; }
+    svg text { font-family: var(--font-mono); }
+    table { border-collapse: collapse; }
+  }
+
+  /* the document panel */
+  .doc { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; }
+  .doc .ln { display: block; white-space: pre; padding: 0 1rem; min-height: 1.6em; }
+  .doc .marker { color: var(--ink-3); }
+  .doc .region { background: var(--wash); border-left: 3px solid var(--wash-2); transition: background .5s ease, border-color .5s ease; }
+  .doc .region.is-stale { background: var(--sum-soft); border-left-color: var(--sum); }
+  .doc .region.is-edited { background: var(--warn-soft); border-left-color: var(--warn); }
+  .doc .grow { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .45s ease; }
+  .doc .grow > div { overflow: hidden; min-height: 0; }
+  .doc .grow.open { grid-template-rows: 1fr; }
+  .doc .hash { display: inline-block; transition: color .3s ease, background .3s ease; padding: 0 .2em; border-radius: 3px; }
+  .doc .hash.flip { color: var(--sum); background: var(--sum-soft); }
+  .doc .hash.bad { color: var(--warn); background: var(--warn-soft); text-decoration: line-through; }
+  .pill { display: inline-flex; align-items: center; gap: .4em; padding: .1em .6em; border-radius: 999px; font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--line); color: var(--ink-2); transition: all .3s ease; }
+  .pill::before { content: ""; width: .5em; height: .5em; border-radius: 50%; background: currentColor; }
+  .pill.fresh { color: var(--sum); border-color: var(--sum); }
+  .pill.stale { color: var(--sum); border-color: var(--sum); background: var(--sum-soft); }
+  .pill.edited { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
+  .event { transition: opacity .4s ease, transform .4s ease; }
+  .event[hidden] { display: none; }
+  .event.enter { opacity: 0; transform: translateY(6px); }
+  .step-dot { width: 2.25rem; height: 4px; border-radius: 2px; background: var(--line); transition: background .3s; }
+  .step-dot[aria-current="step"] { background: var(--sum); }
+
+  /* svg diagrams */
+  .fig svg { max-width: 100%; height: auto; display: block; }
+  .fig .box { fill: var(--ground-2); stroke: var(--line); }
+  .fig .box-own { fill: var(--wash); stroke: var(--wash-2); }
+  .fig .t { fill: var(--ink); font-size: 12.5px; }
+  .fig .t2 { fill: var(--ink-2); font-size: 11.5px; }
+  .fig .edge { stroke: var(--ink-2); fill: none; stroke-width: 1.4; }
+  .fig .edge-sum { stroke: var(--sum); }
+  .fig .edge-warn { stroke: var(--warn); }
+  .fig .edge-dashed { stroke-dasharray: 5 4; }
+  .fig .leaf { fill: var(--sum-soft); stroke: var(--sum); }
+  .fig .leaf-warn { fill: var(--warn-soft); stroke: var(--warn); }
+  .fig .leaf-neutral { fill: var(--ground-2); stroke: var(--ink-3); }
+  .fig .tsum { fill: var(--sum); }
+  .fig .twarn { fill: var(--warn); }
+
+  /* watch loop runner */
+  .runner { fill: var(--sum); opacity: 0; }
+  .runner.go { opacity: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .doc .region, .doc .grow, .doc .hash, .pill, .event, .step-dot { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<main class="mx-auto max-w-[1040px] px-5 sm:px-8 pb-24">
+
+  <!-- ─────────────────────────── hero ─────────────────────────── -->
+  <header class="pt-14 sm:pt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:items-start">
+    <div class="max-w-[30rem]">
+      <p class="font-mono text-sm text-ink-2 m-0">computed</p>
+      <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">The document is a view. The truth lives somewhere else.</h1>
+      <p class="text-ink-2 text-[1.05rem]">A Markdown file with spans the tool owns. A tree listing, a table from a CSV, the output of a command. Everything else stays exactly as you typed it, and a hash pair in each closing marker says whether the span is still true.</p>
+      <p class="text-ink-2 text-[1.05rem] mt-4">Watch a file react to three things that happen in a repo.</p>
+      <div class="mt-6 flex items-center gap-3">
+        <button id="replay" type="button" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Replay</button>
+        <div id="steps" class="flex gap-1.5" role="tablist" aria-label="Steps"></div>
+      </div>
+    </div>
+
+    <!-- the live document -->
+    <div class="rounded-lg border border-line bg-ground overflow-hidden shadow-[0_1px_0_var(--line)]">
+      <div class="flex items-center justify-between px-4 py-2 border-b border-line bg-ground-2 font-mono text-xs text-ink-2">
+        <span>CLAUDE.md</span>
+        <span id="report" class="text-ink-2">check → exit 0</span>
+      </div>
+      <div class="grid md:grid-cols-[minmax(0,1fr)_12.5rem]">
+        <div class="doc py-3 overflow-x-auto">
+          <span class="ln">## Layout</span>
+          <span class="ln"></span>
+          <div id="r-layout" class="region">
+            <span class="ln marker">&lt;!-- computed tree src=. depth=2 name=layout --&gt;</span>
+            <span class="ln">```</span>
+            <span class="ln">.</span>
+            <span class="ln">├── CLAUDE.md</span>
+            <span class="ln">├── data.csv</span>
+            <span class="ln">└── src</span>
+            <span class="ln">    ├── lib.rs</span>
+            <span class="ln" id="l-main">    └── main.rs</span>
+            <div class="grow" id="g-watcher"><div><span class="ln">    └── watcher.rs</span></div></div>
+            <span class="ln">```</span>
+            <div class="grow" id="g-edit"><div><span class="ln text-warn">&lt;!-- an agent added this line by hand --&gt;</span></div></div>
+            <span class="ln marker">&lt;!-- /computed sum=<span class="hash" id="h-sum">ce8c101b</span> out=<span class="hash" id="h-out">079d3f2c</span> --&gt;</span>
+          </div>
+          <span class="ln"></span>
+          <span class="ln">## Data files</span>
+          <span class="ln"></span>
+          <div class="region">
+            <span class="ln marker">&lt;!-- computed csv src=data.csv name=data --&gt;</span>
+            <span class="ln">| name | count |</span>
+            <span class="ln">|------|-------|</span>
+            <span class="ln">| docs | 1     |</span>
+            <span class="ln">| src  | 2     |</span>
+            <span class="ln marker">&lt;!-- /computed sum=42e56a14 out=a491e3d4 --&gt;</span>
+          </div>
+          <span class="ln"></span>
+          <span class="ln">Run tests with `cargo test`.</span>
+        </div>
+        <aside class="border-t md:border-t-0 md:border-l border-line px-4 py-3 text-sm flex flex-col gap-3">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-mono text-xs text-ink-2">layout</span>
+            <span class="pill fresh" id="pill-layout">fresh</span>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-mono text-xs text-ink-2">data</span>
+            <span class="pill fresh">fresh</span>
+          </div>
+          <div class="border-t border-line pt-3 mt-1 flex flex-col gap-2" id="events" aria-live="polite">
+            <p class="event m-0 text-ink-2" data-step="0">Nothing has happened yet. Both regions match their sums.</p>
+            <p class="event m-0" data-step="1" hidden><span class="text-ink-2">Someone runs</span> <code class="text-xs">touch src/watcher.rs</code><span class="text-ink-2">. The template is untouched, but the tree listing is an input, so <code class="text-xs">sum=</code> moves and the region is regenerated.</span></p>
+            <p class="event m-0" data-step="2" hidden><span class="text-ink-2">An agent appends a line inside the region. The body no longer hashes to <code class="text-xs">out=</code>. The tool refuses to overwrite it and exits 1.</span></p>
+            <p class="event m-0" data-step="3" hidden><span class="text-ink-2">You run</span> <code class="text-xs">computed run --force</code><span class="text-ink-2">. The hand edit is discarded, both sums are recomputed, and the file is quiet again.</span></p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─────────────────────────── why read on ─────────────────────────── -->
+  <section class="mt-20 max-w-[42rem]">
+    <p class="text-[1.15rem] leading-[1.6]">Your <code>CLAUDE.md</code> is lying right now, and it is the tree, not the prose. Every tool that can rewrite that span has to rerun the generator to know it is wrong, which is why nobody checks. This one knows from the file alone, in CI, with an exit code.</p>
+  </section>
+
+  <!-- ─────────────────────────── two sums ─────────────────────────── -->
+  <section class="mt-24 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
+    <div>
+      <h2 class="text-2xl mb-3">Two sums, no state</h2>
+      <p>Tools that rewrite a marked span already exist. cog, mdsh, markdown-magic. They store a checksum of what they wrote, at best. None of them store what they read, so "is this fresh" means running every generator again.</p>
+      <p class="mt-3">Every closer here carries both. The input sum is a hash over the opener line and a snapshot of the inputs. The output sum is a hash over the body. Between them they answer the two questions a stale file poses, from the rendered file alone. No cache directory, nothing to lose on clone.</p>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 690 250" role="img" aria-label="The opener line and an input snapshot are hashed into sum; the written body is hashed into out. Both land in the closing marker.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+        </defs>
+        <g class="text-ink-2">
+          <!-- inputs column -->
+          <rect x="10" y="20" width="200" height="34" rx="4" class="box"/>
+          <text x="22" y="42" class="t">&lt;!-- computed tree src=. --&gt;</text>
+          <rect x="10" y="62" width="200" height="60" rx="4" class="box"/>
+          <text x="22" y="82" class="t">snapshot</text>
+          <text x="22" y="99" class="t2">tree: sorted visible paths</text>
+          <text x="22" y="114" class="t2">csv: the file's bytes</text>
+
+          <rect x="10" y="170" width="200" height="50" rx="4" class="box-own"/>
+          <text x="22" y="191" class="t">body as written</text>
+          <text x="22" y="208" class="t2">the fenced tree, the table</text>
+
+          <!-- hash boxes -->
+          <rect x="290" y="52" width="90" height="38" rx="19" class="box"/>
+          <text x="335" y="76" class="t" text-anchor="middle">fnv1a</text>
+          <rect x="290" y="176" width="90" height="38" rx="19" class="box"/>
+          <text x="335" y="200" class="t" text-anchor="middle">fnv1a</text>
+
+          <!-- arrows in -->
+          <path d="M210 37 C250 37 250 71 290 71" class="edge" marker-end="url(#ar)"/>
+          <path d="M210 92 C250 92 250 71 290 71" class="edge" marker-end="url(#ar)"/>
+          <path d="M210 195 L290 195" class="edge" marker-end="url(#ar)"/>
+
+          <!-- closer -->
+          <rect x="430" y="100" width="250" height="60" rx="4" class="box"/>
+          <text x="445" y="123" class="t">&lt;!-- /computed</text>
+          <text x="455" y="143" class="t"><tspan class="tsum">sum=</tspan>2e155539 <tspan class="tsum">out=</tspan>35e54bc1 --&gt;</text>
+
+          <path d="M380 71 C410 71 410 118 445 118" class="edge edge-sum" marker-end="url(#ar)"/>
+          <text x="392" y="60" class="t2 tsum">what it read</text>
+          <path d="M380 195 C410 195 410 145 445 145" class="edge edge-sum" marker-end="url(#ar)"/>
+          <text x="392" y="220" class="t2 tsum">what it wrote</text>
+        </g>
+      </svg>
+      <figcaption class="mt-3">The opener is part of the input hash, so changing <code>depth=2</code> to <code>depth=3</code> is a changed input, not a hand edit.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ─────────────────────────── decision tree ─────────────────────────── -->
+  <section class="mt-24">
+    <h2 class="text-2xl mb-3">Six things a region can be</h2>
+    <p>After a render, each region has one status. The tool reaches it from the prior file and the fresh load, in this order. Nothing else is consulted.</p>
+    <figure class="fig mt-8 overflow-x-auto">
+      <svg viewBox="0 0 900 400" role="img" aria-label="Decision tree from loader result through hand-edit check, prior region, input sum and body comparison to the statuses error, edited, new, stale, rewritten and fresh." class="min-w-[720px]">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+        </defs>
+        <g class="text-ink-2">
+          <!-- q1 loader -->
+          <rect x="10" y="150" width="130" height="52" rx="6" class="box"/>
+          <text x="75" y="172" class="t" text-anchor="middle">loader ran</text>
+          <text x="75" y="189" class="t2" text-anchor="middle">tree · csv · sh</text>
+          <!-- error leaf -->
+          <path d="M75 202 L75 330" class="edge edge-warn" marker-end="url(#ar2)"/>
+          <text x="82" y="270" class="t2 twarn">failed</text>
+          <rect x="10" y="332" width="130" height="52" rx="6" class="leaf-warn"/>
+          <text x="75" y="354" class="t twarn" text-anchor="middle">error</text>
+          <text x="75" y="371" class="t2" text-anchor="middle">last good body kept</text>
+
+          <!-- q2 edited -->
+          <path d="M140 176 L210 176" class="edge" marker-end="url(#ar2)"/>
+          <text x="150" y="168" class="t2">ok</text>
+          <rect x="212" y="150" width="150" height="52" rx="6" class="box"/>
+          <text x="287" y="172" class="t" text-anchor="middle">prior body</text>
+          <text x="287" y="189" class="t2" text-anchor="middle">hashes to out= ?</text>
+          <!-- edited leaf -->
+          <path d="M287 202 L287 330" class="edge edge-warn" marker-end="url(#ar2)"/>
+          <text x="294" y="262" class="t2 twarn">no, and</text>
+          <text x="294" y="277" class="t2 twarn">no --force</text>
+          <rect x="212" y="332" width="150" height="52" rx="6" class="leaf-warn"/>
+          <text x="287" y="354" class="t twarn" text-anchor="middle">edited</text>
+          <text x="287" y="371" class="t2" text-anchor="middle">left as is · exit 1</text>
+
+          <!-- q3 prior -->
+          <path d="M362 176 L432 176" class="edge" marker-end="url(#ar2)"/>
+          <text x="372" y="168" class="t2">yes</text>
+          <rect x="434" y="150" width="130" height="52" rx="6" class="box"/>
+          <text x="499" y="172" class="t" text-anchor="middle">prior region</text>
+          <text x="499" y="189" class="t2" text-anchor="middle">exists ?</text>
+          <!-- new leaf -->
+          <path d="M499 150 L499 40" class="edge" marker-end="url(#ar2)"/>
+          <text x="506" y="100" class="t2">no</text>
+          <rect x="434" y="10" width="130" height="30" rx="6" class="leaf-neutral"/>
+          <text x="499" y="30" class="t" text-anchor="middle">new</text>
+
+          <!-- q4 same sum -->
+          <path d="M564 176 L634 176" class="edge" marker-end="url(#ar2)"/>
+          <text x="574" y="168" class="t2">yes</text>
+          <rect x="636" y="150" width="120" height="52" rx="6" class="box"/>
+          <text x="696" y="172" class="t" text-anchor="middle">same sum= ?</text>
+          <text x="696" y="189" class="t2" text-anchor="middle">inputs unchanged</text>
+          <!-- stale leaf -->
+          <path d="M696 202 L696 330" class="edge edge-sum" marker-end="url(#ar2)"/>
+          <text x="703" y="270" class="t2 tsum">no</text>
+          <rect x="636" y="332" width="120" height="52" rx="6" class="leaf"/>
+          <text x="696" y="354" class="t tsum" text-anchor="middle">stale</text>
+          <text x="696" y="371" class="t2" text-anchor="middle">regenerated</text>
+
+          <!-- q5 same body -->
+          <path d="M756 176 L826 176" class="edge" marker-end="url(#ar2)"/>
+          <text x="766" y="168" class="t2">yes</text>
+          <rect x="828" y="150" width="62" height="52" rx="6" class="box"/>
+          <text x="859" y="172" class="t" text-anchor="middle">same</text>
+          <text x="859" y="189" class="t2" text-anchor="middle">body ?</text>
+          <!-- fresh -->
+          <path d="M859 150 L859 40" class="edge edge-sum" marker-end="url(#ar2)"/>
+          <text x="866" y="100" class="t2 tsum">yes</text>
+          <rect x="828" y="10" width="62" height="30" rx="6" class="leaf"/>
+          <text x="859" y="30" class="t tsum" text-anchor="middle">fresh</text>
+          <!-- rewritten -->
+          <path d="M859 202 L859 330" class="edge edge-warn" marker-end="url(#ar2)"/>
+          <text x="866" y="270" class="t2 twarn">no</text>
+          <rect x="776" y="332" width="120" height="52" rx="6" class="leaf-warn"/>
+          <text x="836" y="354" class="t twarn" text-anchor="middle">rewritten</text>
+          <text x="836" y="371" class="t2" text-anchor="middle">undeclared input</text>
+        </g>
+      </svg>
+      <figcaption class="mt-3">Only <code>fresh</code> passes <code>check</code>. <code>run</code> writes for new, stale and rewritten, and exits 1 for edited and error. A <code>sh</code> region with no declared inputs lands on rewritten every time, which is the design's open wart.</figcaption>
+    </figure>
+
+    <div class="mt-10 grid gap-x-10 gap-y-6 md:grid-cols-2">
+      <div>
+        <h3 class="text-lg mb-2">Hand edits are refused, not reverted</h3>
+        <p>An agent that edited a region had a reason. Clobbering it on the next run destroys work with no record. The region stays, the run exits 1, and regenerating takes an explicit <code>--force</code> or deleting the sum.</p>
+      </div>
+      <div>
+        <h3 class="text-lg mb-2">A failed loader keeps the last good body</h3>
+        <p>Deleting <code>data.csv</code> does not blank the table. Body and sums stay as they were, the run exits 1 so CI notices, and restoring the file repairs it on the next run.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── loaders and sinks ─────────────────────────── -->
+  <section class="mt-24">
+    <h2 class="text-2xl mb-3">Loaders read, sinks shape</h2>
+    <p>A loader returns text plus the snapshot the input sum is taken over. A sink turns that text into what lands in the file. Every loader has a default sink; any opener can name another with <code>sink=</code>.</p>
+    <div class="mt-8 grid gap-4 md:grid-cols-[1fr_auto_1fr_auto_1fr] items-stretch font-mono text-sm">
+      <div class="grid gap-2">
+        <div class="rounded border border-line bg-ground-2 p-3"><div>tree <span class="text-ink-2">src=. depth=</span></div><div class="text-ink-2 text-xs mt-1">snapshot: sorted paths</div></div>
+        <div class="rounded border border-line bg-ground-2 p-3"><div>csv <span class="text-ink-2">src=file</span></div><div class="text-ink-2 text-xs mt-1">snapshot: file bytes</div></div>
+        <div class="rounded border border-warn bg-warn-soft p-3"><div>sh <span class="text-ink-2">cmd="…" lang=</span></div><div class="text-ink-2 text-xs mt-1">snapshot: none · volatile · off until <code>.computed-trust</code></div></div>
+      </div>
+      <div class="hidden md:flex items-center text-ink-3" aria-hidden="true">→</div>
+      <div class="rounded border border-line p-3 flex flex-col justify-center gap-1">
+        <div>text <span class="text-ink-2">+ lang</span></div>
+        <div class="text-ink-2">or rows</div>
+        <div class="text-ink-2 text-xs mt-2">and the snapshot, hashed with the opener into <span class="text-sum">sum=</span></div>
+      </div>
+      <div class="hidden md:flex items-center text-ink-3" aria-hidden="true">→</div>
+      <div class="grid gap-2">
+        <div class="rounded border border-wash-2 bg-wash p-3"><div>fence</div><div class="text-ink-2 text-xs mt-1">``` block · default for tree</div></div>
+        <div class="rounded border border-wash-2 bg-wash p-3"><div>table</div><div class="text-ink-2 text-xs mt-1">Markdown table · default for csv</div></div>
+        <div class="rounded border border-wash-2 bg-wash p-3"><div>raw</div><div class="text-ink-2 text-xs mt-1">text as is · default for sh</div></div>
+      </div>
+    </div>
+    <p class="mt-6 text-ink-2">Relative paths resolve against the directory of the file holding the marker. Not the repository root, not the shell's working directory. The same region reads identically from a pre-commit hook, from CI and from a terminal, and moving the file moves its regions with it.</p>
+  </section>
+
+  <!-- ─────────────────────────── layouts ─────────────────────────── -->
+  <section class="mt-24">
+    <h2 class="text-2xl mb-3">Copy was the wrong default</h2>
+    <p>The prior-art survey recommended a template rendered to a sibling, the way the rest of the ecosystem does it. The prototype still works that way. It showed that in copy mode, every prose edit made to the rendered file is reverted on the next run, because the template wins. For <code>CLAUDE.md</code>, prose edits by agents and people are the normal case. So v0 is in-place only.</p>
+    <figure class="fig mt-8 overflow-x-auto">
+      <svg viewBox="0 0 960 260" role="img" aria-label="Copy layout: a template renders to CLAUDE.md, and a prose edit to CLAUDE.md is reverted on the next run. In-place layout: one file, where prose edits are kept and region edits are refused." class="min-w-[720px]">
+        <defs>
+          <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+        </defs>
+        <g class="text-ink-2">
+          <!-- copy -->
+          <text x="10" y="22" class="t">copy layout</text>
+          <rect x="10" y="40" width="140" height="150" rx="6" class="box"/>
+          <text x="80" y="62" class="t" text-anchor="middle">CLAUDE.md.tmpl</text>
+          <rect x="24" y="76" width="112" height="14" rx="2" fill="var(--line)"/>
+          <rect x="24" y="96" width="112" height="34" rx="2" class="box-own"/>
+          <rect x="24" y="136" width="112" height="14" rx="2" fill="var(--line)"/>
+          <rect x="24" y="156" width="112" height="22" rx="2" class="box-own"/>
+
+          <path d="M150 115 L250 115" class="edge" marker-end="url(#ar3)"/>
+          <text x="200" y="106" class="t2" text-anchor="middle">run</text>
+
+          <rect x="252" y="40" width="140" height="150" rx="6" class="box"/>
+          <text x="322" y="62" class="t" text-anchor="middle">CLAUDE.md</text>
+          <rect x="266" y="76" width="112" height="14" rx="2" fill="var(--line)"/>
+          <rect x="266" y="96" width="112" height="34" rx="2" class="box-own"/>
+          <rect x="266" y="136" width="112" height="14" rx="2" fill="var(--line)"/>
+          <rect x="266" y="156" width="112" height="22" rx="2" class="box-own"/>
+          <!-- prose edit -->
+          <rect x="266" y="136" width="112" height="14" rx="2" fill="var(--warn)" opacity=".7"/>
+          <path d="M322 230 L322 152" class="edge edge-warn" marker-end="url(#ar3)"/>
+          <text x="332" y="222" class="t2 twarn">a prose edit</text>
+          <!-- reverted loop -->
+          <path d="M392 100 C430 100 430 20 322 20 C260 20 200 20 200 60 C200 80 220 88 245 96" class="edge edge-warn edge-dashed" marker-end="url(#ar3)"/>
+          <text x="330" y="14" class="t2 twarn" text-anchor="middle">next run: reverted</text>
+
+          <!-- in place -->
+          <text x="520" y="22" class="t">in-place layout</text>
+          <rect x="520" y="40" width="200" height="150" rx="6" class="box"/>
+          <text x="620" y="62" class="t" text-anchor="middle">CLAUDE.md</text>
+          <rect x="534" y="76" width="172" height="14" rx="2" fill="var(--line)"/>
+          <rect x="534" y="96" width="172" height="34" rx="2" class="box-own"/>
+          <rect x="534" y="136" width="172" height="14" rx="2" fill="var(--warn)" opacity=".7"/>
+          <rect x="534" y="156" width="172" height="22" rx="2" class="box-own"/>
+          <rect x="534" y="156" width="172" height="22" rx="2" fill="var(--warn)" opacity=".35"/>
+
+          <path d="M780 143 L708 143" class="edge edge-warn" marker-end="url(#ar3)"/>
+          <text x="790" y="147" class="t2">prose edit → kept</text>
+          <path d="M780 167 L708 167" class="edge edge-warn" marker-end="url(#ar3)"/>
+          <text x="790" y="171" class="t2">region edit → refused</text>
+          <text x="790" y="110" class="t2">yours</text>
+          <rect x="840" y="100" width="40" height="12" rx="2" fill="var(--line)"/>
+          <text x="790" y="90" class="t2">tool's</text>
+          <rect x="840" y="80" width="40" height="12" rx="2" class="box-own"/>
+        </g>
+      </svg>
+      <figcaption class="mt-3">One file. The tool owns region bodies and nothing else, and the output sum is what tells a prose edit from a region edit.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ─────────────────────────── writes + watch ─────────────────────────── -->
+  <section class="mt-24 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)]">
+    <div>
+      <h2 class="text-2xl mb-3">The watcher ignores itself</h2>
+      <p>Every write goes through a temp file and <code>rename(2)</code>, and nothing is written when the bytes would be identical. So <code>run</code> twice is a no-op and the mtime never moves.</p>
+      <p class="mt-3">That matters for <code>watch</code>. Its own write comes back as a change event. The loop remembers the last text it wrote and drops any event on the rendered file whose content matches. A non-matching change to that file is someone else's edit, so it runs <code>check</code> rather than overwrite.</p>
+      <p class="mt-3">The watcher is a convenience layer. <code>run</code> in a pre-commit hook and <code>check</code> in CI are the foundation, which is why this is a static Rust binary and not an Elixir daemon.</p>
+      <button id="fire" type="button" class="mt-5 font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Change a file</button>
+    </div>
+    <figure class="fig">
+      <svg viewBox="0 0 560 330" role="img" aria-label="Watch loop: a file event settles, then renders and writes; the write echoes back as an event, matches the last write and is dropped by the own-write guard." id="watch-svg">
+        <defs>
+          <marker id="ar4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+        </defs>
+        <g class="text-ink-2">
+          <rect x="20" y="30" width="120" height="44" rx="22" class="box"/>
+          <text x="80" y="57" class="t" text-anchor="middle">file event</text>
+
+          <path d="M140 52 L210 52" class="edge" marker-end="url(#ar4)"/>
+          <rect x="212" y="30" width="120" height="44" rx="6" class="box"/>
+          <text x="272" y="50" class="t" text-anchor="middle">settle</text>
+          <text x="272" y="66" class="t2" text-anchor="middle">150 ms quiet</text>
+
+          <path d="M332 52 L402 52" class="edge" marker-end="url(#ar4)"/>
+          <rect x="404" y="30" width="136" height="44" rx="6" class="box"/>
+          <text x="472" y="50" class="t" text-anchor="middle">rendered file?</text>
+          <text x="472" y="66" class="t2" text-anchor="middle">is the path CLAUDE.md</text>
+
+          <!-- no: render -->
+          <path d="M472 74 L472 130" class="edge" marker-end="url(#ar4)"/>
+          <text x="480" y="106" class="t2">no</text>
+          <rect x="404" y="132" width="136" height="44" rx="6" class="box-own"/>
+          <text x="472" y="152" class="t" text-anchor="middle">render + write</text>
+          <text x="472" y="168" class="t2" text-anchor="middle">tmp, then rename</text>
+          <!-- echo back -->
+          <path id="echo" d="M404 154 C300 154 120 154 80 120 C60 105 60 90 80 74" class="edge edge-dashed" marker-end="url(#ar4)"/>
+          <text x="230" y="146" class="t2" text-anchor="middle">the write echoes back as an event</text>
+
+          <!-- yes: guard -->
+          <path d="M540 52 C580 52 580 240 540 240" class="edge" marker-end="url(#ar4)"/>
+          <text x="548" y="150" class="t2">yes</text>
+          <rect x="404" y="218" width="136" height="44" rx="6" class="box"/>
+          <text x="472" y="238" class="t" text-anchor="middle">== last write?</text>
+          <text x="472" y="254" class="t2" text-anchor="middle">own-write guard</text>
+
+          <path d="M404 240 L300 240" class="edge edge-sum" marker-end="url(#ar4)"/>
+          <text x="352" y="232" class="t2 tsum" text-anchor="middle">yes</text>
+          <rect x="180" y="218" width="118" height="44" rx="6" class="leaf"/>
+          <text x="239" y="244" class="t tsum" text-anchor="middle">dropped</text>
+
+          <path d="M472 262 L472 296" class="edge edge-warn" marker-end="url(#ar4)"/>
+          <text x="480" y="284" class="t2 twarn">no</text>
+          <rect x="404" y="298" width="136" height="28" rx="6" class="leaf-warn"/>
+          <text x="472" y="317" class="t twarn" text-anchor="middle">someone else · check</text>
+
+          <!-- the runner, hidden until fired -->
+          <circle r="5" class="runner" id="runner">
+            <animateMotion id="run-motion" dur="4.2s" begin="indefinite" fill="freeze" calcMode="linear" keyPoints="0;1" keyTimes="0;1"
+              path="M80 52 L272 52 L472 52 L472 154 C300 154 120 154 80 120 C60 105 60 90 80 74 L80 52 L272 52 L472 52 C580 52 580 240 540 240 L472 240 L300 240 L239 240"/>
+          </circle>
+        </g>
+      </svg>
+      <figcaption class="mt-3" id="watch-cap">The current loop polls every 250 ms; the real one will use the notify crate. The guard logic is what the prototype had to prove.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ─────────────────────────── try it ─────────────────────────── -->
+  <section class="mt-24 grid gap-10 md:grid-cols-2">
+    <div>
+      <h2 class="text-2xl mb-3">Try it</h2>
+      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo run -- demo     <span class="text-ink-2"># scratch repo under .scratch/</span>
+cargo run -- run      <span class="text-ink-2"># render, atomic publish</span>
+cargo run -- check    <span class="text-ink-2"># exit 1 on drift, never writes</span>
+cargo run -- watch    <span class="text-ink-2"># poll → settle → guard → render</span>
+
+<span class="text-ink-2"># act like someone else in the repo</span>
+cargo run -- add-file
+cargo run -- edit-region layout
+cargo run -- rm-csv
+cargo run -- add-sh && cargo run -- trust</code></pre>
+      <p class="mt-4 text-ink-2">Each free-play command prints the next command to run, so the scenarios in the README walk themselves.</p>
+    </div>
+    <div>
+      <h2 class="text-2xl mb-3">Where the code is behind the decisions</h2>
+      <p class="text-ink-2">Four ADRs are accepted. The prototype has not caught up with all of them.</p>
+      <ul class="mt-4 grid gap-3 list-none p-0 m-0 text-[0.98rem]">
+        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">0002</code><span>The ADR names the input sum <code>in=</code>. The code writes <code>sum=</code>.</span></li>
+        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">0003</code><span>In-place is the only layout. The code still renders <code>.tmpl</code> to a sibling.</span></li>
+        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">0004</code><span><code>inputs=</code> on exec regions and <code>COMPUTED_ROOT</code> do not exist yet.</span></li>
+        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">tree</code><span>Skips <code>.git</code> and <code>*.tmp</code>, nothing else. The real loader honours <code>.gitignore</code> through the ignore crate.</span></li>
+        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">hash</code><span>32-bit FNV-1a. Fine for a prototype, not for a format files will carry.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <footer class="mt-24 pt-6 border-t border-line text-sm text-ink-2 flex flex-wrap gap-x-6 gap-y-1">
+    <span>computed, a prototype</span>
+    <span>Rust, one binary, no runtime</span>
+    <span>The vocabulary is in CONTEXT.md; the decisions in docs/adr</span>
+  </footer>
+</main>
+
+<script>
+(() => {
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const $ = (id) => document.getElementById(id);
+  const region = $('r-layout'), sum = $('h-sum'), out = $('h-out');
+  const gw = $('g-watcher'), ge = $('g-edit'), pill = $('pill-layout'), report = $('report');
+  const events = [...document.querySelectorAll('#events .event')];
+  const stepsEl = $('steps');
+
+  const STEPS = [
+    { report: 'check → exit 0', region: '', pill: ['fresh', 'fresh'], sum: ['ce8c101b', ''], out: ['079d3f2c', ''], watcher: false, edit: false },
+    { report: 'run → exit 0 · wrote', region: 'is-stale', pill: ['stale', 'stale · regenerated'], sum: ['2e155539', 'flip'], out: ['35e54bc1', 'flip'], watcher: true, edit: false },
+    { report: 'run → exit 1 · write skipped', region: 'is-edited', pill: ['edited', 'edited · refused'], sum: ['2e155539', ''], out: ['35e54bc1', 'bad'], watcher: true, edit: true },
+    { report: 'run --force → exit 0 · wrote', region: 'is-stale', pill: ['stale', 'hand edit discarded'], sum: ['2e155539', ''], out: ['35e54bc1', 'flip'], watcher: true, edit: false },
+  ];
+
+  STEPS.forEach((_, i) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'step-dot cursor-pointer border-0 p-0'; b.setAttribute('role', 'tab');
+    b.setAttribute('aria-label', 'Step ' + (i + 1));
+    b.addEventListener('click', () => { stop(); show(i); });
+    stepsEl.appendChild(b);
+  });
+  const dots = [...stepsEl.children];
+
+  function show(i) {
+    const s = STEPS[i];
+    report.textContent = s.report;
+    region.className = 'region ' + s.region;
+    pill.className = 'pill ' + s.pill[0]; pill.textContent = s.pill[1];
+    sum.textContent = s.sum[0]; sum.className = 'hash ' + s.sum[1];
+    out.textContent = s.out[0]; out.className = 'hash ' + s.out[1];
+    gw.classList.toggle('open', s.watcher);
+    ge.classList.toggle('open', s.edit);
+    events.forEach((e, k) => {
+      const on = k === i;
+      if (on && e.hidden) { e.hidden = false; e.classList.add('enter'); requestAnimationFrame(() => e.classList.remove('enter')); }
+      else if (!on) e.hidden = true;
+    });
+    dots.forEach((d, k) => k === i ? d.setAttribute('aria-current', 'step') : d.removeAttribute('aria-current'));
+  }
+
+  let timer = null, cur = 0;
+  function stop() { if (timer) { clearTimeout(timer); timer = null; } }
+  function play(from) {
+    stop(); cur = from; show(cur);
+    const tick = () => {
+      if (cur >= STEPS.length - 1) { timer = null; return; }
+      cur += 1; show(cur);
+      timer = setTimeout(tick, 2600);
+    };
+    timer = setTimeout(tick, 2200);
+  }
+  $('replay').addEventListener('click', () => play(0));
+  show(0);
+  if (!reduce) setTimeout(() => play(0), 900);
+
+  // watch loop
+  const runner = $('runner'), motion = $('run-motion'), fire = $('fire'), cap = $('watch-cap');
+  const capText = cap.textContent;
+  fire.addEventListener('click', () => {
+    if (reduce || !motion.beginElement) {
+      cap.textContent = 'A change to src/ renders and writes. The write comes back as an event on CLAUDE.md, matches the last write, and is dropped.';
+      return;
+    }
+    runner.classList.add('go');
+    motion.beginElement();
+    cap.textContent = 'Rendering, then the write echoes back and hits the guard.';
+    setTimeout(() => { cap.textContent = 'Dropped. One change, one write, no second render.'; }, 4300);
+    setTimeout(() => { runner.classList.remove('go'); cap.textContent = capText; }, 7500);
+  });
+})();
+</script>
+</body>
+</html>
