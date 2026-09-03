@@ -12,3 +12,4 @@ pub mod sink;
 pub mod render;
 pub mod cli;
 pub mod fs;
+pub mod trust;
