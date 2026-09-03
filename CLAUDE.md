@@ -62,5 +62,6 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 - [Render is pure behind a `Loaders` seam](docs/adr/0008-render-is-pure-behind-a-loaders-seam.md)
 - [Loader text is normalised and exec runs in a pinned environment](docs/adr/0009-loader-text-is-normalised-and-exec-runs-pinned.md)
 - [Sums are full SHA-256](docs/adr/0010-sha-256-sums.md)
+- [The tree loader honours `.gitignore` without a flag](docs/adr/0011-gitignore-is-not-a-flag.md)
 
-<!-- /computed in=bf5ba216856d936232720a2d05b8f415f013ce8bf3414bdd2656d185689d903b out=fed8591e865588c7b9fc113fea19b7d2ca427beee40c1db466d49366101b3e1d -->
+<!-- /computed in=b366f3062266d2095e7418ed428e00b4decc69f8df1858d79491a318e9714694 out=dab14b7f7c1f04840e7bf094746072bf01bbf2b3acf25cbec5ee2569764f48f4 -->

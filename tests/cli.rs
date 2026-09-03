@@ -76,6 +76,11 @@ fn the_pre_commit_scenario() {
         "{err}"
     );
     assert!(repo.claude().contains("└── src"));
+    assert!(
+        !repo.claude().contains("target"),
+        "the root .gitignore governs the tree: {}",
+        repo.claude()
+    );
     assert!(!repo.claude().contains("# One"));
 
     // Trust, then run writes the exec region and exits 1; a second run is a no-op.
@@ -220,6 +225,58 @@ fn the_pre_commit_scenario() {
     assert_eq!(out.status.code(), Some(2));
     assert!(stderr(&out).contains("CLAUDE.md:"), "{}", stderr(&out));
     assert_eq!(repo.claude(), broken);
+}
+
+/// The ignore state is part of what the tree is computed from: an edit to
+/// `.gitignore` that changes the listing drifts the region like any other
+/// input, and one that does not change the listing is not drift.
+#[test]
+fn editing_gitignore_drifts_the_tree_region() {
+    let repo = Repo::new();
+    fs::write(repo.path().join("src/build.log"), "").unwrap();
+    assert_eq!(repo.cmd(&["run"]).output().unwrap().status.code(), Some(1));
+    assert!(repo.claude().contains("build.log"));
+    let out = repo.cmd(&["check"]).output().unwrap();
+    assert!(!stderr(&out).contains("layout"), "{}", stderr(&out));
+
+    fs::write(
+        repo.path().join(".gitignore"),
+        "# build\n\ntarget/\n*.log\n",
+    )
+    .unwrap();
+    let out = repo.cmd(&["check"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        stderr(&out).contains("layout tree stale"),
+        "{}",
+        stderr(&out)
+    );
+    assert_eq!(repo.cmd(&["run"]).output().unwrap().status.code(), Some(1));
+    assert!(!repo.claude().contains("build.log"), "{}", repo.claude());
+    let out = repo.cmd(&["check"]).output().unwrap();
+    assert!(!stderr(&out).contains("layout"), "{}", stderr(&out));
+
+    // A comment-only edit leaves the listing, and so the region, as it was.
+    fs::write(
+        repo.path().join(".gitignore"),
+        "# logs too\ntarget/\n*.log\n",
+    )
+    .unwrap();
+    let out = repo.cmd(&["check"]).output().unwrap();
+    assert!(!stderr(&out).contains("layout"), "{}", stderr(&out));
+
+    // `gitignore` is not a flag: ignore rules always apply inside a repository.
+    let flagged = repo
+        .claude()
+        .replace("depth=2 name=layout", "depth=2 gitignore name=layout");
+    fs::write(repo.path().join("CLAUDE.md"), flagged).unwrap();
+    let out = repo.cmd(&["check"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        stderr(&out).contains("unknown flag \"gitignore\""),
+        "{}",
+        stderr(&out)
+    );
 }
 
 #[test]

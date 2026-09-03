@@ -111,15 +111,24 @@ mod tests {
         fs::create_dir_all(r.join(".git")).unwrap();
         fs::create_dir_all(r.join("src/nested/deep")).unwrap();
         fs::create_dir_all(r.join("target/debug")).unwrap();
-        fs::create_dir_all(r.join("docs")).unwrap();
-        fs::write(r.join(".gitignore"), "target/\n*.log\n").unwrap();
+        fs::create_dir_all(r.join("docs/tmp")).unwrap();
+        fs::create_dir_all(r.join("tmp")).unwrap();
+        fs::write(
+            r.join(".gitignore"),
+            "# one of each pattern class the tree loader promises\n\ntarget/\n*.log\n/tmp\nscratch.md\n",
+        )
+        .unwrap();
         fs::write(r.join(".hidden"), "").unwrap();
         fs::write(r.join("src/main.rs"), "").unwrap();
         fs::write(r.join("src/nested/deep/x.rs"), "").unwrap();
         fs::write(r.join("src/build.log"), "").unwrap();
+        fs::write(r.join("src/scratch.md"), "").unwrap();
         fs::write(r.join("target/debug/bin"), "").unwrap();
+        fs::write(r.join("docs/tmp/kept.md"), "").unwrap();
+        fs::write(r.join("tmp/dropped.md"), "").unwrap();
         fs::write(r.join("Zed.md"), "").unwrap();
         fs::write(r.join("a.md"), "").unwrap();
+        fs::write(r.join("scratch.md"), "").unwrap();
         dir
     }
 
@@ -129,6 +138,8 @@ mod tests {
             .collect()
     }
 
+    /// Literal name, `*.ext`, `/anchored`, `dir/`, a comment and a blank
+    /// line: the root `.gitignore` governs the listing without any flag.
     #[test]
     fn walk_honours_gitignore_hides_dotfiles_and_sorts_by_byte_order() {
         let dir = repo();
@@ -139,6 +150,8 @@ mod tests {
                 "Zed.md",
                 "a.md",
                 "docs/",
+                "docs/tmp/",
+                "docs/tmp/kept.md",
                 "src/",
                 "src/main.rs",
                 "src/nested/",
@@ -146,6 +159,16 @@ mod tests {
                 "src/nested/deep/x.rs"
             ]
         );
+    }
+
+    #[test]
+    fn walk_outside_a_repository_applies_no_gitignore() {
+        let dir = repo();
+        fs::remove_dir_all(dir.path().join(".git")).unwrap();
+        let got = listing(dir.path(), WalkOpts::default());
+        assert!(got.contains(&"target/".to_string()));
+        assert!(got.contains(&"tmp/dropped.md".to_string()));
+        assert!(got.contains(&"src/build.log".to_string()));
     }
 
     #[test]
@@ -182,15 +205,16 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert_eq!(got, ["docs/", "src/", "src/nested/", "src/nested/deep/"]);
-    }
-
-    #[test]
-    fn walk_outside_a_repository_applies_no_gitignore() {
-        let dir = repo();
-        fs::remove_dir_all(dir.path().join(".git")).unwrap();
-        let got = listing(dir.path(), WalkOpts::default());
-        assert!(got.contains(&"target/".to_string()));
+        assert_eq!(
+            got,
+            [
+                "docs/",
+                "docs/tmp/",
+                "src/",
+                "src/nested/",
+                "src/nested/deep/"
+            ]
+        );
     }
 
     #[test]
