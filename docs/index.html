@@ -217,6 +217,15 @@
     <p class="text-[1.15rem] leading-[1.6]">Your <code>CLAUDE.md</code> is lying right now, and it is the tree, not the prose. Every tool that can rewrite that span has to rerun the generator to know it is wrong, which is why nobody checks. This one knows from the file alone, in CI, with an exit code.</p>
   </section>
 
+  <!-- ─────────────────────────── guides and sensors ─────────────────────────── -->
+  <section class="mt-24 max-w-[42rem]">
+    <h2 class="text-2xl mb-3">A guide that carries its own sensor</h2>
+    <p>Birgitta Böckeler splits the controls around a coding agent into two kinds. Guides are feedforward: they steer the agent before it acts, so the first attempt is more likely to be right. Sensors are feedback: they observe what the agent did and hand it a signal to correct against. A <code>CLAUDE.md</code> or <code>AGENTS.md</code> is the plainest guide there is. It is context injected into the harness ahead of every task, and the agent reads it as a true account of the repo.</p>
+    <p class="mt-3">A feedforward control is only as good as its match to the thing it describes, and nothing in the loop notices when the tree listing or the module table drifts. The agent starts every task steered by a picture that was accurate last month. That is worse than no guide, because it is confident.</p>
+    <p class="mt-3">The two sums give the guide a sensor of its own. <code>computed check</code> reads the file, compares the sums, and exits non-zero when a region no longer matches its inputs. It never runs a generator, so it is cheap enough for pre-commit and CI. The injected context stays feedforward, but its freshness becomes something the harness can observe.</p>
+    <p class="mt-3 text-ink-2 text-[0.95rem]">The vocabulary is from <a href="https://martinfowler.com/articles/harness-engineering.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Harness engineering for coding agent users</a>, Birgitta Böckeler on martinfowler.com, April 2026.</p>
+  </section>
+
   <!-- ─────────────────────────── two sums ─────────────────────────── -->
   <section class="mt-24 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
     <div>
