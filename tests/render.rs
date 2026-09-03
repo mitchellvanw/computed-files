@@ -349,6 +349,50 @@ fn text_that_fails_normalisation_is_a_loader_failure() {
 }
 
 #[test]
+fn a_changed_file_leaves_an_unchanged_volatile_region_silent() {
+    let mut fake = standard();
+    fake.table.insert(
+        "layout",
+        Entry::Inputs {
+            snapshot: "moved",
+            text: ".\n└── moved\n",
+        },
+    );
+    let r = run_case(
+        "fresh.in.txt",
+        "fresh.stale-layout",
+        Mode::Run { force: false },
+        true,
+        &mut fake,
+    );
+    assert!(matches!(r, Rendered::Written { .. }));
+    assert_eq!(fake.loads, ["layout", "now"]);
+    let now = r
+        .regions()
+        .iter()
+        .find(|r| r.name.as_deref() == Some("now"))
+        .unwrap();
+    assert_eq!(now.action, Some(render::Action::Fresh));
+}
+
+#[test]
+fn a_hard_error_from_load_is_the_files_error() {
+    struct HardLoad;
+    impl Loaders for HardLoad {
+        fn snapshot(&mut self, _: &Region) -> Result<Option<Vec<u8>>, LoadError> {
+            Ok(None)
+        }
+        fn load(&mut self, _: &Region) -> Result<Loaded, LoadError> {
+            Err(LoadError::Hard("/bin/sh: not found".into()))
+        }
+    }
+    let file = marker::parse(&read("unrendered.in.txt")).unwrap();
+    let r = render::file(&file, Mode::Run { force: false }, true, &mut HardLoad);
+    assert!(matches!(r, Rendered::Error { line: 5, .. }), "{r:?}");
+    assert_eq!(r.tier(), 2);
+}
+
+#[test]
 fn a_hard_loader_error_skips_the_file() {
     let mut fake = Fake::with(&[
         ("layout", Entry::Hard("src= escapes the repository root")),

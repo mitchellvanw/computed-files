@@ -285,47 +285,54 @@ fn classify<'a>(line: &Line<'a>) -> Result<Kind<'a>, ParseError> {
     }
 }
 
-/// CommonMark fence tracking, enough to skip markers inside fenced blocks.
-#[derive(Default)]
-struct Fences {
-    open: Option<(char, usize)>,
+/// A fence run at the start of a line: its character and length, with the
+/// info string, when the line can open or close a CommonMark fence.
+fn fence_run(text: &str) -> Option<(char, usize, &str)> {
+    let stripped = text.trim_start_matches(' ');
+    if text.len() - stripped.len() > 3 {
+        return None;
+    }
+    let c = stripped.chars().next().filter(|c| matches!(c, '`' | '~'))?;
+    let run = stripped.chars().take_while(|&x| x == c).count();
+    (run >= 3).then_some((c, run, &stripped[run..]))
 }
 
-impl Fences {
-    /// Feeds one line; returns true when the line is inside (or is part of) a fence.
-    fn feed(&mut self, text: &str) -> bool {
-        let stripped = text.trim_start_matches(' ');
-        let indent = text.len() - stripped.len();
-        if indent > 3 {
-            return self.open.is_some();
-        }
-        let run_char = stripped.chars().next();
-        let run = match run_char {
-            Some(c @ ('`' | '~')) => stripped.chars().take_while(|&x| x == c).count(),
-            _ => 0,
+/// Whether `text` opens a fence it never closes. Such text in a `raw` body
+/// would let a later fence in the file's prose swallow the closer.
+pub fn has_unclosed_fence(text: &str) -> bool {
+    let lines = lines(text);
+    let fenced = fenced_lines(&lines);
+    lines.iter().zip(&fenced).any(|(l, &f)| {
+        !f && matches!(fence_run(l.text), Some((c, _, info)) if !(c == '`' && info.contains('`')))
+    })
+}
+
+/// Which lines sit inside a fenced code block, fence lines included. A fence
+/// counts only when a matching closer follows; an unclosed fence is prose.
+fn fenced_lines(lines: &[Line<'_>]) -> Vec<bool> {
+    let mut fenced = vec![false; lines.len()];
+    let mut i = 0;
+    while i < lines.len() {
+        let Some((c, run, info)) = fence_run(lines[i].text) else {
+            i += 1;
+            continue;
         };
-        match self.open {
-            Some((c, len)) => {
-                if run >= len && run_char == Some(c) && stripped[run..].trim().is_empty() {
-                    self.open = None;
-                }
-                true
+        if c == '`' && info.contains('`') {
+            i += 1;
+            continue;
+        }
+        let closer = (i + 1..lines.len()).find(|&j| {
+            matches!(fence_run(lines[j].text), Some((cc, r, rest)) if cc == c && r >= run && rest.trim().is_empty())
+        });
+        match closer {
+            Some(j) => {
+                fenced[i..=j].iter_mut().for_each(|f| *f = true);
+                i = j + 1;
             }
-            None => {
-                if run >= 3 {
-                    let c = run_char.unwrap();
-                    let info = &stripped[run..];
-                    if c == '`' && info.contains('`') {
-                        return false;
-                    }
-                    self.open = Some((c, run));
-                    true
-                } else {
-                    false
-                }
-            }
+            None => i += 1,
         }
     }
+    fenced
 }
 
 /// Whether a line, on its own, would parse as an opener or a closer.
@@ -343,12 +350,12 @@ pub fn parse(text: &str) -> Result<File, ParseError> {
     let lines = lines(text);
     let mut segments = Vec::new();
     let mut prose = String::new();
-    let mut fences = Fences::default();
+    let fenced = fenced_lines(&lines);
     let mut names: Vec<String> = Vec::new();
     let mut i = 0;
     while i < lines.len() {
         let line = &lines[i];
-        if fences.feed(line.text) {
+        if fenced[i] {
             prose.push_str(line.raw);
             i += 1;
             continue;
@@ -371,13 +378,12 @@ pub fn parse(text: &str) -> Result<File, ParseError> {
                     segments.push(Segment::Prose(std::mem::take(&mut prose)));
                 }
                 let mut body = String::new();
-                let mut body_fences = Fences::default();
                 let mut j = i + 1;
                 let closer = loop {
                     let Some(l) = lines.get(j) else {
                         return Err(error(line.number, "opener without closer"));
                     };
-                    if body_fences.feed(l.text) {
+                    if fenced[j] {
                         body.push_str(l.raw);
                         j += 1;
                         continue;
@@ -430,6 +436,10 @@ fn tokenise(line: usize, content: &str) -> Result<Vec<Token>, ParseError> {
         }
         let word: String = chars[start..i].iter().collect();
         if word == "|" {
+            let rest: String = chars[i..].iter().collect();
+            if rest.trim_matches([' ', '\t']) != OPENER_SUFFIX.trim_start_matches("| ") {
+                return Err(error(line, format!("unexpected text after |: only the suffix {OPENER_SUFFIX:?} may follow the attributes")));
+            }
             break;
         }
         if i < chars.len() && chars[i] == '=' {
@@ -542,7 +552,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
         }
     }
     debug_assert!(COMMON_ATTRS.iter().all(|c| !grammar.attrs.contains(c)));
-    Ok(Opener {
+    let opener = Opener {
         loader,
         flags,
         attrs,
@@ -550,7 +560,39 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
         sink,
         lang,
         tokens,
-    })
+    };
+    validate(line, &opener)?;
+    Ok(opener)
+}
+
+/// The loader-specific rules the grammar owns: required attributes, numeric
+/// values, and exec's exactly-one-of `inputs=` and `volatile`.
+fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
+    let whole_number = |key: &str| match opener.attr(key) {
+        Some(v) if v.parse::<u64>().is_err() => {
+            Err(error(line, format!("{key}={v}: expected a whole number")))
+        }
+        _ => Ok(()),
+    };
+    match opener.loader.as_str() {
+        "tree" => whole_number("depth"),
+        "exec" => {
+            if opener.attr("cmd").is_none() {
+                return Err(error(line, "exec needs cmd="));
+            }
+            match (opener.attr("inputs").is_some(), opener.flag("volatile")) {
+                (true, true) => {
+                    return Err(error(line, "exec takes inputs= or volatile, not both"))
+                }
+                (false, false) => {
+                    return Err(error(line, "exec needs inputs= or the volatile flag"))
+                }
+                _ => {}
+            }
+            whole_number("timeout")
+        }
+        _ => Ok(()),
+    }
 }
 
 fn parse_closer(line: usize, content: &str) -> Result<Option<Sums>, ParseError> {
@@ -733,6 +775,20 @@ mod tests {
     }
 
     #[test]
+    fn an_unclosed_fence_is_prose_and_hides_nothing() {
+        let text = "```\nstray fence\n<!-- computed tree name=x -->\n<!-- /computed -->\n";
+        let file = parse(text).unwrap();
+        assert_eq!(file.segments.len(), 2);
+        assert_eq!(region(&file, 1).line, 3);
+        let text = "~~~\n<!-- computed tree name=x -->\n<!-- /computed -->\n```\n";
+        assert_eq!(
+            parse(text).unwrap().segments.len(),
+            3,
+            "a backtick fence does not close a tilde one"
+        );
+    }
+
+    #[test]
     fn a_fence_inside_a_body_hides_a_closer_look_alike() {
         let text = "<!-- computed exec cmd=x volatile -->\n\n````\n<!-- /computed -->\n````\n\n<!-- /computed in=0000000000000000 out=0000000000000000 -->\n";
         let file = parse(text).unwrap();
@@ -775,6 +831,12 @@ mod tests {
             ("<!-- computed exec cmd=\"unterminated volatile -->\n<!-- /computed -->\n", 1, "unterminated"),
             ("<!-- computed tree as=table -->\n<!-- /computed -->\n", 1, "unknown sink"),
             ("<!-- computed tree src=.\n<!-- /computed -->\n", 1, "unterminated marker"),
+            ("<!-- computed tree | whatever -->\n<!-- /computed -->\n", 1, "after |"),
+            ("<!-- computed tree depth=two -->\n<!-- /computed -->\n", 1, "depth=two"),
+            ("<!-- computed exec inputs=a -->\n<!-- /computed -->\n", 1, "cmd="),
+            ("<!-- computed exec cmd=x -->\n<!-- /computed -->\n", 1, "volatile"),
+            ("<!-- computed exec cmd=x inputs=a volatile -->\n<!-- /computed -->\n", 1, "not both"),
+            ("<!-- computed exec cmd=x volatile timeout=1s -->\n<!-- /computed -->\n", 1, "timeout=1s"),
         ];
         for (text, line, needle) in cases {
             let e = err(text);

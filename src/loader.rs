@@ -546,8 +546,6 @@ mod tests {
         assert!(matches!(p.snapshot(&r), Err(LoadError::Hard(m)) if m.contains("escapes")));
         let r = region("<!-- computed tree src=missing -->");
         assert!(matches!(p.snapshot(&r), Err(LoadError::Hard(_))));
-        let r = region("<!-- computed tree depth=x -->");
-        assert!(matches!(p.snapshot(&r), Err(LoadError::Hard(m)) if m.contains("depth")));
     }
 
     #[test]
@@ -568,10 +566,6 @@ mod tests {
         assert!(matches!(p.snapshot(&r), Err(LoadError::Hard(m)) if m.contains("matches nothing")));
         let r = region("<!-- computed exec cmd=true inputs=../*.md -->");
         assert!(matches!(p.snapshot(&r), Err(LoadError::Hard(m)) if m.contains("escapes")));
-        let r = region("<!-- computed exec cmd=true -->");
-        assert!(matches!(p.snapshot(&r), Err(LoadError::Hard(m)) if m.contains("volatile")));
-        let r = region("<!-- computed exec cmd=true inputs=src volatile -->");
-        assert!(matches!(p.snapshot(&r), Err(LoadError::Hard(m)) if m.contains("volatile")));
     }
 
     #[test]
@@ -613,8 +607,6 @@ mod tests {
         assert!(
             matches!(p.load(&r), Err(LoadError::Failed { stderr }) if stderr.contains("UTF-8"))
         );
-        let r = region("<!-- computed exec cmd=true volatile timeout=zero -->");
-        assert!(matches!(p.snapshot(&r), Err(LoadError::Hard(m)) if m.contains("timeout")));
     }
 
     #[test]

@@ -1,0 +1,6 @@
+written
+5 layout tree stale written
+16 adrs exec fresh 
+22 deps exec fresh 
+28 now exec volatile 
+tier 1

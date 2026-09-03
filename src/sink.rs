@@ -67,7 +67,14 @@ pub fn fence(text: &str, lang: &str) -> String {
 pub fn body(sink: Sink, lang: &str, bytes: &[u8]) -> Result<String, String> {
     let text = normalise(bytes)?;
     let body = match sink {
-        Sink::Raw => raw(&text),
+        Sink::Raw => {
+            if marker::has_unclosed_fence(&text) {
+                return Err(
+                    "output has an unbalanced fence that would swallow the closer".to_string(),
+                );
+            }
+            raw(&text)
+        }
         Sink::Fence => fence(&text, lang),
     };
     let probe = format!("<!-- computed exec cmd=x volatile -->\n{body}<!-- /computed -->\n");

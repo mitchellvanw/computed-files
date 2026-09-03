@@ -341,31 +341,36 @@ pub fn file(parsed: &File, mode: Mode, trusted: bool, loaders: &mut dyn Loaders)
             Segment::Region(r) => r,
         };
         let state = states.next().expect("one state per region");
-        let (piece, rep) = match mode {
+        let (piece, mut rep) = match mode {
             Mode::Clean { .. } => clean(region, state),
-            Mode::Run { .. } | Mode::DryRun { .. } => render(region, state, trusted, loaders),
+            Mode::Run { .. } | Mode::DryRun { .. } => match render(region, state, trusted, loaders)
+            {
+                Ok(r) => r,
+                Err(message) => {
+                    return Rendered::Error {
+                        line: region.line,
+                        message,
+                    }
+                }
+            },
             Mode::Check => unreachable!("check returned above"),
         };
+        // A region reproduced byte for byte, such as a volatile one whose
+        // command printed the same text, has nothing to report.
+        if piece == raw_lines(region)
+            && matches!(rep.action, Some(Action::Written | Action::Cleaned))
+        {
+            rep.action = Some(Action::Fresh);
+        }
         text.push_str(&piece);
         reports.push(rep);
     }
 
     let original = marker::serialise(parsed);
     if text == original {
-        for r in &mut reports {
-            if matches!(
-                r.action,
-                Some(Action::Written | Action::WouldWrite | Action::Cleaned | Action::WouldClean)
-            ) {
-                r.action = Some(Action::Fresh);
-            }
-        }
         return Rendered::Unchanged { regions: reports };
     }
-    let dry = matches!(
-        mode,
-        Mode::DryRun { .. } | Mode::Clean { dry_run: true, .. }
-    );
+    let dry = mode.dry_run();
     for r in &mut reports {
         r.action = match (r.action, dry) {
             (Some(Action::Written), true) => Some(Action::WouldWrite),
@@ -394,23 +399,24 @@ fn clean(region: &Region, state: State) -> (String, RegionReport) {
     (text, report(region, state, Some(Action::Cleaned), None))
 }
 
+/// Renders one region under `run`. A hard loader error is the file's error.
 fn render(
     region: &Region,
     state: State,
     trusted: bool,
     loaders: &mut dyn Loaders,
-) -> (String, RegionReport) {
+) -> Result<(String, RegionReport), String> {
     if state == State::Fresh {
-        return (
+        return Ok((
             raw_lines(region),
             report(region, state, Some(Action::Fresh), None),
-        );
+        ));
     }
     if region.opener.loader == "exec" && !trusted {
-        return (
+        return Ok((
             raw_lines(region),
             report(region, state, Some(Action::Untrusted), None),
-        );
+        ));
     }
     let failed = |stderr: String| {
         (
@@ -420,8 +426,8 @@ fn render(
     };
     let loaded = match loaders.load(region) {
         Ok(l) => l,
-        Err(LoadError::Failed { stderr }) => return failed(stderr),
-        Err(LoadError::Hard(message)) => return failed(message),
+        Err(LoadError::Failed { stderr }) => return Ok(failed(stderr)),
+        Err(LoadError::Hard(message)) => return Err(message),
     };
     let body = match sink::body(
         region.opener.sink,
@@ -429,7 +435,7 @@ fn render(
         loaded.text.as_bytes(),
     ) {
         Ok(b) => b,
-        Err(message) => return failed(message),
+        Err(message) => return Ok(failed(message)),
     };
     let constant = loader::format_constant(&region.opener.loader);
     let sums = Sums {
@@ -442,5 +448,5 @@ fn render(
         &body,
         &marker::rendered_closer(Some(&sums)),
     );
-    (text, report(region, state, Some(Action::Written), None))
+    Ok((text, report(region, state, Some(Action::Written), None)))
 }
