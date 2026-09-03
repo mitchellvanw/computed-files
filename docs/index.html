@@ -145,8 +145,8 @@
     <div class="max-w-[30rem]">
       <p class="font-mono text-sm text-ink-2 m-0 flex items-center gap-3"><span>computed</span><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">github.com/mitchellvanw/computed-files</a></p>
       <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">The document is a view. The truth lives somewhere else.</h1>
-      <p class="text-ink-2 text-[1.05rem]">A Markdown file with spans the tool owns. A tree listing, a table from a CSV, the output of a command. Everything else stays exactly as you typed it, and a hash pair in each closing marker says whether the span is still true.</p>
-      <p class="text-ink-2 text-[1.05rem] mt-4">Watch a file react to three things that happen in a repo.</p>
+      <p class="text-ink-2 text-[1.05rem]">A Markdown file with regions the tool owns, such as a directory tree or the output of a command. Everything else stays as you typed it. Two hashes in each closing marker say whether a region still matches what it was rendered from.</p>
+      <p class="text-ink-2 text-[1.05rem] mt-4">Three things that happen in a repo, and what the file does about each.</p>
       <div class="mt-6 flex items-center gap-3">
         <button id="replay" type="button" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Replay</button>
         <button id="pause" type="button" aria-pressed="false" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Pause</button>
@@ -203,9 +203,9 @@
           </div>
           <div class="border-t border-line pt-3 mt-1 flex flex-col gap-2" id="events" aria-live="polite">
             <p class="event m-0 text-ink-2" data-step="0">Nothing has happened yet. Both regions match their sums.</p>
-            <p class="event m-0" data-step="1" hidden><span class="text-ink-2">Someone runs</span> <code class="text-xs">touch src/watcher.rs</code><span class="text-ink-2">. The template is untouched, but the tree listing is an input, so <code class="text-xs">sum=</code> moves and the region is regenerated.</span></p>
+            <p class="event m-0" data-step="1" hidden><span class="text-ink-2">Someone runs</span> <code class="text-xs">touch src/watcher.rs</code><span class="text-ink-2">. Nobody edited the file, but the tree is an input, so <code class="text-xs">sum=</code> changes and <code class="text-xs">run</code> regenerates the region.</span></p>
             <p class="event m-0" data-step="2" hidden><span class="text-ink-2">An agent appends a line inside the region. The body no longer hashes to <code class="text-xs">out=</code>. The tool refuses to overwrite it and exits 1.</span></p>
-            <p class="event m-0" data-step="3" hidden><span class="text-ink-2">You run</span> <code class="text-xs">computed run --force</code><span class="text-ink-2">. The hand edit is discarded, both sums are recomputed, and the file is quiet again.</span></p>
+            <p class="event m-0" data-step="3" hidden><span class="text-ink-2">You run</span> <code class="text-xs">computed run --force</code><span class="text-ink-2">. The hand edit is discarded, both sums are recomputed, and <code class="text-xs">check</code> passes again.</span></p>
           </div>
         </aside>
       </div>
@@ -214,15 +214,15 @@
 
   <!-- ─────────────────────────── why read on ─────────────────────────── -->
   <section class="mt-20 max-w-[42rem]">
-    <p class="text-[1.15rem] leading-[1.6]">Your <code>CLAUDE.md</code> is lying right now, and it is the tree, not the prose. Every tool that can rewrite that span has to rerun the generator to know it is wrong, which is why nobody checks. This one knows from the file alone, in CI, with an exit code.</p>
+    <p class="text-[1.15rem] leading-[1.6]">The part of a <code>CLAUDE.md</code> that goes stale is the generated part, the tree or the module list, not the prose. Other tools that rewrite those spans have to rerun the generator to find out, so nobody checks. <code>computed check</code> reads the file, compares the sums, and exits 1. That is cheap enough to run in CI on every push.</p>
   </section>
 
   <!-- ─────────────────────────── guides and sensors ─────────────────────────── -->
   <section class="mt-24 max-w-[42rem]">
-    <h2 class="text-2xl mb-3">A guide that carries its own sensor</h2>
-    <p>Birgitta Böckeler splits the controls around a coding agent into two kinds. Guides are feedforward: they steer the agent before it acts, so the first attempt is more likely to be right. Sensors are feedback: they observe what the agent did and hand it a signal to correct against. A <code>CLAUDE.md</code> or <code>AGENTS.md</code> is the plainest guide there is. It is context injected into the harness ahead of every task, and the agent reads it as a true account of the repo.</p>
-    <p class="mt-3">A feedforward control is only as good as its match to the thing it describes, and nothing in the loop notices when the tree listing or the module table drifts. The agent starts every task steered by a picture that was accurate last month. That is worse than no guide, because it is confident.</p>
-    <p class="mt-3">The two sums give the guide a sensor of its own. <code>computed check</code> reads the file, compares the sums, and exits non-zero when a region no longer matches its inputs. It never runs a generator, so it is cheap enough for pre-commit and CI. The injected context stays feedforward, but its freshness becomes something the harness can observe.</p>
+    <h2 class="text-2xl mb-3">Guides and sensors</h2>
+    <p>Birgitta Böckeler splits the controls around a coding agent into two kinds. Guides are feedforward. They steer the agent before it acts. Sensors are feedback. They look at what the agent did and give it a signal to correct against. A <code>CLAUDE.md</code> or <code>AGENTS.md</code> is a guide. The harness injects it ahead of every task, and the agent takes it as an accurate description of the repo.</p>
+    <p class="mt-3">A guide is only useful while it matches the code. Nothing in the loop notices when the tree or the module table drifts, so the agent starts each task with a picture that was accurate a month ago. A wrong guide does more damage than none, because the agent does not second-guess it.</p>
+    <p class="mt-3">The two sums add the missing sensor. <code>computed check</code> compares them and exits 1 when a region no longer matches its inputs. It never runs a generator, so it fits in a pre-commit hook and in CI. The context file stays a guide. Its freshness becomes something the harness can measure.</p>
     <p class="mt-3 text-ink-2 text-[0.95rem]">The vocabulary is from <a href="https://martinfowler.com/articles/harness-engineering.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Harness engineering for coding agent users</a>, Birgitta Böckeler on martinfowler.com, April 2026.</p>
   </section>
 
@@ -231,7 +231,7 @@
     <div>
       <h2 class="text-2xl mb-3">Two sums, no state</h2>
       <p>Tools that rewrite a marked span already exist. cog, mdsh, markdown-magic. They store a checksum of what they wrote, at best. None of them store what they read, so "is this fresh" means running every generator again.</p>
-      <p class="mt-3">Every closer here carries both. The input sum is a hash over the opener line and a snapshot of the inputs. The output sum is a hash over the body. Between them they answer the two questions a stale file poses, from the rendered file alone. No cache directory, nothing to lose on clone.</p>
+      <p class="mt-3">Every closer here carries both. The input sum hashes the opener line plus a snapshot of the inputs. The output sum hashes the body. Together they answer both questions from the rendered file alone, with no cache directory that a fresh clone would lose.</p>
     </div>
     <figure class="fig">
       <svg width="690" height="250" viewBox="0 0 690 250" role="img" aria-label="The opener line and an input snapshot are hashed into sum; the written body is hashed into out. Both land in the closing marker.">
@@ -280,7 +280,7 @@
   <!-- ─────────────────────────── decision tree ─────────────────────────── -->
   <section class="mt-24">
     <h2 class="text-2xl mb-3">Six things a region can be</h2>
-    <p>After a render, each region has one status. The tool reaches it from the prior file and the fresh load, in this order. Nothing else is consulted.</p>
+    <p>After a render, each region has one status. The tool reaches it from the prior file and the fresh load, in this order, and nothing else goes into it.</p>
     <figure class="fig mt-8 overflow-x-auto">
       <svg width="900" height="400" viewBox="0 0 900 400" role="img" aria-label="Decision tree from loader result through hand-edit check, prior region, input sum and body comparison to the statuses error, edited, new, stale, rewritten and fresh." class="min-w-[720px]">
         <defs>
@@ -356,13 +356,13 @@
           <text x="836" y="371" class="t2" text-anchor="middle">undeclared input</text>
         </g>
       </svg>
-      <figcaption class="mt-3">Only <code>fresh</code> passes <code>check</code>. <code>run</code> writes for new, stale and rewritten, and exits 1 for edited and error. A <code>sh</code> region with no declared inputs lands on rewritten every time, which is the design's open wart.</figcaption>
+      <figcaption class="mt-3">Only <code>fresh</code> passes <code>check</code>. <code>run</code> writes for new, stale and rewritten, and exits 1 for edited and error. An <code>exec</code> region marked <code>volatile</code> has no inputs to sum, so it lands on rewritten every time. That is the one known gap.</figcaption>
     </figure>
 
     <div class="mt-10 grid gap-x-10 gap-y-6 md:grid-cols-2">
       <div>
         <h3 class="text-lg mb-2">Hand edits are refused, not reverted</h3>
-        <p>An agent that edited a region had a reason. Clobbering it on the next run destroys work with no record. The region stays, the run exits 1, and regenerating takes an explicit <code>--force</code> or deleting the sum.</p>
+        <p>An agent that edited a region had a reason. Overwriting it on the next run loses that work without a trace. The region stays, the run exits 1, and regenerating takes an explicit <code>--force</code> or deleting the sum.</p>
       </div>
       <div>
         <h3 class="text-lg mb-2">A failed loader keeps the last good body</h3>
@@ -394,14 +394,14 @@
         <div class="rounded border border-wash-2 bg-wash p-3"><div>raw</div><div class="text-ink-2 text-xs mt-1">text as is · default for sh</div></div>
       </div>
     </div>
-    <p class="mt-6 text-ink-2">Relative paths resolve against the directory of the file holding the marker. Not the repository root, not the shell's working directory. The same region reads identically from a pre-commit hook, from CI and from a terminal, and moving the file moves its regions with it.</p>
+    <p class="mt-6 text-ink-2">Relative paths resolve against the directory of the file holding the marker, not the repository root or the shell's working directory. So a region reads the same from a pre-commit hook, from CI, or from a terminal, and moving the file moves its regions with it.</p>
   </section>
 
   <!-- ─────────────────────────── one file ─────────────────────────── -->
   <section class="mt-24">
     <h2 class="text-2xl mb-3">One file, two owners</h2>
-    <p>There is no template rendered to a sibling. The file you commit is the file the tool edits, and the tool owns the region bodies and nothing else. Everything outside a marker pair is yours: prose, headings, other regions' surroundings. Agents and people rewrite that prose all day, and a run never touches it.</p>
-    <p class="mt-3">Inside a region the roles flip. The output sum in the closer is a hash of the body as written, so a hand edit inside a region is detectable from the file alone and <code>run</code> refuses to overwrite it. The only signal that a span is generated is the opener suffix <code>| do not edit; run computed</code>, which is true at exactly the granularity it claims.</p>
+    <p>There is no template rendered to a sibling. The file you commit is the file the tool edits, and the tool owns the region bodies and nothing else. Everything outside a marker pair is yours, and a run never touches it.</p>
+    <p class="mt-3">Inside a region it is the other way round. The output sum hashes the body as written, so <code>run</code> can tell a hand edit from the file alone and refuses to overwrite it. The opener suffix <code>| do not edit; run computed</code> is the only generated-content marker, and it applies to the region, not the file.</p>
     <figure class="fig mt-8">
       <svg width="660" height="210" viewBox="0 0 660 210" role="img" aria-label="One CLAUDE.md file. Bands outside the regions are yours and a prose edit there is kept. Bands inside the regions belong to the tool and an edit there is refused.">
         <defs>
@@ -438,7 +438,7 @@
       <h2 class="text-2xl mb-3">The watcher ignores itself</h2>
       <p>Every write goes through a temp file and <code>rename(2)</code>, and nothing is written when the bytes would be identical. So <code>run</code> twice is a no-op and the mtime never moves.</p>
       <p class="mt-3">That matters for <code>watch</code>. Its own write comes back as a change event. The loop remembers the last text it wrote and drops any event on the rendered file whose content matches. A non-matching change to that file is someone else's edit, so it runs <code>check</code> rather than overwrite.</p>
-      <p class="mt-3">The watcher is a convenience layer. <code>run</code> in a pre-commit hook and <code>check</code> in CI are the foundation, which is why this is a static Rust binary and not an Elixir daemon.</p>
+      <p class="mt-3">The watcher is a convenience. <code>run</code> in a pre-commit hook and <code>check</code> in CI do the real work, so this is a static binary rather than a daemon.</p>
       <button id="fire" type="button" class="mt-5 font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Change a file</button>
     </div>
     <figure class="fig">
@@ -512,7 +512,7 @@ cargo run -- add-file
 cargo run -- edit-region layout
 cargo run -- rm-csv
 cargo run -- add-sh && cargo run -- trust</code></pre>
-      <p class="mt-4 text-ink-2">Each free-play command prints the next command to run, so the scenarios in the README walk themselves.</p>
+      <p class="mt-4 text-ink-2">Each free-play command prints the next command to run, so you can follow the README scenarios without reading ahead.</p>
     </div>
     <div>
       <h2 class="text-2xl mb-3">Where the code is behind the decisions</h2>
