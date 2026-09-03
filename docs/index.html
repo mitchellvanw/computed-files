@@ -142,12 +142,13 @@
   <!-- ─────────────────────────── hero ─────────────────────────── -->
   <header class="pt-14 sm:pt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:items-start">
     <div class="max-w-[30rem]">
-      <p class="font-mono text-sm text-ink-2 m-0">computed</p>
+      <p class="font-mono text-sm text-ink-2 m-0 flex items-center gap-3"><span>computed</span><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">github.com/mitchellvanw/computed-files</a></p>
       <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">The document is a view. The truth lives somewhere else.</h1>
       <p class="text-ink-2 text-[1.05rem]">A Markdown file with spans the tool owns. A tree listing, a table from a CSV, the output of a command. Everything else stays exactly as you typed it, and a hash pair in each closing marker says whether the span is still true.</p>
       <p class="text-ink-2 text-[1.05rem] mt-4">Watch a file react to three things that happen in a repo.</p>
       <div class="mt-6 flex items-center gap-3">
         <button id="replay" type="button" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Replay</button>
+        <button id="pause" type="button" aria-pressed="false" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Pause</button>
         <div id="steps" class="flex gap-1.5" role="tablist" aria-label="Steps"></div>
       </div>
     </div>
@@ -545,6 +546,7 @@ cargo run -- add-sh && cargo run -- trust</code></pre>
     <span>computed, a prototype</span>
     <span>Rust, one binary, no runtime</span>
     <span>The vocabulary is in CONTEXT.md; the decisions in docs/adr</span>
+    <a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Source on GitHub</a>
   </footer>
 </main>
 
@@ -568,7 +570,7 @@ cargo run -- add-sh && cargo run -- trust</code></pre>
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'step-dot cursor-pointer border-0 p-0'; b.setAttribute('role', 'tab');
     b.setAttribute('aria-label', 'Step ' + (i + 1));
-    b.addEventListener('click', () => { stop(); show(i); });
+    b.addEventListener('click', () => { stop(); cur = i; show(i); });
     stepsEl.appendChild(b);
   });
   const dots = [...stepsEl.children];
@@ -590,19 +592,22 @@ cargo run -- add-sh && cargo run -- trust</code></pre>
     dots.forEach((d, k) => k === i ? d.setAttribute('aria-current', 'step') : d.removeAttribute('aria-current'));
   }
 
+  const pauseBtn = $('pause');
   let timer = null, cur = 0;
-  function stop() { if (timer) { clearTimeout(timer); timer = null; } }
-  function play(from) {
-    stop(); cur = from; show(cur);
-    const tick = () => {
-      if (cur >= STEPS.length - 1) { timer = null; return; }
-      cur += 1; show(cur);
-      timer = setTimeout(tick, 2600);
-    };
-    timer = setTimeout(tick, 2200);
+  function setPaused(p) {
+    pauseBtn.textContent = p ? 'Resume' : 'Pause';
+    pauseBtn.setAttribute('aria-pressed', String(p));
   }
+  function stop() { if (timer) { clearTimeout(timer); timer = null; } setPaused(true); }
+  function tick() {
+    cur = (cur + 1) % STEPS.length; show(cur);
+    timer = setTimeout(tick, cur === 0 ? 3400 : 2600);
+  }
+  function resume() { if (timer) return; setPaused(false); timer = setTimeout(tick, 2600); }
+  function play(from) { stop(); cur = from; show(cur); setPaused(false); timer = setTimeout(tick, 2200); }
   $('replay').addEventListener('click', () => play(0));
-  show(0);
+  pauseBtn.addEventListener('click', () => timer ? stop() : resume());
+  show(0); setPaused(true);
   if (!reduce) setTimeout(() => play(0), 900);
 
   // watch loop
