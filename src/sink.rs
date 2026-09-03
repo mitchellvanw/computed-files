@@ -8,13 +8,21 @@ use crate::marker::{self, Sink};
 /// is a failure; CRLF and lone CR become LF; trailing newlines are stripped.
 pub fn normalise(bytes: &[u8]) -> Result<String, String> {
     let text = std::str::from_utf8(bytes).map_err(|e| format!("output is not UTF-8: {e}"))?;
-    if let Some(c) = text.chars().find(|&c| c.is_control() && c != '\t' && c != '\n' && c != '\r' && (c as u32) < 0x20) {
-        return Err(format!("output contains the control byte {:#04x}", c as u32));
+    if let Some(c) = text
+        .chars()
+        .find(|&c| c.is_control() && c != '\t' && c != '\n' && c != '\r' && (c as u32) < 0x20)
+    {
+        return Err(format!(
+            "output contains the control byte {:#04x}",
+            c as u32
+        ));
     }
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
     let text = text.trim_end_matches('\n');
     if let Some(line) = text.lines().find(|l| marker::is_marker(l)) {
-        return Err(format!("output contains a line that would parse as a marker: {line}"));
+        return Err(format!(
+            "output contains a line that would parse as a marker: {line}"
+        ));
     }
     Ok(text.to_string())
 }
@@ -35,7 +43,12 @@ pub fn raw(text: &str) -> String {
 pub fn fence(text: &str, lang: &str) -> String {
     let longest = text
         .lines()
-        .map(|l| l.trim_start_matches(' ').chars().take_while(|&c| c == '`').count())
+        .map(|l| {
+            l.trim_start_matches(' ')
+                .chars()
+                .take_while(|&c| c == '`')
+                .count()
+        })
         .max()
         .unwrap_or(0);
     let run = "`".repeat((longest + 1).max(3));
@@ -116,16 +129,28 @@ mod tests {
 
     #[test]
     fn fence_outruns_backtick_runs_in_the_text() {
-        assert_eq!(fence("```rust\nx\n```", ""), "````\n```rust\nx\n```\n````\n");
-        assert_eq!(fence("   `````\ny", "md"), "``````md\n   `````\ny\n``````\n");
+        assert_eq!(
+            fence("```rust\nx\n```", ""),
+            "````\n```rust\nx\n```\n````\n"
+        );
+        assert_eq!(
+            fence("   `````\ny", "md"),
+            "``````md\n   `````\ny\n``````\n"
+        );
         assert_eq!(fence("a ``` b", ""), "```\na ``` b\n```\n");
     }
 
     #[test]
     fn body_shapes_and_parses_back() {
         assert_eq!(body(Sink::Fence, "", b".\n").unwrap(), "```\n.\n```\n");
-        assert_eq!(body(Sink::Raw, "", b"| a |\n|---|\n").unwrap(), "\n| a |\n|---|\n\n");
-        assert_eq!(body(Sink::Raw, "", b"```\ncode\n```\n").unwrap(), "\n```\ncode\n```\n\n");
+        assert_eq!(
+            body(Sink::Raw, "", b"| a |\n|---|\n").unwrap(),
+            "\n| a |\n|---|\n\n"
+        );
+        assert_eq!(
+            body(Sink::Raw, "", b"```\ncode\n```\n").unwrap(),
+            "\n```\ncode\n```\n\n"
+        );
     }
 
     #[test]

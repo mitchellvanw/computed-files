@@ -24,13 +24,21 @@ pub enum Mode {
     Run { force: bool },
     DryRun { force: bool },
     Check,
-    Clean { force: bool },
+    Clean { force: bool, dry_run: bool },
 }
 
 impl Mode {
+    /// Whether the mode prints a diff instead of writing.
+    pub fn dry_run(self) -> bool {
+        matches!(
+            self,
+            Mode::DryRun { .. } | Mode::Clean { dry_run: true, .. }
+        )
+    }
+
     fn force(self) -> bool {
         match self {
-            Mode::Run { force } | Mode::DryRun { force } | Mode::Clean { force } => force,
+            Mode::Run { force } | Mode::DryRun { force } | Mode::Clean { force, .. } => force,
             Mode::Check => false,
         }
     }
@@ -116,18 +124,30 @@ pub struct RegionReport {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Rendered {
     /// The file would change; `text` is what to write.
-    Written { text: String, regions: Vec<RegionReport> },
-    Unchanged { regions: Vec<RegionReport> },
+    Written {
+        text: String,
+        regions: Vec<RegionReport>,
+    },
+    Unchanged {
+        regions: Vec<RegionReport>,
+    },
     /// A hand-edited region refused the whole file.
-    Refused { regions: Vec<RegionReport> },
+    Refused {
+        regions: Vec<RegionReport>,
+    },
     /// Tier 2: the file is skipped whole.
-    Error { line: usize, message: String },
+    Error {
+        line: usize,
+        message: String,
+    },
 }
 
 impl Rendered {
     pub fn regions(&self) -> &[RegionReport] {
         match self {
-            Rendered::Written { regions, .. } | Rendered::Unchanged { regions } | Rendered::Refused { regions } => regions,
+            Rendered::Written { regions, .. }
+            | Rendered::Unchanged { regions }
+            | Rendered::Refused { regions } => regions,
             Rendered::Error { .. } => &[],
         }
     }
@@ -210,7 +230,12 @@ fn body_state(region: &Region) -> State {
     }
 }
 
-fn report(region: &Region, state: State, action: Option<Action>, stderr: Option<String>) -> RegionReport {
+fn report(
+    region: &Region,
+    state: State,
+    action: Option<Action>,
+    stderr: Option<String>,
+) -> RegionReport {
     RegionReport {
         line: region.line,
         name: region.opener.name.clone(),
@@ -262,14 +287,28 @@ pub fn file(parsed: &File, mode: Mode, trusted: bool, loaders: &mut dyn Loaders)
         }
         let snapshot = match loaders.snapshot(region) {
             Ok(s) => s,
-            Err(LoadError::Hard(message)) => return Rendered::Error { line: region.line, message },
-            Err(LoadError::Failed { stderr }) => return Rendered::Error { line: region.line, message: stderr },
+            Err(LoadError::Hard(message)) => {
+                return Rendered::Error {
+                    line: region.line,
+                    message,
+                }
+            }
+            Err(LoadError::Failed { stderr }) => {
+                return Rendered::Error {
+                    line: region.line,
+                    message: stderr,
+                }
+            }
         };
         states.push(state_of(region, snapshot.as_deref()));
     }
 
     if mode == Mode::Check {
-        let reports = regions.iter().zip(&states).map(|(r, &s)| report(r, s, None, None)).collect();
+        let reports = regions
+            .iter()
+            .zip(&states)
+            .map(|(r, &s)| report(r, s, None, None))
+            .collect();
         return Rendered::Unchanged { regions: reports };
     }
 
@@ -279,7 +318,11 @@ pub fn file(parsed: &File, mode: Mode, trusted: bool, loaders: &mut dyn Loaders)
             .iter()
             .zip(&states)
             .map(|(r, &s)| {
-                let action = if s.edited() { Action::Refused } else { Action::Kept };
+                let action = if s.edited() {
+                    Action::Refused
+                } else {
+                    Action::Kept
+                };
                 report(r, s, Some(action), None)
             })
             .collect();
@@ -310,13 +353,19 @@ pub fn file(parsed: &File, mode: Mode, trusted: bool, loaders: &mut dyn Loaders)
     let original = marker::serialise(parsed);
     if text == original {
         for r in &mut reports {
-            if matches!(r.action, Some(Action::Written | Action::WouldWrite | Action::Cleaned | Action::WouldClean)) {
+            if matches!(
+                r.action,
+                Some(Action::Written | Action::WouldWrite | Action::Cleaned | Action::WouldClean)
+            ) {
                 r.action = Some(Action::Fresh);
             }
         }
         return Rendered::Unchanged { regions: reports };
     }
-    let dry = matches!(mode, Mode::DryRun { .. });
+    let dry = matches!(
+        mode,
+        Mode::DryRun { .. } | Mode::Clean { dry_run: true, .. }
+    );
     for r in &mut reports {
         r.action = match (r.action, dry) {
             (Some(Action::Written), true) => Some(Action::WouldWrite),
@@ -324,37 +373,74 @@ pub fn file(parsed: &File, mode: Mode, trusted: bool, loaders: &mut dyn Loaders)
             (a, _) => a,
         };
     }
-    Rendered::Written { text, regions: reports }
+    Rendered::Written {
+        text,
+        regions: reports,
+    }
 }
 
 fn clean(region: &Region, state: State) -> (String, RegionReport) {
     if region.sums.is_none() && region.body.is_empty() {
-        return (raw_lines(region), report(region, state, Some(Action::Fresh), None));
+        return (
+            raw_lines(region),
+            report(region, state, Some(Action::Fresh), None),
+        );
     }
-    let opener = region.raw_opener.trim_end_matches(['\n', '\r']).trim_start_matches([' ', '\t']);
+    let opener = region
+        .raw_opener
+        .trim_end_matches(['\n', '\r'])
+        .trim_start_matches([' ', '\t']);
     let text = region_text(region, opener, "", &marker::rendered_closer(None));
     (text, report(region, state, Some(Action::Cleaned), None))
 }
 
-fn render(region: &Region, state: State, trusted: bool, loaders: &mut dyn Loaders) -> (String, RegionReport) {
+fn render(
+    region: &Region,
+    state: State,
+    trusted: bool,
+    loaders: &mut dyn Loaders,
+) -> (String, RegionReport) {
     if state == State::Fresh {
-        return (raw_lines(region), report(region, state, Some(Action::Fresh), None));
+        return (
+            raw_lines(region),
+            report(region, state, Some(Action::Fresh), None),
+        );
     }
     if region.opener.loader == "exec" && !trusted {
-        return (raw_lines(region), report(region, state, Some(Action::Untrusted), None));
+        return (
+            raw_lines(region),
+            report(region, state, Some(Action::Untrusted), None),
+        );
     }
-    let failed = |stderr: String| (raw_lines(region), report(region, state, Some(Action::Failed), Some(stderr)));
+    let failed = |stderr: String| {
+        (
+            raw_lines(region),
+            report(region, state, Some(Action::Failed), Some(stderr)),
+        )
+    };
     let loaded = match loaders.load(region) {
         Ok(l) => l,
         Err(LoadError::Failed { stderr }) => return failed(stderr),
         Err(LoadError::Hard(message)) => return failed(message),
     };
-    let body = match sink::body(region.opener.sink, &region.opener.lang, loaded.text.as_bytes()) {
+    let body = match sink::body(
+        region.opener.sink,
+        &region.opener.lang,
+        loaded.text.as_bytes(),
+    ) {
         Ok(b) => b,
         Err(message) => return failed(message),
     };
     let constant = loader::format_constant(&region.opener.loader);
-    let sums = Sums { input: sum::input(&region.opener, constant, &loaded.snapshot), output: sum::output(&body) };
-    let text = region_text(region, &marker::rendered_opener(&region.opener), &body, &marker::rendered_closer(Some(&sums)));
+    let sums = Sums {
+        input: sum::input(&region.opener, constant, &loaded.snapshot),
+        output: sum::output(&body),
+    };
+    let text = region_text(
+        region,
+        &marker::rendered_opener(&region.opener),
+        &body,
+        &marker::rendered_closer(Some(&sums)),
+    );
     (text, report(region, state, Some(Action::Written), None))
 }

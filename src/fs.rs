@@ -55,7 +55,11 @@ pub fn walk(root: &Path, opts: WalkOpts) -> impl Iterator<Item = Entry> {
             return None;
         }
         let path = entry.path().strip_prefix(&root).ok()?.to_path_buf();
-        Some(Entry { path, is_dir, depth: entry.depth() })
+        Some(Entry {
+            path,
+            is_dir,
+            depth: entry.depth(),
+        })
     })
 }
 
@@ -63,18 +67,30 @@ pub fn walk(root: &Path, opts: WalkOpts) -> impl Iterator<Item = Entry> {
 /// ancestor (or the path itself) holding a `.git`, or `None` outside one.
 pub fn repo_root(path: &Path) -> Option<PathBuf> {
     let start = path.canonicalize().ok()?;
-    start.ancestors().find(|p| p.join(".git").exists()).map(Path::to_path_buf)
+    start
+        .ancestors()
+        .find(|p| p.join(".git").exists())
+        .map(Path::to_path_buf)
 }
 
 /// Writes `text` to `path` through a temp file in the same directory and
 /// `rename(2)`, copying the original's mode bits. Returns `false`, touching
 /// nothing, when the file already holds `text`.
 pub fn write(path: &Path, text: &str) -> io::Result<bool> {
-    if std::fs::read(path).map(|current| current == text.as_bytes()).unwrap_or(false) {
+    if std::fs::read(path)
+        .map(|current| current == text.as_bytes())
+        .unwrap_or(false)
+    {
         return Ok(false);
     }
-    let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
-    let mut tmp = tempfile::Builder::new().prefix(".computed-").suffix(".tmp").tempfile_in(dir)?;
+    let dir = path
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let mut tmp = tempfile::Builder::new()
+        .prefix(".computed-")
+        .suffix(".tmp")
+        .tempfile_in(dir)?;
     io::Write::write_all(&mut tmp, text.as_bytes())?;
     if let Ok(meta) = std::fs::metadata(path) {
         tmp.as_file().set_permissions(meta.permissions())?;
@@ -117,13 +133,31 @@ mod tests {
     fn walk_honours_gitignore_hides_dotfiles_and_sorts_by_byte_order() {
         let dir = repo();
         let got = listing(dir.path(), WalkOpts::default());
-        assert_eq!(got, ["Zed.md", "a.md", "docs/", "src/", "src/main.rs", "src/nested/", "src/nested/deep/", "src/nested/deep/x.rs"]);
+        assert_eq!(
+            got,
+            [
+                "Zed.md",
+                "a.md",
+                "docs/",
+                "src/",
+                "src/main.rs",
+                "src/nested/",
+                "src/nested/deep/",
+                "src/nested/deep/x.rs"
+            ]
+        );
     }
 
     #[test]
     fn walk_all_includes_dotfiles_but_never_the_git_directory_contents() {
         let dir = repo();
-        let got = listing(dir.path(), WalkOpts { all: true, ..Default::default() });
+        let got = listing(
+            dir.path(),
+            WalkOpts {
+                all: true,
+                ..Default::default()
+            },
+        );
         assert!(got.contains(&".hidden".to_string()));
         assert!(got.contains(&".gitignore".to_string()));
         assert!(!got.iter().any(|p| p.starts_with(".git/")), "{got:?}");
@@ -133,9 +167,21 @@ mod tests {
     #[test]
     fn walk_depth_counts_like_tree_and_dirs_lists_directories_only() {
         let dir = repo();
-        let got = listing(dir.path(), WalkOpts { depth: Some(1), ..Default::default() });
+        let got = listing(
+            dir.path(),
+            WalkOpts {
+                depth: Some(1),
+                ..Default::default()
+            },
+        );
         assert_eq!(got, ["Zed.md", "a.md", "docs/", "src/"]);
-        let got = listing(dir.path(), WalkOpts { dirs: true, ..Default::default() });
+        let got = listing(
+            dir.path(),
+            WalkOpts {
+                dirs: true,
+                ..Default::default()
+            },
+        );
         assert_eq!(got, ["docs/", "src/", "src/nested/", "src/nested/deep/"]);
     }
 
@@ -167,10 +213,17 @@ mod tests {
         fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
         assert!(write(&path, "new").unwrap());
         assert_eq!(fs::read_to_string(&path).unwrap(), "new");
-        assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
         let mtime = fs::metadata(&path).unwrap().modified().unwrap();
         assert!(!write(&path, "new").unwrap());
         assert_eq!(fs::metadata(&path).unwrap().modified().unwrap(), mtime);
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1, "no temp file left behind");
+        assert_eq!(
+            fs::read_dir(dir.path()).unwrap().count(),
+            1,
+            "no temp file left behind"
+        );
     }
 }

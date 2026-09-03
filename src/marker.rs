@@ -14,6 +14,7 @@ pub struct File {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(clippy::large_enum_variant)]
 pub enum Segment {
     /// Text outside any region, exactly as it sits in the file.
     Prose(String),
@@ -103,7 +104,10 @@ impl Opener {
 
     /// One attribute value by key.
     pub fn attr(&self, key: &str) -> Option<&str> {
-        self.attrs.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+        self.attrs
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
     }
 
     pub fn flag(&self, flag: &str) -> bool {
@@ -117,7 +121,9 @@ pub const OPENER_SUFFIX: &str = "| do not edit; run computed";
 /// The rendered opener line: canonical form with the suffix, without indent.
 pub fn rendered_opener(opener: &Opener) -> String {
     let c = opener.canonical();
-    let stem = c.strip_suffix(" -->").expect("canonical opener ends with -->");
+    let stem = c
+        .strip_suffix(" -->")
+        .expect("canonical opener ends with -->");
     format!("{stem} {OPENER_SUFFIX} -->")
 }
 
@@ -130,7 +136,9 @@ pub fn rendered_closer(sums: Option<&Sums>) -> String {
 }
 
 fn quote(v: &str) -> String {
-    let needs = v.is_empty() || v.chars().any(|c| c == ' ' || c == '\t' || c == '>' || c == '"');
+    let needs = v.is_empty()
+        || v.chars()
+            .any(|c| c == ' ' || c == '\t' || c == '>' || c == '"');
     if !needs {
         return v.to_string();
     }
@@ -160,7 +168,10 @@ impl fmt::Display for ParseError {
 impl std::error::Error for ParseError {}
 
 fn error(line: usize, message: impl Into<String>) -> ParseError {
-    ParseError { line, message: message.into() }
+    ParseError {
+        line,
+        message: message.into(),
+    }
 }
 
 /// The attribute set each loader owns. Anything else is an unknown attribute.
@@ -172,8 +183,18 @@ struct LoaderGrammar {
 }
 
 const GRAMMAR: &[LoaderGrammar] = &[
-    LoaderGrammar { name: "tree", attrs: &["src", "depth"], flags: &["all", "dirs"], sink: Sink::Fence },
-    LoaderGrammar { name: "exec", attrs: &["cmd", "inputs", "timeout"], flags: &["volatile"], sink: Sink::Raw },
+    LoaderGrammar {
+        name: "tree",
+        attrs: &["src", "depth"],
+        flags: &["all", "dirs"],
+        sink: Sink::Fence,
+    },
+    LoaderGrammar {
+        name: "exec",
+        attrs: &["cmd", "inputs", "timeout"],
+        flags: &["volatile"],
+        sink: Sink::Raw,
+    },
 ];
 
 const COMMON_ATTRS: &[&str] = &["name", "as", "lang"];
@@ -197,14 +218,22 @@ fn lines(text: &str) -> Vec<Line<'_>> {
             let raw = &text[start..=i];
             let t = raw.strip_suffix('\n').unwrap();
             let t = t.strip_suffix('\r').unwrap_or(t);
-            out.push(Line { number: out.len() + 1, raw, text: t });
+            out.push(Line {
+                number: out.len() + 1,
+                raw,
+                text: t,
+            });
             start = i + 1;
         }
         i += 1;
     }
     if start < bytes.len() {
         let raw = &text[start..];
-        out.push(Line { number: out.len() + 1, raw, text: raw });
+        out.push(Line {
+            number: out.len() + 1,
+            raw,
+            text: raw,
+        });
     }
     out
 }
@@ -212,8 +241,13 @@ fn lines(text: &str) -> Vec<Line<'_>> {
 enum Kind<'a> {
     Prose,
     /// The content between `<!--` and `-->`, trimmed, plus the indent.
-    Opener { indent: &'a str, content: &'a str },
-    Closer { content: &'a str },
+    Opener {
+        indent: &'a str,
+        content: &'a str,
+    },
+    Closer {
+        content: &'a str,
+    },
 }
 
 fn classify<'a>(line: &Line<'a>) -> Result<Kind<'a>, ParseError> {
@@ -234,9 +268,15 @@ fn classify<'a>(line: &Line<'a>) -> Result<Kind<'a>, ParseError> {
     }
     let body = trimmed_start.trim_end_matches([' ', '\t']);
     let Some(content) = body.strip_suffix("-->") else {
-        return Err(error(line.number, "unterminated marker: the line does not end with -->"));
+        return Err(error(
+            line.number,
+            "unterminated marker: the line does not end with -->",
+        ));
     };
-    let content = content.strip_prefix("<!--").unwrap().trim_matches([' ', '\t']);
+    let content = content
+        .strip_prefix("<!--")
+        .unwrap()
+        .trim_matches([' ', '\t']);
     let content = content[word.len()..].trim_start_matches([' ', '\t']);
     if word == "computed" {
         Ok(Kind::Opener { indent, content })
@@ -290,7 +330,11 @@ impl Fences {
 
 /// Whether a line, on its own, would parse as an opener or a closer.
 pub fn is_marker(text: &str) -> bool {
-    let line = Line { number: 1, raw: text, text };
+    let line = Line {
+        number: 1,
+        raw: text,
+        text,
+    };
     !matches!(classify(&line), Ok(Kind::Prose))
 }
 
@@ -341,7 +385,10 @@ pub fn parse(text: &str) -> Result<File, ParseError> {
                     match classify(l)? {
                         Kind::Prose => body.push_str(l.raw),
                         Kind::Opener { .. } => {
-                            return Err(error(l.number, "opener inside a body: nesting is not supported"))
+                            return Err(error(
+                                l.number,
+                                "opener inside a body: nesting is not supported",
+                            ))
                         }
                         Kind::Closer { content } => break (l, parse_closer(l.number, content)?),
                     }
@@ -395,7 +442,10 @@ fn tokenise(line: usize, content: &str) -> Result<Vec<Token>, ParseError> {
                 let mut v = String::new();
                 loop {
                     let Some(&c) = chars.get(i) else {
-                        return Err(error(line, format!("unterminated quoted value for {word}=")));
+                        return Err(error(
+                            line,
+                            format!("unterminated quoted value for {word}="),
+                        ));
                     };
                     i += 1;
                     match c {
@@ -408,7 +458,10 @@ fn tokenise(line: usize, content: &str) -> Result<Vec<Token>, ParseError> {
                     }
                 }
                 if i < chars.len() && chars[i] != ' ' && chars[i] != '\t' {
-                    return Err(error(line, format!("text after the closing quote of {word}=")));
+                    return Err(error(
+                        line,
+                        format!("text after the closing quote of {word}="),
+                    ));
                 }
                 v
             } else {
@@ -434,7 +487,12 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
     let mut iter = tokens.iter();
     let loader = match iter.next() {
         Some(Token::Bare(w)) => w.clone(),
-        Some(Token::Attr(k, _)) => return Err(error(line, format!("missing loader: the first token is {k}="))),
+        Some(Token::Attr(k, _)) => {
+            return Err(error(
+                line,
+                format!("missing loader: the first token is {k}="),
+            ))
+        }
         None => return Err(error(line, "missing loader")),
     };
     let Some(grammar) = GRAMMAR.iter().find(|g| g.name == loader) else {
@@ -450,7 +508,10 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
         match t {
             Token::Bare(w) => {
                 if !grammar.flags.contains(&w.as_str()) {
-                    return Err(error(line, format!("unknown flag {w:?} for loader {loader}")));
+                    return Err(error(
+                        line,
+                        format!("unknown flag {w:?} for loader {loader}"),
+                    ));
                 }
                 if flags.contains(w) {
                     return Err(error(line, format!("duplicate flag {w:?}")));
@@ -465,17 +526,31 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
                 match k.as_str() {
                     "name" => name = Some(v.clone()),
                     "as" => {
-                        sink = Sink::parse(v).ok_or_else(|| error(line, format!("unknown sink {v:?}")))?;
+                        sink = Sink::parse(v)
+                            .ok_or_else(|| error(line, format!("unknown sink {v:?}")))?;
                     }
                     "lang" => lang = v.clone(),
                     _ if grammar.attrs.contains(&k.as_str()) => attrs.push((k.clone(), v.clone())),
-                    _ => return Err(error(line, format!("unknown attribute {k}= for loader {loader}"))),
+                    _ => {
+                        return Err(error(
+                            line,
+                            format!("unknown attribute {k}= for loader {loader}"),
+                        ))
+                    }
                 }
             }
         }
     }
     debug_assert!(COMMON_ATTRS.iter().all(|c| !grammar.attrs.contains(c)));
-    Ok(Opener { loader, flags, attrs, name, sink, lang, tokens })
+    Ok(Opener {
+        loader,
+        flags,
+        attrs,
+        name,
+        sink,
+        lang,
+        tokens,
+    })
 }
 
 fn parse_closer(line: usize, content: &str) -> Result<Option<Sums>, ParseError> {
@@ -494,9 +569,14 @@ fn parse_closer(line: usize, content: &str) -> Result<Option<Sums>, ParseError> 
                 if slot.is_some() {
                     return Err(error(line, format!("duplicate attribute {k}= in closer")));
                 }
-                let ok = v.len() == 16 && v.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+                let ok = v.len() == 16
+                    && v.bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
                 if !ok {
-                    return Err(error(line, format!("malformed sum {k}={v}: expected 16 lowercase hex characters")));
+                    return Err(error(
+                        line,
+                        format!("malformed sum {k}={v}: expected 16 lowercase hex characters"),
+                    ));
                 }
                 *slot = Some(v);
             }
@@ -505,7 +585,10 @@ fn parse_closer(line: usize, content: &str) -> Result<Option<Sums>, ParseError> 
     match (input, output) {
         (Some(input), Some(output)) => Ok(Some(Sums { input, output })),
         (None, None) => Ok(None),
-        _ => Err(error(line, "one sum in closer: in= and out= come together or not at all")),
+        _ => Err(error(
+            line,
+            "one sum in closer: in= and out= come together or not at all",
+        )),
     }
 }
 
@@ -547,7 +630,8 @@ mod tests {
 
     #[test]
     fn an_unrendered_region_parses_with_no_sums() {
-        let text = "before\n<!-- computed tree src=. depth=2 name=layout -->\n<!-- /computed -->\nafter\n";
+        let text =
+            "before\n<!-- computed tree src=. depth=2 name=layout -->\n<!-- /computed -->\nafter\n";
         let file = parse(text).unwrap();
         assert_eq!(file.segments.len(), 3);
         let r = region(&file, 1);
@@ -557,7 +641,13 @@ mod tests {
         assert_eq!(r.opener.loader, "tree");
         assert_eq!(r.opener.name.as_deref(), Some("layout"));
         assert_eq!(r.opener.sink, Sink::Fence);
-        assert_eq!(r.opener.attrs, vec![("src".to_string(), ".".to_string()), ("depth".to_string(), "2".to_string())]);
+        assert_eq!(
+            r.opener.attrs,
+            vec![
+                ("src".to_string(), ".".to_string()),
+                ("depth".to_string(), "2".to_string())
+            ]
+        );
         assert_eq!(serialise(&file), text);
     }
 
@@ -571,8 +661,14 @@ mod tests {
         let sums = r.sums.as_ref().unwrap();
         assert_eq!(sums.input, "9f3a1c0b7d2e4f60");
         assert_eq!(sums.output, "41c0d9e8b3a2f715");
-        assert_eq!(r.raw_opener, "  <!-- computed tree | do not edit; run computed -->\n");
-        assert_eq!(r.raw_closer, "  <!-- /computed in=9f3a1c0b7d2e4f60 out=41c0d9e8b3a2f715 -->");
+        assert_eq!(
+            r.raw_opener,
+            "  <!-- computed tree | do not edit; run computed -->\n"
+        );
+        assert_eq!(
+            r.raw_closer,
+            "  <!-- /computed in=9f3a1c0b7d2e4f60 out=41c0d9e8b3a2f715 -->"
+        );
         assert_eq!(serialise(&file), text);
     }
 
@@ -581,7 +677,10 @@ mod tests {
         let text = "\t<!--   computed\ttree   src=.  all name=x   | do not edit; run computed   -->  \n<!-- /computed -->\n";
         let file = parse(text).unwrap();
         let r = region(&file, 0);
-        assert_eq!(r.opener.canonical(), "<!-- computed tree src=. all name=x -->");
+        assert_eq!(
+            r.opener.canonical(),
+            "<!-- computed tree src=. all name=x -->"
+        );
         assert_eq!(r.opener.flags, vec!["all".to_string()]);
     }
 
@@ -592,7 +691,10 @@ mod tests {
 "#;
         let file = parse(text).unwrap();
         let r = region(&file, 0);
-        assert_eq!(r.opener.attrs[0], ("cmd".to_string(), "grep -h '^# ' docs/*.md".to_string()));
+        assert_eq!(
+            r.opener.attrs[0],
+            ("cmd".to_string(), "grep -h '^# ' docs/*.md".to_string())
+        );
         assert_eq!(r.opener.sink, Sink::Raw);
         assert_eq!(
             r.opener.canonical(),
@@ -605,12 +707,16 @@ mod tests {
         let r = parse(text).unwrap();
         let r = region(&r, 0);
         assert_eq!(r.opener.attrs[0].1, "say \"hi\"");
-        assert_eq!(r.opener.canonical(), r#"<!-- computed exec cmd="say \"hi\"" volatile -->"#);
+        assert_eq!(
+            r.opener.canonical(),
+            r#"<!-- computed exec cmd="say \"hi\"" volatile -->"#
+        );
     }
 
     #[test]
     fn as_and_lang_select_the_sink() {
-        let text = "<!-- computed exec cmd=date volatile as=fence lang=text -->\n<!-- /computed -->\n";
+        let text =
+            "<!-- computed exec cmd=date volatile as=fence lang=text -->\n<!-- /computed -->\n";
         let r = parse(text).unwrap();
         let r = region(&r, 0);
         assert_eq!(r.opener.sink, Sink::Fence);
@@ -673,7 +779,11 @@ mod tests {
         for (text, line, needle) in cases {
             let e = err(text);
             assert_eq!(e.line, *line, "line for {text:?}: {}", e.message);
-            assert!(e.message.contains(needle), "{text:?}: expected {needle:?} in {:?}", e.message);
+            assert!(
+                e.message.contains(needle),
+                "{text:?}: expected {needle:?} in {:?}",
+                e.message
+            );
         }
     }
 

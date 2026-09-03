@@ -39,14 +39,19 @@ impl Store {
     pub fn default_path() -> Result<PathBuf, Error> {
         let config = match std::env::var_os("XDG_CONFIG_HOME").filter(|v| !v.is_empty()) {
             Some(x) => PathBuf::from(x),
-            None => PathBuf::from(std::env::var_os("HOME").ok_or_else(|| Error("HOME is not set".into()))?).join(".config"),
+            None => PathBuf::from(
+                std::env::var_os("HOME").ok_or_else(|| Error("HOME is not set".into()))?,
+            )
+            .join(".config"),
         };
         Ok(config.join("computed").join("trust.toml"))
     }
 
     fn read(&self) -> Result<Grants, Error> {
         match std::fs::read_to_string(&self.path) {
-            Ok(text) => toml::from_str(&text).map_err(|e| Error(format!("{}: {e}", self.path.display()))),
+            Ok(text) => {
+                toml::from_str(&text).map_err(|e| Error(format!("{}: {e}", self.path.display())))
+            }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Grants::default()),
             Err(e) => Err(Error(format!("{}: {e}", self.path.display()))),
         }
@@ -95,7 +100,8 @@ impl Store {
 }
 
 fn canonical(path: &Path) -> Result<PathBuf, Error> {
-    path.canonicalize().map_err(|e| Error(format!("{}: {e}", path.display())))
+    path.canonicalize()
+        .map_err(|e| Error(format!("{}: {e}", path.display())))
 }
 
 /// The root a grant is keyed by: the repository root containing `path`, or
@@ -122,7 +128,10 @@ mod tests {
         assert!(!store.is_trusted(&root).unwrap());
         assert_eq!(store.grant(&root).unwrap(), root);
         assert!(store.is_trusted(&root).unwrap());
-        assert!(store.grant(&root).unwrap() == root, "granting twice is idempotent");
+        assert!(
+            store.grant(&root).unwrap() == root,
+            "granting twice is idempotent"
+        );
         let text = fs::read_to_string(dir.path().join("nested/computed/trust.toml")).unwrap();
         assert_eq!(text.matches(root.to_str().unwrap()).count(), 1, "{text}");
         assert!(store.revoke(&root).unwrap());
@@ -139,7 +148,10 @@ mod tests {
         assert_eq!(root_for(&repo.path().join("a/b")).unwrap(), canon);
         let plain = tempfile::tempdir().unwrap();
         fs::create_dir_all(plain.path().join("x")).unwrap();
-        assert_eq!(root_for(&plain.path().join("x")).unwrap(), plain.path().join("x").canonicalize().unwrap());
+        assert_eq!(
+            root_for(&plain.path().join("x")).unwrap(),
+            plain.path().join("x").canonicalize().unwrap()
+        );
     }
 
     #[test]
@@ -151,7 +163,9 @@ mod tests {
         let link = dir.path().join("link");
         std::os::unix::fs::symlink(repo.path(), &link).unwrap();
         store.grant(&root_for(&link).unwrap()).unwrap();
-        assert!(store.is_trusted(&repo.path().canonicalize().unwrap()).unwrap());
+        assert!(store
+            .is_trusted(&repo.path().canonicalize().unwrap())
+            .unwrap());
         assert!(!store.is_trusted(&repo.path().join("sub")).unwrap());
     }
 

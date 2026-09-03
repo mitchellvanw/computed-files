@@ -6,10 +6,11 @@
 //! snapshots, `fs` walks and writes, `trust` keeps the per-clone grants,
 //! `report` prints, and `cli` ties them to five commands.
 
-pub mod marker;
-pub mod loader;
-pub mod sink;
-pub mod render;
 pub mod cli;
 pub mod fs;
+pub mod loader;
+pub mod marker;
+pub mod render;
+pub mod report;
+pub mod sink;
 pub mod trust;
