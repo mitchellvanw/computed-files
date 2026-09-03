@@ -1,0 +1,2 @@
+error line 5: src= escapes the repository root
+tier 2

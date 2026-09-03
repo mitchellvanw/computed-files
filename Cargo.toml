@@ -1,9 +1,30 @@
 [package]
-name = "computed-proto"
-version = "0.0.0"
+name = "computed"
+version = "0.1.0"
 edition = "2021"
-description = "PROTOTYPE (throwaway) — computed-markdown v1 sketch; the question it answers is in README.md"
+description = "Keeps marked regions of a markdown file current by computation"
+
+[lib]
+name = "computed"
+path = "src/lib.rs"
 
 [[bin]]
 name = "computed"
 path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0.104"
+blake3 = "1.8.7"
+clap = { version = "4.6.6", features = ["derive"] }
+globset = "0.4.20"
+ignore = "0.4.33"
+libc = "0.2.189"
+serde = { version = "1.0.229", features = ["derive"] }
+similar = "3.2.0"
+tempfile = "3.27.0"
+toml = "1.1.5"
+wait-timeout = "0.2.1"
+
+[dev-dependencies]
+assert_cmd = "2.2.2"
+tempfile = "3.27.0"

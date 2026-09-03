@@ -1,0 +1,8 @@
+written
+5 layout tree unrendered written
+10 adrs exec unrendered failed; body kept
+  stderr: output contains a line that would parse as a marker: <!-- /computed -->
+13 deps exec unrendered failed; body kept
+  stderr: output contains the control byte 0x00
+16 now exec unrendered written
+tier 1

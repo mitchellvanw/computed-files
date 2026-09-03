@@ -1,239 +1,360 @@
-use std::collections::BTreeMap;
-use std::path::Path;
+//! Decides what every region becomes. Pure: a parsed file, a mode, a trust
+//! flag and a `Loaders` seam in; the new text and a report per region out.
+//! Owns the sums, the freshness cache, the states, the refuse rule and its
+//! per-file consequence, the untrusted skip, loader failure keeping the
+//! body, and `clean`.
 
-use crate::load::{self, Loaded};
-use crate::parse::{self, Seg};
+use std::fmt;
+
+use crate::loader::{self, LoadError, Loaded};
+use crate::marker::{self, File, Region, Segment, Sums};
 use crate::sink;
 
-pub fn fnv1a32(data: &[u8]) -> String {
-    let mut h: u32 = 0x811c_9dc5;
-    for &b in data {
-        h ^= b as u32;
-        h = h.wrapping_mul(0x0100_0193);
-    }
-    format!("{:08x}", h)
+/// The seam between `render` and the loaders. `snapshot` costs nothing
+/// dangerous and always runs; `load` may run a command and runs only when
+/// the region is stale, unrendered or volatile.
+pub trait Loaders {
+    /// The snapshot of the region's inputs; `None` when the region is volatile.
+    fn snapshot(&mut self, region: &Region) -> Result<Option<Vec<u8>>, LoadError>;
+    fn load(&mut self, region: &Region) -> Result<Loaded, LoadError>;
 }
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum Status {
-    New,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    Run { force: bool },
+    DryRun { force: bool },
+    Check,
+    Clean { force: bool },
+}
+
+impl Mode {
+    fn force(self) -> bool {
+        match self {
+            Mode::Run { force } | Mode::DryRun { force } | Mode::Clean { force } => force,
+            Mode::Check => false,
+        }
+    }
+}
+
+/// A region's freshness, derived from the file and its inputs alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum State {
     Fresh,
     Stale,
-    Rewritten,
     Edited,
-    Error,
+    StaleEdited,
+    Volatile,
+    Unrendered,
 }
 
-impl Status {
-    pub fn label(&self) -> &'static str {
-        match self {
-            Status::New => "new",
-            Status::Fresh => "fresh",
-            Status::Stale => "stale",
-            Status::Rewritten => "rewritten",
-            Status::Edited => "edited",
-            Status::Error => "error",
-        }
+impl State {
+    fn edited(self) -> bool {
+        matches!(self, State::Edited | State::StaleEdited)
+    }
+    /// Whether `check` reports drift for this state.
+    pub fn drifted(self) -> bool {
+        !matches!(self, State::Fresh | State::Volatile)
     }
 }
 
+impl fmt::Display for State {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            State::Fresh => "fresh",
+            State::Stale => "stale",
+            State::Edited => "edited",
+            State::StaleEdited => "stale+edited",
+            State::Volatile => "volatile",
+            State::Unrendered => "unrendered",
+        })
+    }
+}
+
+/// What happened to a region, shown in the report's last column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Action {
+    /// A fresh region, left as it was.
+    Fresh,
+    Written,
+    WouldWrite,
+    /// Left untouched because the file was refused.
+    Kept,
+    Refused,
+    Untrusted,
+    Failed,
+    Cleaned,
+    WouldClean,
+}
+
+impl fmt::Display for Action {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Action::Fresh => "",
+            Action::Written => "written",
+            Action::WouldWrite => "would write",
+            Action::Kept => "kept",
+            Action::Refused => "refused; run with --force",
+            Action::Untrusted => "skipped; run `computed trust`",
+            Action::Failed => "failed; body kept",
+            Action::Cleaned => "cleaned",
+            Action::WouldClean => "would clean",
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegionReport {
-    pub name: String,
+    pub line: usize,
+    pub name: Option<String>,
     pub loader: String,
-    pub status: Status,
-    pub message: String,
-    pub in_sum: Option<String>,
-    pub out_sum: Option<String>,
+    pub state: State,
+    /// `None` under `check`, which has no action column.
+    pub action: Option<Action>,
+    pub stderr: Option<String>,
 }
 
-pub struct FileReport {
-    pub regions: Vec<RegionReport>,
-    pub prose_drift: bool,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Rendered {
+    /// The file would change; `text` is what to write.
+    Written { text: String, regions: Vec<RegionReport> },
+    Unchanged { regions: Vec<RegionReport> },
+    /// A hand-edited region refused the whole file.
+    Refused { regions: Vec<RegionReport> },
+    /// Tier 2: the file is skipped whole.
+    Error { line: usize, message: String },
 }
 
-pub fn banner_for(tmpl_name: &str) -> String {
-    format!("<!-- generated from {} by computed; edit the template, not this file -->", tmpl_name)
-}
-
-pub fn prior_regions(output: &str) -> BTreeMap<String, parse::Region> {
-    let mut m = BTreeMap::new();
-    for seg in parse::parse(output) {
-        if let Seg::Region(r) = seg {
-            m.insert(r.name.clone(), r);
+impl Rendered {
+    pub fn regions(&self) -> &[RegionReport] {
+        match self {
+            Rendered::Written { regions, .. } | Rendered::Unchanged { regions } | Rendered::Refused { regions } => regions,
+            Rendered::Error { .. } => &[],
         }
     }
-    m
-}
 
-pub fn prose_of(text: &str, banner: &str) -> String {
-    let mut parts = Vec::new();
-    for seg in parse::parse(text) {
-        if let Seg::Prose(p) = seg {
-            parts.push(p);
-        }
-    }
-    parts.join("\n").replace(banner, "").trim().to_string()
-}
-
-pub fn run_exit(rep: &FileReport) -> i32 {
-    if rep.regions.iter().any(|r| matches!(r.status, Status::Error | Status::Edited)) {
-        1
-    } else {
-        0
-    }
-}
-
-pub fn check_exit(rep: &FileReport) -> i32 {
-    if rep.prose_drift || rep.regions.iter().any(|r| r.status != Status::Fresh) {
-        1
-    } else {
-        0
-    }
-}
-
-pub fn render_file(
-    root: &Path,
-    tmpl: &Path,
-    out: &Path,
-    prior_text: Option<&str>,
-    force: bool,
-    trusted: bool,
-) -> (String, FileReport) {
-    let tmpl_text = std::fs::read_to_string(tmpl).unwrap_or_default();
-    let tmpl_name = tmpl
-        .file_name()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let banner = banner_for(&tmpl_name);
-    let prior = prior_text.map(prior_regions).unwrap_or_default();
-    let out_rel = out
-        .strip_prefix(root)
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let exclude = vec![out_rel, ".computed-trust".to_string()];
-
-    let mut lines: Vec<String> = vec![banner.clone()];
-    let mut regions = Vec::new();
-
-    for seg in parse::parse(&tmpl_text) {
-        match seg {
-            Seg::Prose(p) => lines.push(p),
-            Seg::Error { line, message } => {
-                lines.push(line);
-                regions.push(RegionReport {
-                    name: "(parse)".to_string(),
-                    loader: String::new(),
-                    status: Status::Error,
-                    message,
-                    in_sum: None,
-                    out_sum: None,
+    /// The exit tier this file contributes: 2 for an error, 1 when the
+    /// content said no (a write, a refusal, a failure, an untrusted region,
+    /// or drift under `check`), else 0.
+    pub fn tier(&self) -> u8 {
+        match self {
+            Rendered::Error { .. } => 2,
+            Rendered::Written { .. } | Rendered::Refused { .. } => 1,
+            Rendered::Unchanged { regions } => {
+                let said_no = regions.iter().any(|r| match r.action {
+                    Some(Action::Untrusted | Action::Failed) => true,
+                    Some(_) => false,
+                    None => r.state.drifted(),
                 });
-            }
-            Seg::Region(r) => {
-                let p = prior.get(&r.name);
-                let edited = p
-                    .map(|pr| {
-                        pr.out_sum
-                            .as_deref()
-                            .is_some_and(|os| fnv1a32(pr.body.as_bytes()) != os)
-                    })
-                    .unwrap_or(false);
-
-                let loaded: Result<Loaded, String> = match r.loader.as_str() {
-                    "tree" => load::tree(root, &r.attrs, &exclude),
-                    "csv" => load::csv(root, &r.attrs),
-                    "sh" => load::sh(root, &r.attrs, trusted),
-                    other => Err(format!("unknown loader \"{}\"", other)),
-                };
-
-                let computed = loaded.and_then(|l| {
-                    let sink_name = r
-                        .attrs
-                        .get("sink")
-                        .cloned()
-                        .unwrap_or_else(|| load::default_sink(&r.loader).to_string());
-                    sink::render(&sink_name, &l).map(|body| {
-                        let in_sum =
-                            fnv1a32(format!("{}\n{}", r.open_line, l.snapshot.unwrap_or_default()).as_bytes());
-                        (body, in_sum)
-                    })
-                });
-
-                let body: String;
-                let in_sum: Option<String>;
-                let out_sum: Option<String>;
-                let status: Status;
-                let message: String;
-                match computed {
-                    Err(e) => {
-                        body = p.map(|pr| pr.body.clone()).unwrap_or_else(|| "(no previous output)".to_string());
-                        in_sum = p.and_then(|pr| pr.in_sum.clone());
-                        out_sum = p.and_then(|pr| pr.out_sum.clone());
-                        status = Status::Error;
-                        message = format!("{}. Last good content kept.", e);
-                    }
-                    Ok((cbody, cin)) => {
-                        if edited && !force {
-                            body = p.map(|pr| pr.body.clone()).unwrap_or_default();
-                            in_sum = p.and_then(|pr| pr.in_sum.clone());
-                            out_sum = p.and_then(|pr| pr.out_sum.clone());
-                            status = Status::Edited;
-                            message = "region was edited by hand; left as is. Delete the sum or run with force to regenerate.".to_string();
-                        } else {
-                            body = cbody.clone();
-                            in_sum = Some(cin.clone());
-                            out_sum = Some(fnv1a32(cbody.as_bytes()));
-                            let same_inputs = p.and_then(|pr| pr.in_sum.as_deref()) == Some(cin.as_str());
-                            let same_body = p.map(|pr| pr.body == cbody).unwrap_or(false);
-                            let mut msg = if same_inputs && same_body {
-                                status = Status::Fresh;
-                                "inputs unchanged"
-                            } else if same_inputs {
-                                status = Status::Rewritten;
-                                "same inputs, different content (undeclared inputs)"
-                            } else if p.is_some() {
-                                status = Status::Stale;
-                                "inputs changed; regenerated"
-                            } else {
-                                status = Status::New;
-                                "first render"
-                            };
-                            if edited && force {
-                                msg = "hand edit discarded (force)";
-                            }
-                            message = msg.to_string();
-                        }
-                    }
-                }
-
-                lines.push(format!("{}{}", r.indent, r.open_line));
-                lines.push(body.clone());
-                let mut closer = format!("{}<!-- /computed", r.indent);
-                if let Some(s) = &in_sum {
-                    closer.push_str(&format!(" sum={}", s));
-                }
-                if let Some(s) = &out_sum {
-                    closer.push_str(&format!(" out={}", s));
-                }
-                closer.push_str(" -->");
-                lines.push(closer);
-
-                regions.push(RegionReport {
-                    name: r.name.clone(),
-                    loader: r.loader.clone(),
-                    status,
-                    message,
-                    in_sum,
-                    out_sum,
-                });
+                u8::from(said_no)
             }
         }
     }
+}
 
-    let text = lines.join("\n");
-    let prose_drift = match prior_text {
-        Some(p) => prose_of(p, &banner) != prose_of(&tmpl_text, &banner),
-        None => false,
+mod sum {
+    use crate::marker::Opener;
+
+    const DOMAIN: &str = "computed-in/1\n";
+
+    fn hex16(hash: blake3::Hash) -> String {
+        hash.to_hex()[..16].to_string()
+    }
+
+    pub fn input(opener: &Opener, format_constant: u32, snapshot: &[u8]) -> String {
+        let mut h = blake3::Hasher::new();
+        h.update(DOMAIN.as_bytes());
+        h.update(format!("{}/{}\n", opener.loader, format_constant).as_bytes());
+        h.update(opener.canonical().as_bytes());
+        h.update(b"\n");
+        h.update(snapshot);
+        hex16(h.finalize())
+    }
+
+    pub fn output(body: &str) -> String {
+        hex16(blake3::hash(body.as_bytes()))
+    }
+}
+
+fn state_of(region: &Region, snapshot: Option<&[u8]>) -> State {
+    let Some(sums) = &region.sums else {
+        return State::Unrendered;
     };
-    (text, FileReport { regions, prose_drift })
+    let body_ok = sum::output(&region.body) == sums.output;
+    match snapshot {
+        None => {
+            if body_ok {
+                State::Volatile
+            } else {
+                State::Edited
+            }
+        }
+        Some(snapshot) => {
+            let constant = loader::format_constant(&region.opener.loader);
+            let input_ok = sum::input(&region.opener, constant, snapshot) == sums.input;
+            match (input_ok, body_ok) {
+                (true, true) => State::Fresh,
+                (false, true) => State::Stale,
+                (true, false) => State::Edited,
+                (false, false) => State::StaleEdited,
+            }
+        }
+    }
+}
+
+/// The state `clean` can know without a snapshot: only the body is tested.
+fn body_state(region: &Region) -> State {
+    match &region.sums {
+        None => State::Unrendered,
+        Some(sums) if sum::output(&region.body) == sums.output => State::Fresh,
+        Some(_) => State::Edited,
+    }
+}
+
+fn report(region: &Region, state: State, action: Option<Action>, stderr: Option<String>) -> RegionReport {
+    RegionReport {
+        line: region.line,
+        name: region.opener.name.clone(),
+        loader: region.opener.loader.clone(),
+        state,
+        action,
+        stderr,
+    }
+}
+
+fn raw_lines(region: &Region) -> String {
+    format!("{}{}{}", region.raw_opener, region.body, region.raw_closer)
+}
+
+/// The closer's own terminator, so a file that ends without a newline stays so.
+fn closer_terminator(region: &Region) -> &'static str {
+    if region.raw_closer.ends_with('\n') {
+        "\n"
+    } else {
+        ""
+    }
+}
+
+fn region_text(region: &Region, opener_line: &str, body: &str, closer_line: &str) -> String {
+    format!(
+        "{indent}{opener_line}\n{body}{indent}{closer_line}{term}",
+        indent = region.indent,
+        term = closer_terminator(region)
+    )
+}
+
+/// Renders one parsed file under `mode`. Performs no I/O.
+pub fn file(parsed: &File, mode: Mode, trusted: bool, loaders: &mut dyn Loaders) -> Rendered {
+    let regions: Vec<&Region> = parsed
+        .segments
+        .iter()
+        .filter_map(|s| match s {
+            Segment::Region(r) => Some(r),
+            Segment::Prose(_) => None,
+        })
+        .collect();
+
+    // Snapshots first: they always run, and a hard error skips the file whole.
+    let mut states = Vec::with_capacity(regions.len());
+    for region in &regions {
+        if matches!(mode, Mode::Clean { .. }) {
+            states.push(body_state(region));
+            continue;
+        }
+        let snapshot = match loaders.snapshot(region) {
+            Ok(s) => s,
+            Err(LoadError::Hard(message)) => return Rendered::Error { line: region.line, message },
+            Err(LoadError::Failed { stderr }) => return Rendered::Error { line: region.line, message: stderr },
+        };
+        states.push(state_of(region, snapshot.as_deref()));
+    }
+
+    if mode == Mode::Check {
+        let reports = regions.iter().zip(&states).map(|(r, &s)| report(r, s, None, None)).collect();
+        return Rendered::Unchanged { regions: reports };
+    }
+
+    // The hand-edit policy: one edited region refuses the whole file.
+    if !mode.force() && states.iter().any(|s| s.edited()) {
+        let reports = regions
+            .iter()
+            .zip(&states)
+            .map(|(r, &s)| {
+                let action = if s.edited() { Action::Refused } else { Action::Kept };
+                report(r, s, Some(action), None)
+            })
+            .collect();
+        return Rendered::Refused { regions: reports };
+    }
+
+    let mut text = String::new();
+    let mut reports = Vec::with_capacity(regions.len());
+    let mut states = states.into_iter();
+    for segment in &parsed.segments {
+        let region = match segment {
+            Segment::Prose(p) => {
+                text.push_str(p);
+                continue;
+            }
+            Segment::Region(r) => r,
+        };
+        let state = states.next().expect("one state per region");
+        let (piece, rep) = match mode {
+            Mode::Clean { .. } => clean(region, state),
+            Mode::Run { .. } | Mode::DryRun { .. } => render(region, state, trusted, loaders),
+            Mode::Check => unreachable!("check returned above"),
+        };
+        text.push_str(&piece);
+        reports.push(rep);
+    }
+
+    let original = marker::serialise(parsed);
+    if text == original {
+        for r in &mut reports {
+            if matches!(r.action, Some(Action::Written | Action::WouldWrite | Action::Cleaned | Action::WouldClean)) {
+                r.action = Some(Action::Fresh);
+            }
+        }
+        return Rendered::Unchanged { regions: reports };
+    }
+    let dry = matches!(mode, Mode::DryRun { .. });
+    for r in &mut reports {
+        r.action = match (r.action, dry) {
+            (Some(Action::Written), true) => Some(Action::WouldWrite),
+            (Some(Action::Cleaned), true) => Some(Action::WouldClean),
+            (a, _) => a,
+        };
+    }
+    Rendered::Written { text, regions: reports }
+}
+
+fn clean(region: &Region, state: State) -> (String, RegionReport) {
+    if region.sums.is_none() && region.body.is_empty() {
+        return (raw_lines(region), report(region, state, Some(Action::Fresh), None));
+    }
+    let opener = region.raw_opener.trim_end_matches(['\n', '\r']).trim_start_matches([' ', '\t']);
+    let text = region_text(region, opener, "", &marker::rendered_closer(None));
+    (text, report(region, state, Some(Action::Cleaned), None))
+}
+
+fn render(region: &Region, state: State, trusted: bool, loaders: &mut dyn Loaders) -> (String, RegionReport) {
+    if state == State::Fresh {
+        return (raw_lines(region), report(region, state, Some(Action::Fresh), None));
+    }
+    if region.opener.loader == "exec" && !trusted {
+        return (raw_lines(region), report(region, state, Some(Action::Untrusted), None));
+    }
+    let failed = |stderr: String| (raw_lines(region), report(region, state, Some(Action::Failed), Some(stderr)));
+    let loaded = match loaders.load(region) {
+        Ok(l) => l,
+        Err(LoadError::Failed { stderr }) => return failed(stderr),
+        Err(LoadError::Hard(message)) => return failed(message),
+    };
+    let body = match sink::body(region.opener.sink, &region.opener.lang, loaded.text.as_bytes()) {
+        Ok(b) => b,
+        Err(message) => return failed(message),
+    };
+    let constant = loader::format_constant(&region.opener.loader);
+    let sums = Sums { input: sum::input(&region.opener, constant, &loaded.snapshot), output: sum::output(&body) };
+    let text = region_text(region, &marker::rendered_opener(&region.opener), &body, &marker::rendered_closer(Some(&sums)));
+    (text, report(region, state, Some(Action::Written), None))
 }
