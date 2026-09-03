@@ -28,6 +28,8 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 ├── prototypes
 │   ├── computed-markdown.prototype.html
 │   └── hand-edit.prototype.html
+├── scripts
+│   └── adr-index.sh
 ├── src
 │   ├── cli.rs
 │   ├── fs.rs
@@ -44,21 +46,21 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── fixtures
     └── render.rs
 ```
-<!-- /computed in=763d3939163eb7ab70fd52696d3301d85cc291f1c44ba9e28ea64a43f8609c0f out=7197482b2f16496ca38acd1bb78a60ce7709f172c003ad2a11085ba982c71e8b -->
+<!-- /computed in=606bfa923de1cab691becfbdb75f7d7cf2e6682c37f79a1620ef1e5d07188fea out=d4b115dec38cfb179b31e246187f2b8f6e725b07021b6f940d19f891e29c6d9f -->
 
 ## Decisions
 
-<!-- computed exec cmd="grep -h '^# ' docs/adr/*.md" inputs=docs/adr/*.md name=adrs | do not edit; run computed -->
+<!-- computed exec cmd=scripts/adr-index.sh inputs=docs/adr/*.md,scripts/adr-index.sh name=adrs | do not edit; run computed -->
 
-# Rust for the prototype
-# Two sums in the closer
-# In-place is the only layout in v0
-# Relative paths resolve against the template's directory
-# `run` refuses a hand-edited region
-# `check` compares sums and never runs a loader
-# Exec trust is granted per clone, outside the working tree
-# Render is pure behind a `Loaders` seam
-# Loader text is normalised and exec runs in a pinned environment
-# Sums are full SHA-256
+- [Rust for the prototype](docs/adr/0001-rust-for-the-prototype.md)
+- [Two sums in the closer](docs/adr/0002-two-sum-closer.md)
+- [In-place is the only layout in v0](docs/adr/0003-in-place-layout.md)
+- [Relative paths resolve against the template's directory](docs/adr/0004-region-root-is-the-template-directory.md)
+- [`run` refuses a hand-edited region](docs/adr/0005-refuse-hand-edited-regions.md)
+- [`check` compares sums and never runs a loader](docs/adr/0006-check-never-runs-a-loader.md)
+- [Exec trust is granted per clone, outside the working tree](docs/adr/0007-exec-trust-per-clone.md)
+- [Render is pure behind a `Loaders` seam](docs/adr/0008-render-is-pure-behind-a-loaders-seam.md)
+- [Loader text is normalised and exec runs in a pinned environment](docs/adr/0009-loader-text-is-normalised-and-exec-runs-pinned.md)
+- [Sums are full SHA-256](docs/adr/0010-sha-256-sums.md)
 
-<!-- /computed in=f2d430a251fd8f0ba9f00ceafac63462e31365aa27a38ad983b812c3be446fc3 out=2165d202039a50eb9b98ef71e709644c20cec0dae66c8664c76a258de7a63585 -->
+<!-- /computed in=bf5ba216856d936232720a2d05b8f415f013ce8bf3414bdd2656d185689d903b out=fed8591e865588c7b9fc113fea19b7d2ca427beee40c1db466d49366101b3e1d -->
