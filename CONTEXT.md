@@ -60,10 +60,42 @@ _Avoid_: manual edit, external write
 The paths a region declares it was computed from. The tree loader's inputs are implied by its listing; an exec region declares them or declares itself volatile.
 _Avoid_: dependencies, sources, watch list
 
+**Fresh**:
+The state of a region whose input sum and output sum both match what the tool would compute now. The only state `run` leaves untouched.
+_Avoid_: up to date, cached, clean (that is a file)
+
+**Stale**:
+The state of a region whose input sum no longer matches its snapshot, so its inputs or opener have changed since it was rendered.
+_Avoid_: out of date, dirty, invalidated
+
+**Format constant**:
+The per-loader integer folded into the input sum, bumped when a loader's rendering of the same inputs changes, so an upgrade re-renders only what it changed.
+_Avoid_: schema version, tool version, cache version
+
 **Volatile**:
 A region that declares it has no inputs worth snapshotting, so it can never be known fresh from the file alone.
 _Avoid_: dynamic, uncached, live
 
+**Edited**:
+The state of a region whose body no longer matches its output sum. One kind of drift; the only one `run` refuses to write over.
+_Avoid_: dirty, tampered, modified
+
+**Unrendered**:
+The state of a region whose closer carries no sums, so the tool has never written it and renders it without regard to the body.
+_Avoid_: new, empty, fresh (that means the opposite)
+
 **Region root**:
 The directory of the template file, which every relative path in a marker is resolved against and in which an exec command runs.
 _Avoid_: base dir, cwd, context directory
+
+**Trusted**:
+The state of a repository that a person on this machine has granted permission to run its exec regions. Recorded outside the repository, per clone.
+_Avoid_: allowed, whitelisted, enabled
+
+**Untrusted**:
+The state of a repository with no such grant. The only state in which `run` skips an exec region.
+_Avoid_: unsafe, blocked, sandboxed
+
+**Grant**:
+The record that makes a repository trusted, written by `computed trust` and removed by `computed untrust`.
+_Avoid_: allowlist entry, permission, token
