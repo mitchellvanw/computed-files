@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Computed Markdown · hand-edit prototype</title>
+<style>
+  :root {
+    --paper: #F6F7F5; --ink: #1B211F; --muted: #626D68; --rule: #D6DCD8;
+    --band: #E6EFEB; --accent: #0F6F68; --stale: #B0522B; --stale-band: #F6E7DE; --ok-band: #E3F0EA;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #121819; --ink: #E5EAE7; --muted: #98A39E; --rule: #2C3538; --band: #172629; --accent: #4ECDC0; --stale: #E08A63; --stale-band: #2E1E17; --ok-band: #16302A; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; display: flex; flex-direction: column; gap: 28px; }
+  h1 { font-size: 26px; margin: 0; font-weight: 600; }
+  h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  p { margin: 0; max-width: 78ch; }
+  .intro { padding: 16px 18px; border-left: 3px solid var(--accent); background: var(--band); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+  pre { margin: 0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre; overflow-x: auto; padding: 12px 14px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; min-height: 120px; }
+  textarea { width: 100%; min-height: 380px; font: 12.5px/1.5 ui-monospace, Menlo, monospace; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); color: var(--ink); resize: vertical; }
+  .region-line { color: var(--accent); }
+  .changed { background: var(--ok-band); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 14px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: inherit; font-size: 14px; padding: 7px 12px; border-radius: 4px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--paper); border-color: var(--accent); }
+  button.step { border-style: dashed; }
+  button.step.done { opacity: .5; border-style: solid; }
+  button.step.next { border-color: var(--accent); border-style: solid; box-shadow: 0 0 0 2px var(--band); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .report { padding: 12px 14px; border-radius: 4px; border: 1px solid var(--rule); }
+  .report.ok { background: var(--ok-band); } .report.bad { background: var(--stale-band); }
+  .status-fresh, .status-volatile { color: var(--accent); } .status-stale, .status-edited, .status-error, .status-new, .status-rewritten, .status-parse { color: var(--stale); }
+  .log { font: 12.5px/1.6 ui-monospace, Menlo, monospace; max-height: 260px; overflow: auto; border: 1px solid var(--rule); border-radius: 4px; padding: 10px 14px; }
+  .log div:last-child { font-weight: 600; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--rule); }
+  .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 12px; color: var(--muted); }
+  .tabs button.active { color: var(--ink); border-bottom-color: var(--accent); }
+  .scenario { padding: 16px 0; display: flex; flex-direction: column; gap: 14px; }
+  .inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .inputs pre { min-height: 80px; }
+  .policy { display: flex; gap: 6px; padding: 4px; border: 1px solid var(--rule); border-radius: 4px; }
+  .policy button { border: 0; padding: 5px 10px; }
+  .policy button.active { background: var(--accent); color: var(--paper); }
+  small { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+
+  <header style="display:flex;flex-direction:column;gap:12px">
+    <h1>Computed Markdown · hand-edit prototype</h1>
+    <div class="intro">
+      <p><strong>The question.</strong> In-place is the only layout: <code>CLAUDE.md</code> is both the template you edit and the file the tool writes. Every closer carries two sums, one over what the region was computed from and one over what the tool wrote. When <code>run</code> finds that someone edited a region body by hand, what should it do: refuse, overwrite, or overwrite with a warning? And does an edited opener or closer line count as a hand edit, a template edit, or a parse error? Switch the policy, edit the file directly, and run and check until one behaviour feels right.</p>
+      <p style="margin-top:8px"><small>Prototype, throwaway. Everything is in memory. Loaders are <code>tree</code> and <code>exec</code> only; trust and the watcher are left out, they belong to other decisions. The logic is one pure module at the bottom of this file.</small></p>
+    </div>
+  </header>
+
+  <section>
+    <h2>Guided walkthroughs</h2>
+    <div class="tabs" id="tabs"></div>
+    <div id="scenario"></div>
+  </section>
+
+  <section>
+    <h2>Hand-edit policy · what <code>run</code> does with an edited region body</h2>
+    <div class="btns">
+      <div class="policy" id="policy"></div>
+      <small id="policyText"></small>
+    </div>
+  </section>
+
+  <section class="cols">
+    <div>
+      <h2>CLAUDE.md · the one file. Edit it here like an agent would.</h2>
+      <textarea id="file" spellcheck="false"></textarea>
+      <div class="btns" style="margin-top:8px">
+        <button data-action="setFile">Save my edits</button>
+        <small>Saving is a hand edit. Nothing renders until you run.</small>
+      </div>
+    </div>
+    <div>
+      <h2>CLAUDE.md · as the tool last saw it <span id="outputMeta"></span></h2>
+      <pre id="output"></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Free play</h2>
+    <div class="btns" id="freeplay"></div>
+  </section>
+
+  <section class="cols">
+    <div>
+      <h2>Last run or check</h2>
+      <div id="report" class="report"></div>
+    </div>
+    <div>
+      <h2>Log</h2>
+      <div class="log" id="log"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>What the regions read</h2>
+    <div class="inputs" id="inputs"></div>
+  </section>
+
+</main>
+
+<!-- ───────────────────────────────────────────────────────────────
+     The logic module. Pure: no DOM. (state, action) → state.
+     Maps onto the Rust modules: parse / loaders / sinks / render / write / check.
+     ─────────────────────────────────────────────────────────────── -->
+<script id="logic">
+const Computed = (() => {
+  // ---- hashing (stand-in for the real algorithm; FNV-1a is enough to feel the model)
+  function hash(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); }
+
+  // ---- marker grammar (ticket 01)
+  //   <!-- computed <loader> [flag ...] [key=value ...] [| do not edit; run computed] -->
+  //   ...body (owned by the tool)...
+  //   <!-- /computed [in=<hex> out=<hex>] -->
+  const SUFFIX = '| do not edit; run computed';
+  const OPEN = /^(\s*)<!--\s*computed\s+(.*?)\s*-->\s*$/;
+  const CLOSE = /^(\s*)<!--\s*\/computed(.*?)\s*-->\s*$/;
+  const FENCE = /^\s*(`{3,}|~{3,})/;
+
+  // Tokenise the opener: first bare word is the loader, later bare words are flags, key=value are attributes.
+  function parseOpener(inner) {
+    const tokens = []; const re = /([\w-]+)=("((?:[^"\\]|\\.)*)"|\S+)|(\S+)/g; let m;
+    if (inner.endsWith(SUFFIX)) inner = inner.slice(0, -SUFFIX.length).trim();
+    while ((m = re.exec(inner))) tokens.push(m[1] ? { key: m[1], value: m[3] !== undefined ? m[3].replace(/\\"/g, '"') : m[2] } : { flag: m[4] });
+    if (!tokens.length || !tokens[0].flag) return { error: 'opener names no loader' };
+    const loader = tokens[0].flag; const flags = []; const attrs = {};
+    for (const t of tokens.slice(1)) { if (t.flag) flags.push(t.flag); else attrs[t.key] = t.value; }
+    // canonical single-space form, what the tool writes back and what the input sum is taken over
+    const canonical = ['computed', loader, ...flags, ...Object.entries(attrs).map(([k, v]) => k + '=' + (/[\s>]/.test(v) ? '"' + v.replace(/"/g, '\\"') + '"' : v))].join(' ');
+    return { loader, flags, attrs, canonical };
+  }
+
+  function parseCloser(inner) {
+    const a = {}; const re = /(in|out)=([0-9a-f]+)/g; let m; while ((m = re.exec(inner))) a[m[1]] = m[2];
+    const leftover = inner.replace(/(in|out)=[0-9a-f]+/g, '').trim();
+    if (leftover) return { error: 'closer has junk: "' + leftover + '"' };
+    if ((a.in && !a.out) || (!a.in && a.out)) return { error: 'closer carries one sum; both or neither' };
+    return { in: a.in || null, out: a.out || null };
+  }
+
+  // Splits the file into prose and region segments. Markers inside fenced code blocks are ignored.
+  // Every error is hard: the whole parse fails and nothing is written.
+  function parse(text) {
+    const lines = text.split('\n'); const segs = []; const errors = []; let prose = []; let i = 0; let fence = null; const names = new Set();
+    const flush = () => { if (prose.length) { segs.push({ type: 'prose', text: prose.join('\n') }); prose = []; } };
+    while (i < lines.length) {
+      const line = lines[i];
+      const f = FENCE.exec(line);
+      if (fence) { if (f && f[1][0] === fence[0] && f[1].length >= fence.length) fence = null; prose.push(line); i++; continue; }
+      if (f) { fence = f[1]; prose.push(line); i++; continue; }
+      if (CLOSE.test(line)) { errors.push('line ' + (i + 1) + ': closer without an opener'); prose.push(line); i++; continue; }
+      const m = OPEN.exec(line);
+      if (!m) { prose.push(line); i++; continue; }
+      const o = parseOpener(m[2]);
+      if (o.error) { errors.push('line ' + (i + 1) + ': ' + o.error); prose.push(line); i++; continue; }
+      let j = i + 1; const body = []; let innerFence = null;
+      while (j < lines.length) {
+        const g = FENCE.exec(lines[j]);
+        if (innerFence) { if (g && g[1][0] === innerFence[0] && g[1].length >= innerFence.length) innerFence = null; body.push(lines[j]); j++; continue; }
+        if (g) { innerFence = g[1]; body.push(lines[j]); j++; continue; }
+        if (OPEN.test(lines[j])) { errors.push('line ' + (j + 1) + ': opener inside a region body (nesting)'); }
+        if (CLOSE.test(lines[j])) break;
+        body.push(lines[j]); j++;
+      }
+      if (j >= lines.length) { errors.push('line ' + (i + 1) + ': opener without a closer'); prose.push(...lines.slice(i)); i = lines.length; break; }
+      const c = parseCloser(CLOSE.exec(lines[j])[2]);
+      if (c.error) errors.push('line ' + (j + 1) + ': ' + c.error);
+      const name = o.attrs.name || (o.loader + '@' + (i + 1));
+      if (o.attrs.name) { if (names.has(name)) errors.push('line ' + (i + 1) + ': duplicate name "' + name + '"'); names.add(name); }
+      flush();
+      segs.push({ type: 'region', name, loader: o.loader, flags: o.flags, attrs: o.attrs, canonical: o.canonical, indent: m[1], body: body.join('\n'), in: c.in || null, out: c.out || null, line: i + 1 });
+      i = j + 1;
+    }
+    flush();
+    return { segs, errors };
+  }
+
+  // ---- loaders (ticket 03): (region, inputs) → { text, snapshot } or { error }. snapshot null means volatile.
+  const loaders = {
+    tree(seg, inputs) {
+      const depth = Number(seg.attrs.depth || 99); const src = (seg.attrs.src || '.').replace(/^\.\/?/, '');
+      for (const k of Object.keys(seg.attrs)) if (!['src', 'depth', 'name', 'as', 'lang'].includes(k)) return { error: 'unknown attribute "' + k + '" on tree' };
+      const paths = inputs.tree.filter(p => !src || p === src || p.startsWith(src + '/')).map(p => src ? p.slice(src.length + 1) : p).filter(Boolean);
+      const all = new Set(); for (const p of paths) { const parts = p.split('/'); for (let k = 1; k <= parts.length; k++) all.add(parts.slice(0, k).join('/') + (k < parts.length ? '/' : '')); }
+      const visible = [...all].filter(p => p.replace(/\/$/, '').split('/').length <= depth).sort();
+      return { snapshot: visible.join('\n'), text: drawTree(visible.map(p => p.replace(/\/$/, ''))) };
+    },
+    exec(seg, inputs) {
+      const cmd = seg.attrs.cmd; if (!cmd) return { error: 'exec needs cmd=' };
+      const volatile = seg.flags.includes('volatile'); const declared = seg.attrs.inputs;
+      if (volatile && declared) return { error: 'exec has both inputs= and volatile' };
+      if (!volatile && !declared) return { error: 'exec declares no inputs= and is not volatile' };
+      let snapshot = null;
+      if (declared) { const files = declared.split(','); for (const f of files) if (!(f in inputs.files)) return { error: 'inputs=' + f + ' matches nothing' }; snapshot = files.map(f => f + '\n' + inputs.files[f]).join('\n'); }
+      let text;
+      if (cmd === 'date') text = '2026-09-02T01:' + String(10 + inputs.clock).padStart(2, '0') + ':00Z';
+      else if (cmd.startsWith('csvlook ')) { const f = cmd.slice(8).trim(); if (!(f in inputs.files)) return { error: 'csvlook: ' + f + ': No such file (exit 1)' }; text = csvTable(inputs.files[f]); }
+      else if (cmd.startsWith('cat ')) { const f = cmd.slice(4).trim(); if (!(f in inputs.files)) return { error: 'cat: ' + f + ': No such file (exit 1)' }; text = inputs.files[f]; }
+      else if (cmd === 'false') return { error: 'command exited 1' };
+      else text = '(pretend output of `' + cmd + '`)';
+      return { snapshot, text };
+    },
+  };
+
+  function csvTable(csv) {
+    const rows = csv.trim().split('\n').map(r => r.split(','));
+    const w = rows[0].map((_, i) => Math.max(...rows.map(r => r[i].length)));
+    const line = r => '| ' + r.map((v, i) => v.padEnd(w[i])).join(' | ') + ' |';
+    return [line(rows[0]), '|' + w.map(x => '-'.repeat(x + 2)).join('|') + '|', ...rows.slice(1).map(line)].join('\n');
+  }
+
+  function drawTree(paths) {
+    const tree = {}; for (const p of paths) { let node = tree; for (const part of p.split('/')) node = node[part] = node[part] || {}; }
+    const out = ['.']; const walk = (node, prefix) => { const keys = Object.keys(node); keys.forEach((k, i) => { const last = i === keys.length - 1; out.push(prefix + (last ? '└── ' : '├── ') + k); walk(node[k], prefix + (last ? '    ' : '│   ')); }); };
+    walk(tree, ''); return out.join('\n');
+  }
+
+  // ---- sinks: raw adds the blank lines CommonMark needs; fence does not.
+  const sinks = {
+    fence(text, seg) { return '```' + (seg.attrs.lang || '') + '\n' + text + '\n```'; },
+    raw(text) { return '\n' + text + '\n'; },
+  };
+  const defaultSink = { tree: 'fence', exec: 'raw' };
+
+  // ---- policies for an edited body (output sum does not match the body). The thing under test.
+  const POLICIES = {
+    refuse: 'Keep the edited body, report it, exit 1. Only run --force regenerates it. cog does this.',
+    warn: 'Regenerate the body, say so loudly, exit 0. The edit is gone but you were told.',
+    overwrite: 'Regenerate the body silently. The tool owns the body; the edit was never valid. Most tools do this.',
+  };
+
+  // ---- render the whole file. Returns text plus a per-region report. Never writes.
+  //   mode: 'run' | 'check'. force: regenerate edited bodies whatever the policy.
+  function render(file, inputs, config, mode, force) {
+    const { segs, errors } = parse(file);
+    if (errors.length) return { text: file, report: errors.map(e => ({ name: '(parse)', status: 'parse', message: e })), exit: 1 };
+    const report = []; const out = [];
+    for (const s of segs) {
+      if (s.type === 'prose') { out.push(s.text); continue; }
+      const loader = loaders[s.loader];
+      const r = loader ? loader(s, inputs) : { error: 'unknown loader "' + s.loader + '"' };
+      const edited = s.out !== null && hash(s.body) !== s.out;
+      let body = s.body, inSum = s.in, outSum = s.out, status, message;
+      if (r.error) { status = 'error'; message = r.error + '. Previous body kept.'; }
+      else {
+        const volatile = r.snapshot === null;
+        const newIn = hash(s.canonical + '\n' + (volatile ? '' : r.snapshot));
+        const sinkName = s.attrs.as || defaultSink[s.loader]; const sink = sinks[sinkName];
+        if (!sink) { status = 'error'; message = 'unknown sink "' + sinkName + '"'; }
+        else {
+          const newBody = sink(r.text, s); const newOut = hash(newBody);
+          const stale = s.in !== newIn; const never = s.in === null;
+          const keep = edited && !force && config.policy === 'refuse';
+          if (keep) { status = 'edited'; message = 'body was edited by hand; kept as is. Run with --force to regenerate, or restore the body.'; }
+          else if (volatile && mode === 'check') { status = 'volatile'; message = 'no declared inputs; check cannot judge it and treats it as fresh' + (edited ? ', though the body was edited by hand' : ''); }
+          else {
+            body = newBody; inSum = newIn; outSum = newOut;
+            if (edited) { status = force ? 'rewritten' : config.policy === 'warn' ? 'rewritten' : (stale ? 'stale' : 'rewritten'); message = force ? 'hand edit discarded (--force)' : config.policy === 'warn' ? 'WARNING: body was edited by hand; the edit is discarded and the body regenerated' : (stale ? 'inputs changed; regenerated (the hand edit went with it, silently)' : 'regenerated silently over a hand edit'); }
+            else if (never) { status = 'new'; message = 'never rendered; first render'; }
+            else if (volatile) { status = 'volatile'; message = 'no declared inputs; re-run every time'; }
+            else if (stale) { status = 'stale'; message = 'inputs or opener changed; regenerated'; }
+            else if (newBody !== s.body) { status = 'rewritten'; message = 'same inputs, different text: the loader read something undeclared'; }
+            else { status = 'fresh'; message = 'inputs unchanged'; }
+          }
+        }
+      }
+      out.push(s.indent + '<!-- ' + s.canonical + ' ' + SUFFIX + ' -->');
+      out.push(body);
+      out.push(s.indent + '<!-- /computed' + (inSum ? ' in=' + inSum + ' out=' + outSum : '') + ' -->');
+      report.push({ name: s.name, status, message, in: inSum, out: outSum });
+    }
+    const bad = { run: ['error', 'edited'], check: ['error', 'edited', 'stale', 'new', 'rewritten'] }[mode];
+    const warned = mode === 'run' && report.some(r => r.message.startsWith('WARNING'));
+    return { text: out.join('\n'), report, exit: report.some(r => bad.includes(r.status)) ? 1 : 0, warned };
+  }
+
+  // ---- state
+  const FILE = [
+    '# Project notes', '',
+    'Hand-written prose stays exactly as typed. The tool only touches region bodies.', '',
+    '## Layout', '',
+    '<!-- computed tree src=. depth=2 name=layout -->',
+    '<!-- /computed -->', '',
+    '## Data files', '',
+    '<!-- computed exec cmd="csvlook data.csv" inputs=data.csv name=data -->',
+    '<!-- /computed -->', '',
+    'Run tests with `cargo test`.',
+  ].join('\n');
+
+  function initialState() {
+    return {
+      file: FILE,                   // CLAUDE.md, the one file
+      seen: null,                   // the file as the tool last wrote it, or read it on check
+      inputs: {
+        tree: ['CLAUDE.md', 'docs/research/note.md', 'src/main.rs', 'src/lib.rs', 'data.csv'],
+        files: { 'data.csv': 'name,count\ndocs,1\nsrc,2' },
+        clock: 0,
+      },
+      config: { policy: 'refuse' },
+      lastReport: null,             // { kind, exit, regions, wrote }
+      log: [],
+      changedLines: [],
+    };
+  }
+
+  const log = (s, msg) => ({ ...s, log: [...s.log, msg] });
+
+  function run(s, force) {
+    const { text, report, exit, warned } = render(s.file, s.inputs, s.config, 'run', force);
+    const kind = force ? 'run --force' : 'run';
+    let n = { ...s, inputs: { ...s.inputs, clock: s.inputs.clock + 1 } };
+    for (const r of report) if (r.status !== 'fresh') n = log(n, kind + ': ' + r.name + ' → ' + r.status + ' (' + r.message + ')');
+    if (report.some(r => r.status === 'parse')) return log({ ...n, lastReport: { kind, exit, regions: report, wrote: false } }, kind + ': parse failed, nothing written, exit 1');
+    if (text === s.file) return log({ ...n, seen: text, lastReport: { kind, exit, regions: report, wrote: false } }, kind + ': file unchanged, write skipped, exit ' + exit);
+    const before = s.file.split('\n'); const after = text.split('\n');
+    const changed = after.map((l, i) => l !== before[i] ? i : -1).filter(i => i >= 0);
+    n = { ...n, file: text, seen: text, changedLines: changed, lastReport: { kind, exit, regions: report, wrote: true } };
+    return log(n, kind + ': wrote CLAUDE.md.tmp, rename(2) over CLAUDE.md (' + changed.length + ' lines changed), exit ' + exit + (warned ? ' with a warning' : ''));
+  }
+
+  function check(s) {
+    const { report, exit } = render(s.file, s.inputs, s.config, 'check', false);
+    let n = { ...s, seen: s.file, changedLines: [] };
+    for (const r of report) if (r.status !== 'fresh') n = log(n, 'check: ' + r.name + ' → ' + r.status + ' (' + r.message + ')');
+    return log({ ...n, lastReport: { kind: 'check', exit, regions: report, wrote: false } }, 'check: ' + (exit ? 'drift found, exit 1' : 'clean, exit 0'));
+  }
+
+  // ---- hand edits, the kind an agent or a person makes in CLAUDE.md
+  function editLines(s, fn, msg) { return log({ ...s, file: fn(s.file), changedLines: [] }, msg); }
+  const edits = {
+    editBody: s => editLines(s, f => f.replace(/(<!-- computed tree[^\n]*-->\n```\n[\s\S]*?)\n```/, '$1\n└── notes-added-by-hand.md\n```'), 'someone added a line inside the layout region body'),
+    editProse: s => editLines(s, f => f.replace('Run tests with `cargo test`.', 'Run tests with `cargo test`.\nAlso run `cargo clippy` before pushing.'), 'someone added a sentence outside any region'),
+    editOpener: s => editLines(s, f => f.replace('depth=2', 'depth=1'), 'someone changed depth=2 to depth=1 in the layout opener'),
+    stripSums: s => editLines(s, f => f.replace(/<!-- \/computed in=[0-9a-f]+ out=[0-9a-f]+ -->/, '<!-- /computed -->'), 'someone deleted both sums from the first closer'),
+    breakCloser: s => editLines(s, f => f.replace(/<!-- \/computed in=([0-9a-f]+) out=[0-9a-f]+ -->/, '<!-- /computed in=$1 -->'), 'someone deleted out= from the first closer, leaving in= alone'),
+    deleteCloser: s => editLines(s, f => f.replace(/\n<!-- \/computed[^\n]*-->/, ''), 'someone deleted the first closer line entirely'),
+    editVolatileBody: s => editLines(s, f => f.replace(/(cmd=date volatile[^\n]*-->\n\n)([^\n]*)/, '$1$2 (edited by hand)'), 'someone edited the date inside the built region body'),
+    addVolatile: s => s.file.includes('cmd=date') ? log(s, 'file already has a date region') : editLines(s, f => f + '\n\n## Built at\n\n<!-- computed exec cmd=date volatile name=built -->\n<!-- /computed -->\n', 'added an `exec cmd=date volatile` region'),
+    addUndeclared: s => s.file.includes('cmd=false') ? log(s, 'already there') : editLines(s, f => f + '\n\n<!-- computed exec cmd=false name=broken -->\n<!-- /computed -->\n', 'added an exec region with neither inputs= nor volatile'),
+  };
+
+  function reduce(s, a) {
+    switch (a.type) {
+      case 'reset': return initialState();
+      case 'run': return run(s, false);
+      case 'force': return run(s, true);
+      case 'check': return check(s);
+      case 'setFile': return s.file === a.text ? s : log({ ...s, file: a.text, changedLines: [] }, 'you saved CLAUDE.md by hand');
+      case 'setPolicy': return log({ ...s, config: { ...s.config, policy: a.policy } }, 'policy set to ' + a.policy);
+      case 'addFile': { const p = 'src/watcher.rs'; if (s.inputs.tree.includes(p)) return log(s, p + ' already exists'); return log({ ...s, inputs: { ...s.inputs, tree: [...s.inputs.tree, p] } }, 'created ' + p); }
+      case 'addRow': return log({ ...s, inputs: { ...s.inputs, files: { ...s.inputs.files, 'data.csv': s.inputs.files['data.csv'] + '\ntests,' + (s.inputs.files['data.csv'].split('\n').length) } } }, 'appended a row to data.csv');
+      default: return edits[a.type] ? edits[a.type](s) : s;
+    }
+  }
+
+  return { initialState, reduce, parse, render, hash, POLICIES };
+})();
+</script>
+
+<!-- ─────────── The page. Throwaway shell over the module above. ─────────── -->
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let state = Computed.initialState();
+  let scenarioIdx = 0, stepIdx = 0;
+
+  const ACTIONS = [
+    ['run', 'Run', 'primary'],
+    ['check', 'Check (CI / pre-commit)', ''],
+    ['force', 'Run with --force', ''],
+    ['editBody', 'Edit inside a region body', ''],
+    ['editProse', 'Edit prose outside regions', ''],
+    ['editOpener', 'Edit the opener (depth 2 → 1)', ''],
+    ['stripSums', 'Delete both sums from a closer', ''],
+    ['breakCloser', 'Delete only out= from a closer', ''],
+    ['deleteCloser', 'Delete a closer line', ''],
+    ['addFile', 'Create src/watcher.rs', ''],
+    ['addRow', 'Append a row to data.csv', ''],
+    ['addVolatile', 'Add an `exec cmd=date volatile` region', ''],
+    ['editVolatileBody', 'Edit inside the volatile region body', ''],
+    ['addUndeclared', 'Add an exec region with no inputs', ''],
+    ['reset', 'Reset everything', ''],
+  ];
+  const label = Object.fromEntries(ACTIONS.map(a => [a[0], a[1]]));
+
+  const SCENARIOS = [
+    { title: 'Someone edits CLAUDE.md by hand', text: 'The old scenario 4, in-place. Run once. An agent adds a line inside the layout body: run refuses under the default policy and exits 1; --force regenerates. Then the agent adds a sentence outside any region: run leaves it alone, because in-place the prose is the template. Switch the policy above and restart to feel the other two answers.', steps: ['run', 'editBody', 'check', 'run', 'force', 'editProse', 'run', 'check'] },
+    { title: 'Compare the three policies', text: 'Same edit, three policies. Run, edit the body, then run. Switch the policy with the buttons above, restart this scenario, and run the same steps. Refuse leaves the edit and exits 1. Warn discards it and tells you. Overwrite discards it and says nothing. Which one do you want an agent to hit at 2am?', steps: ['run', 'editBody', 'run', 'check'] },
+    { title: 'Edit the opener line', text: 'Change depth=2 to depth=1 in the opener. The opener is part of the input sum, so the region reads as stale, not as a hand edit: the opener is the template, and editing it is how you ask for a different tree. No policy applies. Then run and watch the tree shrink.', steps: ['run', 'editOpener', 'check', 'run', 'check'] },
+    { title: 'Edit the closer line', text: 'Three edits to a closer. Delete both sums: the region reads as never rendered and is regenerated, no error. Delete only out=: a one-sum closer is a parse error, nothing is written, exit 1. Delete the whole closer line: the next opener is found inside the body, a nesting error, same. The closer is not a hand-edit question; it is either well-formed or the file is broken.', steps: ['run', 'stripSums', 'check', 'run', 'breakCloser', 'run', 'reset', 'run', 'deleteCloser', 'run'] },
+    { title: 'A hand edit and a real change collide', text: 'Edit the body, then change an input so the region is stale as well as edited. Under refuse the stale data waits behind the hand edit until someone forces. Under overwrite the edit vanishes inside a legitimate re-render and no one notices. Which is worse?', steps: ['run', 'editBody', 'addFile', 'check', 'run', 'force'] },
+    { title: 'Volatile region', text: 'Add a region that runs `date` with the volatile flag. Every run rewrites it, so the output sum changes every time. Check cannot judge it, so it reports it as volatile and passes. Then edit its body by hand and check again: check still passes. Is that acceptable for v0?', steps: ['addVolatile', 'run', 'run', 'check', 'editVolatileBody', 'check'] },
+    { title: 'An exec region with no inputs', text: 'Add an exec region with neither inputs= nor volatile. The loader-set decision made this a hard error: the region can never be fresh, so it must say which it is. The rest of the file still renders; the run exits 1.', steps: ['run', 'addUndeclared', 'run', 'check'] },
+  ];
+
+  function dispatch(type, extra) { state = Computed.reduce(state, { type, ...extra }); if (type === 'reset') stepIdx = 0; render(); }
+  function startScenario(i) { scenarioIdx = i; stepIdx = 0; const policy = state.config.policy; state = Computed.initialState(); state = Computed.reduce(state, { type: 'setPolicy', policy }); render(); }
+  function stepClick(i) { if (i !== stepIdx) return; dispatch(SCENARIOS[scenarioIdx].steps[i]); stepIdx = i + 1; render(); }
+  function esc(s) { return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+  function renderOutput() {
+    if (state.seen === null) { $('output').textContent = '(The tool has not run or checked yet.)'; $('outputMeta').textContent = ''; return; }
+    const lines = state.seen.split('\n');
+    $('output').innerHTML = lines.map((l, i) => { const cls = [/<!--\s*\/?computed/.test(l) ? 'region-line' : '', state.changedLines.includes(i) ? 'changed' : ''].join(' ').trim(); return cls ? '<span class="' + cls + '">' + esc(l) + '</span>' : esc(l); }).join('\n');
+    $('outputMeta').innerHTML = '<small>' + (state.seen === state.file ? 'matches the file' : '<span class="status-stale">the file has been edited since</span>') + '</small>';
+  }
+
+  function renderReport() {
+    const r = state.lastReport; const el = $('report');
+    if (!r) { el.className = 'report'; el.innerHTML = '<small>Nothing has run yet.</small>'; return; }
+    el.className = 'report ' + (r.exit === 0 ? 'ok' : 'bad');
+    let h = '<div><strong>' + r.kind + '</strong> → exit ' + r.exit + (r.kind.startsWith('run') ? (r.wrote ? ' · wrote CLAUDE.md' : ' · write skipped') : '') + '</div>';
+    h += '<dl class="kv" style="margin-top:8px">';
+    for (const g of r.regions) h += '<dt>' + esc(g.name) + '</dt><dd><span class="status-' + g.status + '">' + g.status + '</span> · ' + esc(g.message) + (g.in ? ' <small>in=' + g.in + ' out=' + g.out + '</small>' : '') + '</dd>';
+    h += '</dl>';
+    el.innerHTML = h;
+  }
+
+  function renderLog() { $('log').innerHTML = state.log.length ? state.log.map(l => '<div>' + esc(l) + '</div>').join('') : '<small>Quiet.</small>'; $('log').scrollTop = 1e6; }
+
+  function renderInputs() {
+    const i = state.inputs;
+    $('inputs').innerHTML =
+      '<div><h2>tree · ' + i.tree.length + ' paths</h2><pre>' + esc(i.tree.slice().sort().join('\n')) + '</pre></div>' +
+      Object.entries(i.files).map(([k, v]) => '<div><h2>' + esc(k) + '</h2><pre>' + esc(v) + '</pre></div>').join('') +
+      '<div><h2>clock (for `date`)</h2><pre>run #' + i.clock + '</pre></div>';
+  }
+
+  function renderPolicy() {
+    $('policy').innerHTML = Object.keys(Computed.POLICIES).map(p => '<button class="' + (state.config.policy === p ? 'active' : '') + '" data-policy="' + p + '">' + p + '</button>').join('');
+    $('policyText').textContent = Computed.POLICIES[state.config.policy];
+  }
+
+  function renderScenario() {
+    $('tabs').innerHTML = SCENARIOS.map((s, i) => '<button class="' + (i === scenarioIdx ? 'active' : '') + '" data-tab="' + i + '">' + esc(s.title) + '</button>').join('');
+    const s = SCENARIOS[scenarioIdx];
+    $('scenario').innerHTML = '<div class="scenario"><p>' + esc(s.text) + '</p><div class="btns">' + s.steps.map((st, i) => '<button class="step ' + (i < stepIdx ? 'done' : i === stepIdx ? 'next' : '') + '" data-step="' + i + '">' + (i + 1) + '. ' + esc(label[st]) + '</button>').join('') + '<button data-restart="1">Restart scenario</button></div></div>';
+  }
+
+  function render() {
+    if (document.activeElement !== $('file')) $('file').value = state.file;
+    renderOutput(); renderReport(); renderLog(); renderInputs(); renderPolicy(); renderScenario();
+  }
+
+  $('freeplay').innerHTML = ACTIONS.map(a => '<button class="' + a[2] + '" data-action="' + a[0] + '">' + esc(a[1]) + '</button>').join('');
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.action === 'setFile') return dispatch('setFile', { text: $('file').value });
+    if (b.dataset.action) return dispatch(b.dataset.action);
+    if (b.dataset.policy) return dispatch('setPolicy', { policy: b.dataset.policy });
+    if (b.dataset.tab !== undefined) return startScenario(Number(b.dataset.tab));
+    if (b.dataset.step !== undefined) return stepClick(Number(b.dataset.step));
+    if (b.dataset.restart) return startScenario(scenarioIdx);
+  });
+  render();
+})();
+</script>
+</body>
+</html>

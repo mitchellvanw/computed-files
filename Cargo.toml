@@ -1,0 +1,9 @@
+[package]
+name = "computed-proto"
+version = "0.0.0"
+edition = "2021"
+description = "PROTOTYPE (throwaway) — computed-markdown v1 sketch; the question it answers is in README.md"
+
+[[bin]]
+name = "computed"
+path = "src/main.rs"

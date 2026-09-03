@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Computed Markdown</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style>
+  :root {
+    color-scheme: light dark;
+    --paper: #F3F5F2;
+    --ink: #171D1B;
+    --muted: #5B6763;
+    --rule: #CFD6D2;
+    --band: #E4EEEA;
+    --band-ink: #0B4A45;
+    --accent: #0F6F68;
+    --stale: #B0522B;
+    --stale-band: #F4E4DB;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #10161A;
+      --ink: #E4EAE7;
+      --muted: #97A39E;
+      --rule: #2A353A;
+      --band: #142326;
+      --band-ink: #9ADBD2;
+      --accent: #4ECDC0;
+      --stale: #E08A63;
+      --stale-band: #2E1E17;
+    }
+  }
+  html { background: var(--paper); }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Newsreader", Georgia, "Times New Roman", serif;
+    font-size: 19px;
+    line-height: 1.5;
+    font-feature-settings: "kern", "liga", "onum";
+  }
+  h1, h2, h3 { text-wrap: balance; font-weight: 500; }
+  .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  }
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.82em;
+    background: var(--band); color: var(--band-ink);
+    padding: 0.08em 0.35em; border-radius: 3px;
+  }
+  pre { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 14px; line-height: 1.55; }
+  pre code { background: none; color: inherit; padding: 0; font-size: inherit; }
+
+  /* A computed region, drawn the way the tool would leave it in the file. */
+  .region { border-left: 3px solid var(--accent); background: var(--band); color: var(--band-ink); }
+  .region .marker { color: var(--accent); }
+  .region-out { border-left: 3px solid var(--stale); background: var(--stale-band); color: var(--stale); }
+
+  /* Findings list */
+  .findings li { padding-left: 1.4rem; position: relative; }
+  .findings li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 0.6rem; height: 2px; background: var(--accent); }
+
+  /* Tables */
+  table { border-collapse: collapse; width: 100%; font-size: 16px; }
+  th { text-align: left; font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 500; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 0 12px 8px 0; border-bottom: 1px solid var(--ink); vertical-align: bottom; }
+  td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  td:last-child, th:last-child { padding-right: 0; }
+  tbody tr:last-child td { border-bottom: 1px solid var(--ink); }
+  .yes { color: var(--accent); }
+  .no { color: var(--stale); }
+
+  /* Diagrams */
+  figure svg { max-width: 100%; height: auto; display: block; color: var(--ink); }
+  svg text { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 12px; fill: currentColor; }
+  svg .t-serif { font-family: "Newsreader", Georgia, serif; font-size: 14px; }
+  svg .lbl { font-size: 11px; fill: var(--muted); }
+  svg .box { fill: var(--paper); stroke: currentColor; stroke-width: 1.2; }
+  svg .box-band { fill: var(--band); stroke: var(--accent); stroke-width: 1.2; }
+  svg .box-stale { fill: var(--stale-band); stroke: var(--stale); stroke-width: 1.2; }
+  svg .box-ghost { fill: none; stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 3; }
+  svg .edge { stroke: currentColor; stroke-width: 1.2; fill: none; }
+  svg .edge-accent { stroke: var(--accent); stroke-width: 1.6; fill: none; }
+  svg .edge-stale { stroke: var(--stale); stroke-width: 1.6; fill: none; }
+  svg .edge-dash { stroke-dasharray: 5 4; }
+  svg .accent { fill: var(--accent); }
+  svg .stale { fill: var(--stale); }
+  figcaption { font-size: 15px; color: var(--muted); line-height: 1.45; max-width: 68ch; }
+
+  a { color: var(--accent); text-decoration: underline; text-underline-offset: 0.15em; text-decoration-thickness: 1px; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .prose { max-width: 68ch; }
+  .wide { max-width: 960px; }
+  hr { border: 0; border-top: 1px solid var(--rule); }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+<style type="text/tailwindcss">
+  @theme inline {
+    --color-paper: var(--paper);
+    --color-ink: var(--ink);
+    --color-muted: var(--muted);
+    --color-rule: var(--rule);
+    --color-band: var(--band);
+    --color-accent: var(--accent);
+    --color-stale: var(--stale);
+    --font-serif: "Newsreader", Georgia, serif;
+    --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  }
+</style>
+</head>
+<body class="bg-paper text-ink">
+
+<main class="mx-auto px-6 sm:px-10 py-14 sm:py-20 flex flex-col gap-16" style="max-width:1040px">
+
+  <!-- ───────── Header ───────── -->
+  <header class="flex flex-col gap-6">
+    <p class="eyebrow">Research note · 2026‑09‑02 · 90 primary sources · docs/research/computed-markdown-prior-art.md</p>
+    <h1 class="text-5xl sm:text-6xl leading-[1.05]">Computed Markdown</h1>
+    <p class="prose text-2xl leading-snug">
+      We surveyed about forty tools that put generated content into files, and tested the symlink layout in a scratch repository.
+      The template model holds up. The symlink does not, and we can say exactly where it fails.
+    </p>
+    <nav aria-label="Sections" class="flex flex-wrap gap-x-5 gap-y-2 mono text-sm pt-2">
+      <a href="#idea">Why compute it</a>
+      <a href="#landscape">What exists</a>
+      <a href="#symlink">The symlink</a>
+      <a href="#fresh">Freshness</a>
+      <a href="#borrow">What to take</a>
+      <a href="#renderers">Renderers</a>
+      <a href="#beyond">Other formats</a>
+      <a href="#decisions">What is left</a>
+    </nav>
+  </header>
+
+  <!-- ───────── Findings ───────── -->
+  <section class="prose flex flex-col gap-5">
+    <p class="eyebrow">What we found</p>
+    <ul class="findings flex flex-col gap-3">
+      <li><strong>Rewriting a marked region in place is solved.</strong> cog, mdsh, markdown‑magic, doctoc and terraform‑docs all do it, and markdown‑magic already ships the folder‑tree case as a transform called <code>fileTree</code>.</li>
+      <li><strong>Nobody ships a watcher that rewrites the file it watches.</strong> Every rewriter runs on demand with a check mode for CI. Every live system writes to a separate file.</li>
+      <li><strong>A symlink at the canonical path leaves a fresh clone with a dangling file.</strong> Git stores the link as a 20‑byte blob holding the link text. If the target is ignored, there is nothing behind it.</li>
+      <li><strong>A hardlink fails on the first atomic publish.</strong> After one <code>rename(2)</code> in our scratch repository, the symlink read the new content and the hardlink still read the old.</li>
+      <li><strong>Freshness has to hash the inputs' content.</strong> An mtime chain or a hash of the generator both miss a new file appearing in the tree, because nothing in the template changed.</li>
+      <li><strong>The link problem is a git and GitHub problem, not a Claude Code problem.</strong> Claude Code follows symlinks and strips block‑level HTML comments before injecting <code>CLAUDE.md</code>, so markers cost no tokens.</li>
+    </ul>
+    <p>
+      This page walks the sketch's components in order: why compute at all, what already exists, whether the canonical file should be a link,
+      how to stay fresh without a feedback loop, what to take from the prior art, which renderers do the work, whether any of this survives outside markdown,
+      and what is left to decide. The companion note carries the citations. We claim nothing here that is not sourced there.
+    </p>
+  </section>
+
+  <!-- ───────── 1. The idea ───────── -->
+  <section id="idea" class="flex flex-col gap-8">
+    <div class="prose flex flex-col gap-4">
+      <p class="eyebrow">1</p>
+      <h2 class="text-3xl">Why compute it instead of asking the agent?</h2>
+      <p>
+        The case that started this is the folder tree in a <code>CLAUDE.md</code>. It is wrong the moment someone adds a file.
+        An agent can be told to fix it, but that spends tokens on every run and still depends on the agent noticing.
+        A computational fix has four parts: a <em>data source</em> (a directory, a CSV, a SQL query, a shell command),
+        a <em>renderer</em> or sink (a markdown table, a fenced block, a mermaid diagram as text or as an image),
+        a <em>watcher</em> that notices when the template or the data changes, and a <em>layout</em> that decides where the rendered file lives.
+      </p>
+      <p>
+        The template is hand‑written prose plus markers that say where computed content goes and what produces it.
+        A process materialises a rendered file from it. In the original sketch, the canonical path is then a symlink to that rendered file.
+        Section 3 is about that last step.
+      </p>
+      <p>
+        This may look like a lot of machinery for a folder tree. It is, and the folder tree is only the first case.
+        The same shape covers a row count from a database, a table from a CSV, or a diagram that should follow the code.
+        What the cases share is that the truth lives somewhere else and the document is a view of it.
+      </p>
+    </div>
+
+    <figure class="wide flex flex-col gap-3">
+      <svg viewBox="0 0 960 330" role="img" aria-label="Template with a marked region flows into a renderer that runs a loader and a sink, then writes the rendered file to the canonical path by temp file and rename. Declared inputs feed the renderer separately.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+          <marker id="ar-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+          </marker>
+          <marker id="ar-stale" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--stale)"/>
+          </marker>
+        </defs>
+
+        <!-- Template -->
+        <rect x="20" y="40" width="250" height="190" rx="3" class="box"/>
+        <text x="32" y="62" style="font-weight:500">CLAUDE.md.tmpl</text>
+        <text x="32" y="80" class="lbl">hand‑written, committed</text>
+        <text x="32" y="106" class="t-serif">## Layout</text>
+        <text x="32" y="124" class="t-serif">This repo is organised as …</text>
+        <rect x="26" y="136" width="238" height="52" rx="2" class="box-band"/>
+        <text x="32" y="153" style="fill:var(--accent)">&lt;!-- computed tree src=. --&gt;</text>
+        <text x="32" y="171" class="lbl">(region body is replaced)</text>
+        <text x="32" y="183" style="fill:var(--accent)">&lt;!-- /computed --&gt;</text>
+        <text x="32" y="212" class="t-serif">Run tests with …</text>
+
+        <!-- Inputs -->
+        <rect x="20" y="260" width="250" height="50" rx="3" class="box-ghost"/>
+        <text x="32" y="280" style="font-weight:500">declared inputs</text>
+        <text x="32" y="298" class="lbl">./src tree · data.csv · app.db</text>
+
+        <!-- Renderer -->
+        <rect x="370" y="40" width="240" height="270" rx="3" class="box"/>
+        <text x="382" y="62" style="font-weight:500">renderer</text>
+        <text x="382" y="80" class="lbl">single‑flight per file</text>
+        <rect x="382" y="96" width="216" height="80" rx="2" class="box-ghost"/>
+        <text x="392" y="114" class="lbl">loader → text on stdout</text>
+        <text x="392" y="134">tree · csv · json · sql</text>
+        <text x="392" y="152">sh (behind a trust switch)</text>
+        <rect x="382" y="190" width="216" height="80" rx="2" class="box-ghost"/>
+        <text x="392" y="208" class="lbl">sink → text for the region</text>
+        <text x="392" y="228">table · fence · raw</text>
+        <text x="392" y="246">image (mmdc, d2, dot)</text>
+        <text x="382" y="296" class="lbl">sum = hash(generator, inputs)</text>
+
+        <!-- Output -->
+        <rect x="710" y="40" width="230" height="190" rx="3" class="box-band"/>
+        <text x="722" y="62" style="font-weight:500">CLAUDE.md</text>
+        <text x="722" y="80" class="lbl">rendered, at the canonical path</text>
+        <text x="722" y="104" class="lbl">&lt;!-- generated: do not edit --&gt;</text>
+        <text x="722" y="126" class="t-serif">## Layout</text>
+        <text x="722" y="150">├── docs/</text>
+        <text x="722" y="166">│   └── research/</text>
+        <text x="722" y="182">└── src/</text>
+        <text x="722" y="206" style="fill:var(--accent);font-size:11px">&lt;!-- /computed sum=431d9ca1 --&gt;</text>
+
+        <!-- Edges -->
+        <path d="M270,120 L368,120" class="edge" marker-end="url(#ar)"/>
+        <text x="319" y="112" text-anchor="middle" class="lbl">watches</text>
+        <path d="M270,285 L330,285 L330,240 L368,240" class="edge" marker-end="url(#ar)"/>
+        <text x="300" y="277" text-anchor="middle" class="lbl">hashes</text>
+        <path d="M610,120 L708,120" class="edge-accent" marker-end="url(#ar-accent)"/>
+        <text x="659" y="112" text-anchor="middle" class="lbl">rename(2)</text>
+        <text x="659" y="140" text-anchor="middle" class="lbl">skip if same</text>
+      </svg>
+      <figcaption>The pipeline we recommend. The template is never rewritten. The rendered file is written atomically at the path everyone reads, and the closing marker records the hash it was computed from.</figcaption>
+    </figure>
+
+    <div class="prose flex flex-col gap-4">
+      <p>
+        Here is what a region looks like after the tool has passed through it. The tree is this repository's, computed while we wrote the page, and the sum is a hash of it.
+        The markers are HTML comments. GitHub does not render them, prettier leaves them alone inside its range‑ignore, and Claude Code strips them before injection.
+      </p>
+    </div>
+    <pre class="region wide px-5 py-4 overflow-x-auto rounded-sm"><code><span class="marker">&lt;!-- computed tree src=. depth=3 gitignore --&gt;</span>
+.
+└── docs
+    └── research
+        ├── computed-markdown-prior-art.md
+        └── computed-markdown.html
+<span class="marker">&lt;!-- /computed sum=431d9ca1 --&gt;</span></code></pre>
+  </section>
+
+  <!-- ───────── 2. Landscape ───────── -->
+  <section id="landscape" class="flex flex-col gap-8">
+    <div class="prose flex flex-col gap-4">
+      <p class="eyebrow">2</p>
+      <h2 class="text-3xl">What did people already build?</h2>
+      <p>
+        Two questions sort every tool we found. Where does the output live, in the same file as the source or in a separate one?
+        And when does the tool run: on demand, at render time, or continuously? Every markdown rewriter lands in one cell, same file and on demand.
+        Every live system lands in the opposite corner. One cell is empty, and it is the cell the original sketch was aiming at.
+        We think the cause is the self‑write loop covered in section 4, not a lack of interest.
+      </p>
+    </div>
+
+    <figure class="wide flex flex-col gap-3">
+      <svg viewBox="0 0 960 440" role="img" aria-label="A two by three grid. Columns: output in the same file, output in a separate file. Rows: continuously on change, at render time or on evaluation, on demand or in CI. Tools placed in each cell. The proposed tool sits in the separate-file, continuous cell and is highlighted.">
+        <text x="290" y="24" text-anchor="middle" style="font-weight:500">output lives in the same file</text>
+        <text x="690" y="24" text-anchor="middle" style="font-weight:500">output is a separate file</text>
+        <text x="80" y="110" text-anchor="end" class="lbl">continuous /</text>
+        <text x="80" y="124" text-anchor="end" class="lbl">on change</text>
+        <text x="80" y="238" text-anchor="end" class="lbl">at render time /</text>
+        <text x="80" y="252" text-anchor="end" class="lbl">on evaluation</text>
+        <text x="80" y="366" text-anchor="end" class="lbl">on demand /</text>
+        <text x="80" y="380" text-anchor="end" class="lbl">pre‑commit / CI</text>
+
+        <rect x="96" y="40" width="392" height="126" rx="3" class="box-ghost"/>
+        <text x="110" y="64" class="lbl">nothing shipped here</text>
+        <text x="110" y="84" class="t-serif">A watcher that rewrites the file it watches</text>
+        <text x="110" y="102" class="t-serif">has to break its own feedback loop (§4).</text>
+        <text x="110" y="120" class="t-serif">org‑babel comes closest, but only on a keypress.</text>
+
+        <rect x="496" y="40" width="392" height="126" rx="3" class="box"/>
+        <text x="510" y="64">Observable Framework  ·  quarto preview</text>
+        <text x="510" y="82">d2 --watch  ·  marimo  ·  Dataview (live view)</text>
+        <rect x="510" y="98" width="364" height="56" rx="2" class="box-band"/>
+        <circle cx="524" cy="118" r="5" class="accent"/>
+        <text x="536" y="122" style="font-weight:500">computed markdown (proposed)</text>
+        <text x="536" y="142" class="lbl">template → canonical path · watch + check mode</text>
+
+        <rect x="96" y="176" width="392" height="126" rx="3" class="box"/>
+        <text x="110" y="200">org‑babel  #+RESULTS:  (replace, SHA1 :cache)</text>
+        <text x="110" y="218">nbconvert --execute --inplace</text>
+        <text x="110" y="246" class="lbl">evaluate a block, write the result back below it</text>
+        <text x="110" y="262" class="lbl">in the same file; the closest analogue of a</text>
+        <text x="110" y="278" class="lbl">computed region</text>
+
+        <rect x="496" y="176" width="392" height="126" rx="3" class="box"/>
+        <text x="510" y="200">mdBook {{#include}}  ·  pandoc filters</text>
+        <text x="510" y="218">remark-code-import  ·  MyST {include}</text>
+        <text x="510" y="236">rehype (HTML)  ·  quarto {{&lt; include &gt;}}</text>
+        <text x="510" y="264" class="lbl">source never touched; needs a renderer in the</text>
+        <text x="510" y="280" class="lbl">read path, which CLAUDE.md does not have</text>
+
+        <rect x="96" y="312" width="392" height="126" rx="3" class="box"/>
+        <text x="110" y="336">cog  ·  mdsh  ·  markdown-magic  ·  embedme</text>
+        <text x="110" y="354">doctoc  ·  markdown-toc  ·  terraform-docs</text>
+        <text x="110" y="372">all-contributors</text>
+        <text x="110" y="400" class="lbl">rewrite between comment markers; every one</text>
+        <text x="110" y="416" class="lbl">has --check / --frozen / --verify for CI</text>
+
+        <rect x="496" y="312" width="392" height="126" rx="3" class="box"/>
+        <text x="510" y="336">gomplate  ·  j2cli  ·  envsubst</text>
+        <text x="510" y="354">Style Dictionary  ·  mmdc (markdown mode)</text>
+        <text x="510" y="382" class="lbl">template in, file out; gomplate's MIME‑typed</text>
+        <text x="510" y="398" class="lbl">datasources are a reusable input model</text>
+      </svg>
+      <figcaption>The proposed tool is a hybrid. It takes the template‑to‑file model from the bottom right and the watch mode from the top right, and borrows its marker grammar and check mode from the bottom left.</figcaption>
+    </figure>
+
+    <div class="prose flex flex-col gap-4">
+      <p>Four tools we would read in full before writing a line:</p>
+      <ul class="flex flex-col gap-3 list-disc pl-5">
+        <li><strong>cog</strong> works on any text file. Its markers match anywhere on a line, so <code>//[[[cog</code> and <code>/* [[[cog */</code> both work, and with <code>-c</code> the closer becomes <code>[[[end]]] (sum: …)</code>. Hand‑edited output fails the next run with "Output has been edited!"</li>
+        <li><strong>markdown‑magic</strong> already ships a <code>fileTree</code> transform. That is the motivating case, done, in a tool with a 2026 commit.</li>
+        <li><strong>org‑babel</strong> has all three ingredients together: source expression next to output, output written back into the file, and a SHA1 that skips work. It has no daemon, and it hashes only the block text, not the files the block reads.</li>
+        <li><strong>Observable Framework</strong> data loaders separate the reference, the producer and the freshness rule. Section 5 draws the mechanism.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ───────── 3. Symlink ───────── -->
+  <section id="symlink" class="flex flex-col gap-8">
+    <div class="prose flex flex-col gap-4">
+      <p class="eyebrow">3</p>
+      <h2 class="text-3xl">Should the canonical file be a symlink?</h2>
+      <p>
+        The case for the link is real. Nix's <code>result</code> link, home‑manager generations, Stow and Bazel's convenience links all use the same shape:
+        the link is the handle people touch, each target is immutable, and publishing a new version means re‑pointing the link.
+        That gives atomic swaps and a clean line between what is edited and what is generated. We went in expecting to keep it.
+      </p>
+      <p>
+        None of those tools put the link at a path that other tooling treats as source. A <code>CLAUDE.md</code> is exactly such a path, and that is where it comes apart.
+      </p>
+    </div>
+
+    <figure class="wide flex flex-col gap-3">
+      <svg viewBox="0 0 960 400" role="img" aria-label="Three layouts compared by what the repository stores and what a fresh clone gets. Symlink to a gitignored build directory yields a dangling link on clone. Copy mode yields a working regular file. The at-import sidecar works in Claude Code only.">
+        <text x="20" y="24" style="font-weight:500">A · symlink → gitignored build dir</text>
+        <text x="340" y="24" style="font-weight:500">B · copy mode</text>
+        <text x="660" y="24" style="font-weight:500">C · @import sidecar</text>
+        <text x="20" y="42" class="lbl">the original sketch</text>
+        <text x="340" y="42" class="lbl">what we recommend</text>
+        <text x="660" y="42" class="lbl">Claude Code only</text>
+
+        <text x="20" y="72" class="lbl">what git stores</text>
+        <rect x="20" y="80" width="300" height="120" rx="3" class="box"/>
+        <text x="32" y="102">CLAUDE.md.tmpl</text>
+        <text x="32" y="122">CLAUDE.md</text>
+        <text x="130" y="122" class="lbl">mode 120000, 20 bytes:</text>
+        <text x="130" y="136" class="lbl">".computed/CLAUDE.md"</text>
+        <text x="32" y="160" class="lbl">.computed/CLAUDE.md</text>
+        <text x="32" y="176" class="lbl">↳ in .gitignore, not stored</text>
+
+        <text x="340" y="72" class="lbl">what git stores</text>
+        <rect x="340" y="80" width="300" height="120" rx="3" class="box"/>
+        <text x="352" y="102">CLAUDE.md.tmpl</text>
+        <text x="352" y="122">CLAUDE.md</text>
+        <text x="450" y="122" class="lbl">mode 100644, regular file</text>
+        <text x="450" y="136" class="lbl">line 1: generated banner</text>
+        <text x="450" y="150" class="lbl">closer: sum for check</text>
+        <text x="352" y="176" class="lbl">rendered content visible in every diff</text>
+
+        <text x="660" y="72" class="lbl">what git stores</text>
+        <rect x="660" y="80" width="280" height="120" rx="3" class="box"/>
+        <text x="672" y="102">CLAUDE.md</text>
+        <text x="760" y="102" class="lbl">hand‑written, contains</text>
+        <text x="760" y="116" class="lbl">@.computed/tree.md</text>
+        <text x="672" y="142">.computed/tree.md</text>
+        <text x="672" y="158" class="lbl">committed, rendered per region</text>
+        <text x="672" y="176" class="lbl">loaded at launch, four‑hop limit</text>
+
+        <path d="M170,200 L170,238" class="edge" marker-end="url(#ar)"/>
+        <text x="180" y="224" class="lbl">git clone</text>
+        <path d="M490,200 L490,238" class="edge" marker-end="url(#ar)"/>
+        <text x="500" y="224" class="lbl">git clone</text>
+        <path d="M800,200 L800,238" class="edge" marker-end="url(#ar)"/>
+        <text x="810" y="224" class="lbl">git clone</text>
+
+        <text x="20" y="252" class="lbl">what a fresh clone gets</text>
+        <rect x="20" y="260" width="300" height="130" rx="3" class="box-stale"/>
+        <text x="32" y="282">CLAUDE.md</text>
+        <path d="M118,278 L170,278" class="edge-stale edge-dash" marker-end="url(#ar-stale)"/>
+        <text x="178" y="282" style="fill:var(--stale)">dangling</text>
+        <text x="32" y="308" class="lbl">Claude Code, CI, collaborators: nothing</text>
+        <text x="32" y="324" class="lbl">GitHub: shows the link text</text>
+        <text x="32" y="340" class="lbl">Windows core.symlinks=false: a text file</text>
+        <text x="32" y="356" class="lbl">holding ".computed/CLAUDE.md"</text>
+        <text x="32" y="378" class="lbl">fix: post‑checkout hook runs the renderer</text>
+
+        <text x="340" y="252" class="lbl">what a fresh clone gets</text>
+        <rect x="340" y="260" width="300" height="130" rx="3" class="box-band"/>
+        <text x="352" y="282">CLAUDE.md</text>
+        <text x="450" y="282" style="fill:var(--accent)">reads as written</text>
+        <text x="352" y="308" class="lbl">Claude Code, GitHub, CI, Windows, editors:</text>
+        <text x="352" y="324" class="lbl">all see a normal file</text>
+        <text x="352" y="348" class="lbl">"is this generated?" comes from the banner</text>
+        <text x="352" y="364" class="lbl">and from `check` failing in CI</text>
+
+        <text x="660" y="252" class="lbl">what a fresh clone gets</text>
+        <rect x="660" y="260" width="280" height="130" rx="3" class="box"/>
+        <text x="672" y="282">CLAUDE.md</text>
+        <text x="760" y="282" style="fill:var(--accent)">Claude Code resolves it</text>
+        <text x="672" y="308" class="lbl">GitHub and every other reader show the</text>
+        <text x="672" y="324" class="lbl">literal "@.computed/tree.md"</text>
+        <text x="672" y="348" class="lbl">per‑region granularity without rewriting</text>
+        <text x="672" y="364" class="lbl">the hand‑written file</text>
+      </svg>
+      <figcaption>Git stores a symlink as a blob containing the link text. If the target is ignored, the clone is dangling until someone runs the renderer. If the target is committed, the link carries no information the committed output does not.</figcaption>
+    </figure>
+
+    <div class="prose flex flex-col gap-4">
+      <p>
+        There are five places the rendered file can go, and each fails in its own way.
+        A symlink to an ignored build directory gives a fresh clone a dangling link, shows GitHub the link text, and on Windows with <code>core.symlinks</code> off checks out as a text file containing the path.
+        A symlink to a committed target resolves everywhere, but the repository now holds template, output and link, and the link says nothing the committed output does not.
+        A hardlink breaks on the first publish, for the reason drawn below.
+        Claude Code's <code>@import</code> gives per‑region granularity with no rewriting, and only Claude Code understands it.
+        Or write the rendered file at the canonical path and commit it.
+      </p>
+      <p>
+        That last one is what gomplate, quarto, mermaid‑cli and Style Dictionary do. It is the one we recommend.
+      </p>
+      <p>
+        A hardlink looks like the escape hatch and is not. Atomic publish means writing a temp file and calling <code>rename(2)</code>, which swaps the directory entry and leaves the inode behind.
+        A hardlink is a second name for the inode, and the inode we care about has just been abandoned. We checked this rather than trust the reasoning: after one publish in a scratch repository, the symlink read the new content and the hardlink still read the old.
+      </p>
+    </div>
+
+    <figure class="wide flex flex-col gap-3">
+      <svg viewBox="0 0 960 300" role="img" aria-label="Before a publish, a hardlink and the build path both point at inode 41. After the renderer writes inode 57 and renames it over the build path, the build path and a symlink resolve to inode 57 while the hardlink still points at inode 41.">
+        <text x="20" y="24" style="font-weight:500">before publish</text>
+        <text x="500" y="24" style="font-weight:500">after   rename(".computed/CLAUDE.md.tmp", ".computed/CLAUDE.md")</text>
+
+        <rect x="20" y="60" width="190" height="34" rx="3" class="box"/>
+        <text x="32" y="82">CLAUDE.md</text>
+        <text x="120" y="82" class="lbl">hardlink</text>
+        <rect x="20" y="120" width="190" height="34" rx="3" class="box"/>
+        <text x="32" y="142">.computed/CLAUDE.md</text>
+        <rect x="300" y="80" width="130" height="54" rx="27" class="box"/>
+        <text x="365" y="103" text-anchor="middle">inode 41</text>
+        <text x="365" y="121" text-anchor="middle" class="lbl"># rendered</text>
+        <path d="M210,77 L298,100" class="edge" marker-end="url(#ar)"/>
+        <path d="M210,137 L298,112" class="edge" marker-end="url(#ar)"/>
+
+        <rect x="500" y="60" width="190" height="34" rx="3" class="box-stale"/>
+        <text x="512" y="82">CLAUDE.md</text>
+        <text x="600" y="82" class="lbl">hardlink</text>
+        <rect x="500" y="120" width="190" height="34" rx="3" class="box"/>
+        <text x="512" y="142">.computed/CLAUDE.md</text>
+        <rect x="500" y="180" width="190" height="34" rx="3" class="box-band"/>
+        <text x="512" y="202">CLAUDE.md</text>
+        <text x="600" y="202" class="lbl">symlink (path)</text>
+        <rect x="780" y="50" width="130" height="54" rx="27" class="box-stale"/>
+        <text x="845" y="73" text-anchor="middle">inode 41</text>
+        <text x="845" y="91" text-anchor="middle" class="lbl"># rendered</text>
+        <rect x="780" y="150" width="130" height="54" rx="27" class="box-band"/>
+        <text x="845" y="173" text-anchor="middle">inode 57</text>
+        <text x="845" y="191" text-anchor="middle" class="lbl"># v2</text>
+        <path d="M690,77 L778,77" class="edge-stale" marker-end="url(#ar-stale)"/>
+        <text x="734" y="70" text-anchor="middle" class="lbl">stale</text>
+        <path d="M690,137 L778,170" class="edge" marker-end="url(#ar)"/>
+        <path d="M690,197 L740,197 L740,137 L690,137" class="edge-accent edge-dash" marker-end="url(#ar-accent)"/>
+        <text x="600" y="244" class="lbl">the symlink resolves by path, so it follows the rename;</text>
+        <text x="600" y="260" class="lbl">the hardlink is a second name for the orphaned inode</text>
+        <text x="20" y="244" class="lbl">two directory entries, one inode:</text>
+        <text x="20" y="260" class="lbl">both names read "# rendered"</text>
+      </svg>
+      <figcaption>Why a hardlink cannot stand in for the symlink. rename(2) replaces the name, not the inode, and git does not represent hardlinks at all.</figcaption>
+    </figure>
+
+    <div class="wide flex flex-col gap-3 overflow-x-auto">
+      <p class="eyebrow">Who follows the link</p>
+      <table>
+        <thead><tr><th>Reader</th><th>Symlink, target ignored</th><th>Symlink, target committed</th><th>Copy mode</th><th>@import sidecar</th></tr></thead>
+        <tbody>
+          <tr><td>Claude Code</td><td class="yes">follows it (docs endorse <span class="mono">ln -s AGENTS.md CLAUDE.md</span>)</td><td class="yes">follows it</td><td class="yes">plain file</td><td class="yes">resolves at launch, 4 hops</td></tr>
+          <tr><td>GitHub</td><td class="no">shows the link text</td><td class="yes">resolves via contents API</td><td class="yes">renders</td><td class="no">shows the literal @path</td></tr>
+          <tr><td>Fresh clone</td><td class="no">dangling until rendered</td><td class="yes">works</td><td class="yes">works</td><td class="yes">works</td></tr>
+          <tr><td>Windows</td><td class="no">needs privileges; text file if core.symlinks=false</td><td class="no">same</td><td class="yes">no issue</td><td class="yes">no issue</td></tr>
+          <tr><td>Editor save</td><td class="no">rename‑replace detaches the link</td><td class="no">same</td><td>overwritten on next render</td><td class="yes">hand‑written file, safe</td></tr>
+          <tr><td>inotify watch on the path</td><td class="no">attaches to the inode; goes silent after a publish</td><td class="no">same</td><td>watch the directory instead</td><td class="yes">stable file</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="prose flex flex-col gap-4">
+      <p>
+        So: keep template → render and drop the link. Write the rendered file at the canonical path via temp file and <code>rename(2)</code>, commit it,
+        put a generated‑from banner on line one, and ship a <code>check</code> command that fails CI on drift. This is the original sketch minus one step.
+      </p>
+      <p>
+        We would keep the symlink layout as a per‑file opt‑in for outputs that really are local build products: large trees, secrets, per‑machine data.
+        There, make the target read‑only so an editor's rename‑on‑save fails loudly instead of detaching the link, and add a post‑checkout hook so clones are not dangling.
+      </p>
+      <p>
+        What this does not settle is whether rendered output belongs in every diff. In copy mode it does. If that noise costs more than clone‑and‑go is worth,
+        symlink mode is the honest choice, and the price is the hook.
+      </p>
+    </div>
+  </section>
+
+  <!-- ───────── 4. Freshness ───────── -->
+  <section id="fresh" class="flex flex-col gap-8">
+    <div class="prose flex flex-col gap-4">
+      <p class="eyebrow">4</p>
+      <h2 class="text-3xl">How does the file stay fresh without waking itself up?</h2>
+      <p>
+        Three freshness rules show up in the sources. An mtime chain, as in make, ninja and Observable. A hash of the generator text, as in org‑babel.
+        A hash of the inputs' content, as in knitr's <code>cache.extra</code> and redo‑stamp. Only the third is right for "the folder changed".
+        When a file appears, neither the template nor the marker changes, so the first two rules see nothing.
+        This is the one place where the most popular tools are wrong for our case. Hash the generator expression plus the content of every declared input, and store the result in the closing marker.
+      </p>
+      <p>
+        The loop is a separate problem. A daemon that writes what it watches wakes itself up. No single tool solves this, but four of them each solve a piece, and the pieces compose.
+      </p>
+    </div>
+
+    <figure class="wide flex flex-col gap-3">
+      <svg viewBox="0 0 960 250" role="img" aria-label="Event chain: a directory event passes a settle window and an own-write guard, triggers a single-flight render, is compared to the last written content, and either skips the write or writes a temp file and renames it. The rename fires a new event that the own-write guard drops.">
+        <rect x="20" y="60" width="140" height="56" rx="3" class="box"/>
+        <text x="90" y="84" text-anchor="middle">directory event</text>
+        <text x="90" y="100" text-anchor="middle" class="lbl">not the inode</text>
+
+        <rect x="200" y="60" width="130" height="56" rx="3" class="box"/>
+        <text x="265" y="84" text-anchor="middle">settle</text>
+        <text x="265" y="100" text-anchor="middle" class="lbl">20–50 ms</text>
+
+        <rect x="370" y="60" width="150" height="56" rx="3" class="box-band"/>
+        <text x="445" y="84" text-anchor="middle">own write?</text>
+        <text x="445" y="100" text-anchor="middle" class="lbl">hash == last written</text>
+
+        <rect x="560" y="60" width="140" height="56" rx="3" class="box"/>
+        <text x="630" y="84" text-anchor="middle">render</text>
+        <text x="630" y="100" text-anchor="middle" class="lbl">single‑flight</text>
+
+        <rect x="740" y="60" width="200" height="56" rx="3" class="box"/>
+        <text x="840" y="84" text-anchor="middle">content unchanged?</text>
+        <text x="840" y="100" text-anchor="middle" class="lbl">restat · redo‑stamp</text>
+
+        <path d="M160,88 L198,88" class="edge" marker-end="url(#ar)"/>
+        <path d="M330,88 L368,88" class="edge" marker-end="url(#ar)"/>
+        <path d="M520,88 L558,88" class="edge" marker-end="url(#ar)"/>
+        <text x="539" y="80" text-anchor="middle" class="lbl">no</text>
+        <path d="M700,88 L738,88" class="edge" marker-end="url(#ar)"/>
+
+        <path d="M840,116 L840,160" class="edge" marker-end="url(#ar)"/>
+        <text x="850" y="142" class="lbl">yes</text>
+        <rect x="740" y="162" width="200" height="44" rx="3" class="box-ghost"/>
+        <text x="840" y="188" text-anchor="middle" class="lbl">skip write · mtime untouched</text>
+
+        <path d="M740,100 L720,100 L720,184 L700,184" class="edge" marker-end="url(#ar)"/>
+        <text x="712" y="150" text-anchor="end" class="lbl">no</text>
+        <rect x="560" y="162" width="140" height="44" rx="3" class="box-band"/>
+        <text x="630" y="180" text-anchor="middle">write temp file</text>
+        <text x="630" y="196" text-anchor="middle" class="lbl">rename(2) over target</text>
+
+        <path d="M560,184 L90,184 L90,118" class="edge-stale edge-dash" marker-end="url(#ar-stale)"/>
+        <text x="325" y="176" text-anchor="middle" class="lbl" style="fill:var(--stale)">the rename fires a new event</text>
+
+        <path d="M445,116 L445,150" class="edge-accent" marker-end="url(#ar-accent)"/>
+        <text x="455" y="138" class="lbl">yes</text>
+        <text x="445" y="168" text-anchor="middle" style="fill:var(--accent)">drop</text>
+        <text x="445" y="228" text-anchor="middle" class="lbl">record the hash of every write; ignore the next event whose content matches it</text>
+      </svg>
+      <figcaption>Where the loop is cut. Watch the directory, because editors rename‑replace and an inode watch goes silent. Settle events. Run one render at a time. Skip identical output so mtime stays put. Publish with rename and remember your own hash so the echo is dropped.</figcaption>
+    </figure>
+
+    <div class="prose flex flex-col gap-4">
+      <p>
+        Each piece is lifted from something that ships. redo hands every script a temp path and renames it into place only on exit zero.
+        ninja's <code>restat</code> and redo‑stamp treat an unchanged output as never having needed a rebuild. watchman runs one instance of a trigger at a time,
+        in its own words "to avoid fork‑bomb style behavior in cases where your trigger also modifies files", with a 20 ms settle.
+        chokidar's <code>atomic</code> option exists because editors delete and re‑add on save. notify's documentation says the same in plainer words.
+      </p>
+      <p>
+        A watcher is a convenience, not the foundation. cog, mdsh, embedme and markdown‑magic all rest on a no‑diff assertion in CI or pre‑commit, and none of them has a daemon.
+        Ship <code>run</code>, <code>check</code>, <code>clean</code> and <code>watch</code>, and build the last three on the first two.
+      </p>
+    </div>
+  </section>
+
+  <!-- ───────── 5. Borrow ───────── -->
+  <section id="borrow" class="flex flex-col gap-8">
+    <div class="prose flex flex-col gap-4">
+      <p class="eyebrow">5</p>
+      <h2 class="text-3xl">What should we take from the prior art?</h2>
+      <p>
+        Observable Framework never rewrites markdown. A page names a file. If the file does not exist, a loader with a double extension is found by naming convention, run, and its stdout is cached.
+        The cache is fresh while its mtime is newer than the loader's. Three things the sketch bundles are held apart: the reference, the producer, and the freshness rule.
+        We would take the first two and replace the third.
+      </p>
+    </div>
+
+    <figure class="wide flex flex-col gap-3">
+      <svg viewBox="0 0 960 210" role="img" aria-label="A page references tree.md. The file is missing, so the framework looks for tree.md with a language double extension, runs the first match, captures stdout into a cache, and considers the cache fresh while its mtime is newer than the loader's.">
+        <rect x="20" y="40" width="190" height="56" rx="3" class="box"/>
+        <text x="115" y="64" text-anchor="middle">FileAttachment("tree.md")</text>
+        <text x="115" y="82" text-anchor="middle" class="lbl">page names a file</text>
+
+        <rect x="260" y="40" width="220" height="56" rx="3" class="box"/>
+        <text x="370" y="64" text-anchor="middle">tree.md.{js,ts,py,R,sh,exe}</text>
+        <text x="370" y="82" text-anchor="middle" class="lbl">first match wins</text>
+
+        <rect x="530" y="40" width="160" height="56" rx="3" class="box"/>
+        <text x="610" y="64" text-anchor="middle">run · capture stdout</text>
+        <text x="610" y="82" text-anchor="middle" class="lbl">interpreter by extension</text>
+
+        <rect x="740" y="40" width="200" height="56" rx="3" class="box-band"/>
+        <text x="840" y="64" text-anchor="middle">.observablehq/cache/tree.md</text>
+        <text x="840" y="82" text-anchor="middle" class="lbl">served as the file</text>
+
+        <path d="M210,68 L258,68" class="edge" marker-end="url(#ar)"/>
+        <text x="234" y="60" text-anchor="middle" class="lbl">missing</text>
+        <path d="M480,68 L528,68" class="edge" marker-end="url(#ar)"/>
+        <path d="M690,68 L738,68" class="edge" marker-end="url(#ar)"/>
+
+        <path d="M840,96 L840,140" class="edge-accent" marker-end="url(#ar-accent)"/>
+        <path d="M370,96 L370,140" class="edge" marker-end="url(#ar)"/>
+        <rect x="260" y="142" width="680" height="44" rx="3" class="box-ghost"/>
+        <text x="600" y="162" text-anchor="middle">fresh  ⇔  mtime(cache) &gt; mtime(loader)</text>
+        <text x="600" y="178" text-anchor="middle" class="lbl">touching the loader invalidates; the preview server reruns it and pushes the result without a reload</text>
+      </svg>
+      <figcaption>Observable's data loader protocol. Adopt the shape, where a loader is any executable that emits text on stdout, so built‑in sources and custom scripts are the same kind of thing. Replace the freshness rule with a hash of declared inputs, which Observable does not have.</figcaption>
+    </figure>
+
+    <div class="wide grid grid-cols-1 md:grid-cols-2 gap-x-10 gap-y-8">
+      <div class="flex flex-col gap-2">
+        <p class="eyebrow">Marker grammar · from cog and markdown‑magic</p>
+        <pre class="region px-4 py-3 overflow-x-auto rounded-sm"><code><span class="marker">&lt;!-- computed sql db=app.db --&gt;</span>
+| name  | count |
+|-------|-------|
+| docs  |     2 |
+<span class="marker">&lt;!-- /computed sum=3f0a91c2 --&gt;</span></code></pre>
+        <p class="text-base" style="color:var(--muted)">A namespaced word, attributes in the opener, the hash in the closer. Match the token anywhere on the line and keep the line's prefix and suffix, so <code>/* computed */</code> and <code># computed</code> go through the same parser.</p>
+      </div>
+      <div class="flex flex-col gap-2">
+        <p class="eyebrow">Formatter survival · from prettier and all‑contributors</p>
+        <pre class="region px-4 py-3 overflow-x-auto rounded-sm"><code><span class="marker">&lt;!-- prettier-ignore-start --&gt;</span>
+<span class="marker">&lt;!-- computed tree src=./src --&gt;</span>
+<span class="marker">   Do not edit; regenerated by computed --&gt;</span>
+…
+<span class="marker">&lt;!-- prettier-ignore-end --&gt;</span></code></pre>
+        <p class="text-base" style="color:var(--muted)">Prettier's range‑ignore was written for exactly this, for all‑contributors and markdown‑toc. A "do not edit" sentence inside the marker is cheap insurance against people and agents deleting it.</p>
+      </div>
+      <div class="flex flex-col gap-2">
+        <p class="eyebrow">Hand‑edit protection · from cog</p>
+        <pre class="region-out px-4 py-3 overflow-x-auto rounded-sm"><code>$ computed check
+CLAUDE.md:14 region "tree" was edited by hand
+  delete the sum to unprotect, or run `computed run --force`
+exit 1</code></pre>
+        <p class="text-base" style="color:var(--muted)">cog refuses to overwrite a region whose checksum no longer matches. Every other tool overwrites without comment. For a file that agents also edit, refusing is the safer default.</p>
+      </div>
+      <div class="flex flex-col gap-2">
+        <p class="eyebrow">Failure · from bashup/mdsh, redo, Observable</p>
+        <pre class="region-out px-4 py-3 overflow-x-auto rounded-sm"><code>$ computed run
+CLAUDE.md:14 region "sql": sqlite3 exited 1
+  no such table: files
+  region left unchanged (sum=3f0a91c2)</code></pre>
+        <p class="text-base" style="color:var(--muted)">All three replace the output only on success. A failing renderer leaves the last good region in place and reports on stderr. It never blanks the region.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────── 6. Renderers ───────── -->
+  <section id="renderers" class="flex flex-col gap-6">
+    <div class="prose flex flex-col gap-4">
+      <p class="eyebrow">6</p>
+      <h2 class="text-3xl">Which renderers do the work?</h2>
+      <p>
+        Two of them are both the query engine and the table renderer. sqlite3 and duckdb emit markdown tables natively, and duckdb reads CSV, JSON and Parquet directly,
+        so for the tabular cases the data source and the renderer are one process. For diagrams, the two sink modes in the sketch already exist as two outputs of the same DSL:
+        keep the mermaid text in the region, which GitHub renders, or run <code>mmdc</code> and embed an image reference.
+      </p>
+    </div>
+    <div class="wide overflow-x-auto">
+      <table>
+        <thead><tr><th>Renderer</th><th>Input → output</th><th>Markdown table?</th><th>Note</th></tr></thead>
+        <tbody>
+          <tr><td>sqlite3</td><td>SQL → <span class="mono">.mode markdown</span></td><td class="yes">yes</td><td>query engine and renderer in one</td></tr>
+          <tr><td>duckdb</td><td>SQL over CSV / JSON / Parquet → <span class="mono">.mode markdown</span></td><td class="yes">yes</td><td>one process for every tabular source</td></tr>
+          <tr><td>csvlook</td><td>CSV → fixed‑width markdown‑compatible table</td><td class="yes">yes</td><td><span class="mono">--max-rows</span>, <span class="mono">--max-column-width</span></td></tr>
+          <tr><td>qsv</td><td>CSV → elastic‑tabstop table; <span class="mono">qsv sqlp</span> for Polars SQL</td><td class="no">no</td><td>fast; pipe into duckdb for markdown</td></tr>
+          <tr><td>jq</td><td>JSON → text via <span class="mono">@tsv</span>, <span class="mono">@csv</span></td><td class="no">compose</td><td></td></tr>
+          <tr><td>tree</td><td>directory → text or <span class="mono">-J</span> JSON</td><td>fence it</td><td><span class="mono">--gitignore</span> is the flag that matters for CLAUDE.md; hash the JSON form for freshness</td></tr>
+          <tr><td>mermaid‑cli</td><td><span class="mono">.mmd</span> → svg / png; markdown mode swaps fences for images</td><td>n/a</td><td>itself a template → output tool; headless Chromium</td></tr>
+          <tr><td>d2</td><td><span class="mono">.d2</span> → svg / png / pdf; <span class="mono">--watch</span> live‑reloads</td><td>n/a</td><td></td></tr>
+          <tr><td>graphviz</td><td><span class="mono">dot -Tsvg</span></td><td>n/a</td><td></td></tr>
+          <tr><td>vega‑lite</td><td><span class="mono">vl2svg</span>, <span class="mono">vl2png</span>, stdin accepted</td><td>n/a</td><td>node</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ───────── 7. Beyond markdown ───────── -->
+  <section id="beyond" class="flex flex-col gap-6">
+    <div class="prose flex flex-col gap-4">
+      <p class="eyebrow">7</p>
+      <h2 class="text-3xl">Does any of this survive outside markdown?</h2>
+      <p>
+        Most of it. cog shows the grammar carries: the marker is matched anywhere in a line, and a shared prefix is stripped from every line of the region, so one tool serves C, SQL, YAML and HTML.
+        The limit is the format, not the tool. JSON and CSV have no comment syntax, so a marker would corrupt the data.
+        For those the answer is whole‑file generation from a template, which the copy‑mode layout already provides.
+      </p>
+    </div>
+    <div class="wide overflow-x-auto">
+      <table>
+        <thead><tr><th>Format</th><th>Comment syntax</th><th>In‑place region</th><th>What works</th></tr></thead>
+        <tbody>
+          <tr><td>Markdown, HTML</td><td class="mono">&lt;!-- --&gt;</td><td class="yes">natural</td><td>invisible when rendered; stripped from CLAUDE.md by Claude Code</td></tr>
+          <tr><td>CSS, SCSS, JS, C family</td><td class="mono">/* */  //</td><td class="yes">natural</td><td>cog style; Style Dictionary is the tokens → CSS instance of template → output</td></tr>
+          <tr><td>YAML, TOML, shell, Python, SQL</td><td class="mono">#  --</td><td class="yes">natural</td><td>per‑line prefix stripping as in cog</td></tr>
+          <tr><td>JSON</td><td>none</td><td class="no">no</td><td>a reserved slot key such as <span class="mono">"_computed"</span>, as nbconvert does with cell outputs, or whole‑file template → output</td></tr>
+          <tr><td>CSV</td><td>none</td><td class="no">no</td><td>whole‑file generation only</td></tr>
+          <tr><td>.ipynb</td><td>none, but <span class="mono">outputs</span> is a reserved slot</td><td class="yes">via slot</td><td><span class="mono">nbconvert --execute --inplace</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ───────── 8. Decisions ───────── -->
+  <section id="decisions" class="flex flex-col gap-6">
+    <div class="prose flex flex-col gap-4">
+      <p class="eyebrow">8</p>
+      <h2 class="text-3xl">What is still ours to decide?</h2>
+      <p>Five choices the sources do not make for us. We have a recommendation for each, and the second column shows who disagrees.</p>
+    </div>
+    <div class="wide overflow-x-auto">
+      <table>
+        <thead><tr><th style="width:22%">Decision</th><th style="width:36%">Options seen in the wild</th><th>Our recommendation</th></tr></thead>
+        <tbody>
+          <tr><td>Layout</td><td>in‑place markers (cog, mdsh) · template → canonical path (gomplate, quarto) · symlink to build product (Nix) · @import sidecar (Claude Code)</td><td>Template → canonical path by default. Symlink as a per‑file opt‑in for local build products. Never a hardlink.</td></tr>
+          <tr><td>Where the source expression lives</td><td>inline in the marker (markdown‑magic, mdsh, cog) · sidecar config (all‑contributors, terraform‑docs) · naming convention (Observable)</td><td>Inline for one‑liners. A loader script by naming convention once it outgrows a line or needs secrets.</td></tr>
+          <tr><td>Freshness</td><td>mtime chain (make, Observable) · hash of generator (org‑babel) · hash of inputs (knitr, redo‑stamp)</td><td>Hash generator text plus declared input content. Store it in the closer.</td></tr>
+          <tr><td>Own‑write handling</td><td>temp + rename (redo) · skip if unchanged (ninja restat) · single‑flight + settle (watchman) · directory watch (chokidar, notify)</td><td>All four, plus remember the hash of every write and drop the matching event.</td></tr>
+          <tr><td>Shell in markers</td><td>runs without asking (cog, mdsh, markdown‑magic) · off until enabled (Templater) · prompt per block (org)</td><td>Declarative sources on by default. <span class="mono">sh</span> behind a per‑repo trust switch. Reads limited to the repo.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="prose flex flex-col gap-4 pt-2">
+      <p>
+        Three questions have no precedent in the survey. Whether regions may nest: no tool allows it, which we take as advice.
+        How one region consumes another as input: marimo's dependency graph is the nearest model. And whether a hand‑edited region should be an error, as in cog, or overwritten, as everywhere else.
+      </p>
+      <p>
+        <strong>What we did not verify.</strong> Editor behaviour when saving through a symlink comes from watcher documentation, not from testing editors.
+        Windows behaviour comes from git's and Claude Code's documentation; we did not run a Windows checkout.
+        "Nobody ships this" covers the tools we surveyed, which is not every tool. The symlink, hardlink and Claude Code findings were tested locally and we would stand behind those.
+      </p>
+      <p>
+        Open the file and the tree is right. That is the whole product. Everything above is plumbing to make it true without anyone remembering to run anything.
+      </p>
+    </div>
+  </section>
+
+  <hr>
+  <footer class="flex flex-col gap-2 text-base" style="color:var(--muted)">
+    <p>Every claim above traces to a primary source cited in the companion note, <span class="mono">docs/research/computed-markdown-prior-art.md</span>.</p>
+  </footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Computed Markdown · logic prototype</title>
+<style>
+  :root {
+    --paper: #F6F7F5; --ink: #1B211F; --muted: #626D68; --rule: #D6DCD8;
+    --band: #E6EFEB; --accent: #0F6F68; --stale: #B0522B; --stale-band: #F6E7DE; --ok-band: #E3F0EA;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #121819; --ink: #E5EAE7; --muted: #98A39E; --rule: #2C3538; --band: #172629; --accent: #4ECDC0; --stale: #E08A63; --stale-band: #2E1E17; --ok-band: #16302A; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 32px 24px 80px; display: flex; flex-direction: column; gap: 28px; }
+  h1 { font-size: 26px; margin: 0; font-weight: 600; }
+  h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  p { margin: 0; max-width: 78ch; }
+  .intro { padding: 16px 18px; border-left: 3px solid var(--accent); background: var(--band); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+  pre { margin: 0; font: 12.5px/1.5 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre; overflow-x: auto; padding: 12px 14px; background: var(--paper); border: 1px solid var(--rule); border-radius: 4px; min-height: 120px; }
+  textarea { width: 100%; min-height: 260px; font: 12.5px/1.5 ui-monospace, Menlo, monospace; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 4px; background: var(--paper); color: var(--ink); resize: vertical; }
+  .region-line { color: var(--accent); }
+  .changed { background: var(--ok-band); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; font-size: 14px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { font: inherit; font-size: 14px; padding: 7px 12px; border-radius: 4px; border: 1px solid var(--rule); background: var(--paper); color: var(--ink); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--paper); border-color: var(--accent); }
+  button.step { border-style: dashed; }
+  button.step.done { opacity: .5; border-style: solid; }
+  button.step.next { border-color: var(--accent); border-style: solid; box-shadow: 0 0 0 2px var(--band); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .report { padding: 12px 14px; border-radius: 4px; border: 1px solid var(--rule); }
+  .report.ok { background: var(--ok-band); } .report.bad { background: var(--stale-band); }
+  .status-fresh { color: var(--accent); } .status-stale, .status-edited, .status-error, .status-drift { color: var(--stale); }
+  .log { font: 12.5px/1.6 ui-monospace, Menlo, monospace; max-height: 260px; overflow: auto; border: 1px solid var(--rule); border-radius: 4px; padding: 10px 14px; }
+  .log div:last-child { font-weight: 600; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid var(--rule); }
+  .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 8px 12px; color: var(--muted); }
+  .tabs button.active { color: var(--ink); border-bottom-color: var(--accent); }
+  .scenario { padding: 16px 0; display: flex; flex-direction: column; gap: 14px; }
+  .inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .inputs pre { min-height: 80px; }
+  small { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+
+  <header style="display:flex;flex-direction:column;gap:12px">
+    <h1>Computed Markdown · logic prototype</h1>
+    <div class="intro">
+      <p><strong>The question.</strong> A hand‑written template holds marked regions. A tool renders each region from a data source, writes the result to <code>CLAUDE.md</code> at the canonical path, and records a sum in the closing marker. Does this model feel right once you push it through the awkward cases: a file appears, someone edits the output by hand, a renderer fails, the tool's own write comes back as a filesystem event, a shell region that is never the same twice?</p>
+      <p style="margin-top:8px"><small>Prototype, throwaway. Everything is in memory. The logic lives in one pure module at the bottom of this file, shaped to lift into the Rust prototype's modules: parse, render, write, check, watch. No symlinks, per the decision in docs/research.</small></p>
+    </div>
+  </header>
+
+  <section>
+    <h2>Guided walkthroughs</h2>
+    <div class="tabs" id="tabs"></div>
+    <div id="scenario"></div>
+  </section>
+
+  <section class="cols">
+    <div>
+      <h2>CLAUDE.md.tmpl · the template you edit</h2>
+      <textarea id="template" spellcheck="false"></textarea>
+      <div class="btns" style="margin-top:8px">
+        <button data-action="setTemplate">Save template</button>
+        <small style="align-self:center">Saving is an edit to the template. It queues a filesystem event but does not render on its own.</small>
+      </div>
+    </div>
+    <div>
+      <h2>CLAUDE.md · what the tool wrote <span id="outputMeta"></span></h2>
+      <pre id="output"></pre>
+    </div>
+  </section>
+
+  <section>
+    <h2>Free play</h2>
+    <div class="btns" id="freeplay"></div>
+  </section>
+
+  <section class="cols">
+    <div>
+      <h2>Last run or check</h2>
+      <div id="report" class="report"></div>
+    </div>
+    <div>
+      <h2>Watcher and events</h2>
+      <dl class="kv" id="watch"></dl>
+      <div class="log" id="log" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Data sources · what the regions read</h2>
+    <div class="inputs" id="inputs"></div>
+  </section>
+
+</main>
+
+<!-- ───────────────────────────────────────────────────────────────
+     The logic module. Pure: no DOM, no timers. (state, action) → state.
+     Maps onto the Rust prototype: parse / loaders / sinks / render / write / check / watch.
+     ─────────────────────────────────────────────────────────────── -->
+<script id="logic">
+const Computed = (() => {
+  // ---- hashing (stand-in for sha256; FNV-1a is enough to feel the model)
+  function hash(s) { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0'); }
+
+  // ---- marker grammar
+  //   <!-- computed <loader> key=value key="quoted value" -->
+  //   ...body (replaced)...
+  //   <!-- /computed sum=XXXXXXXX -->
+  const OPEN = /^(\s*)<!--\s*computed\s+(\w+)((?:\s+[\w-]+=(?:"[^"]*"|\S+))*)\s*-->\s*$/;
+  const CLOSE = /^(\s*)<!--\s*\/computed(?:\s+sum=([0-9a-f]+))?\s*-->\s*$/;
+  const BANNER = '<!-- generated from CLAUDE.md.tmpl by computed; edit the template, not this file -->';
+
+  function parseAttrs(s) {
+    const out = {}; const re = /([\w-]+)=("([^"]*)"|(\S+))/g; let m;
+    while ((m = re.exec(s))) out[m[1]] = m[3] !== undefined ? m[3] : m[4];
+    return out;
+  }
+
+  // Splits text into prose and region segments. A region without a closer is an error.
+  function parse(text) {
+    const lines = text.split('\n'); const segs = []; let prose = []; let i = 0; let n = 0;
+    const flush = () => { if (prose.length) { segs.push({ type: 'prose', text: prose.join('\n') }); prose = []; } };
+    while (i < lines.length) {
+      const m = OPEN.exec(lines[i]);
+      if (!m) { prose.push(lines[i]); i++; continue; }
+      const openLine = lines[i]; const loader = m[2]; const attrs = parseAttrs(m[3]);
+      let j = i + 1; const body = [];
+      while (j < lines.length && !CLOSE.test(lines[j])) { body.push(lines[j]); j++; }
+      if (j >= lines.length) { flush(); segs.push({ type: 'error', text: openLine, message: 'region opened at line ' + (i + 1) + ' has no closing marker' }); i = lines.length; break; }
+      const c = CLOSE.exec(lines[j]);
+      flush(); n++;
+      segs.push({ type: 'region', name: attrs.name || (loader + '#' + n), loader, attrs, openLine, body: body.join('\n'), sum: c[2] || null, indent: m[1] });
+      i = j + 1;
+    }
+    flush();
+    return segs;
+  }
+
+  // ---- loaders: (attrs, inputs, config) → { snapshot, text, lang? } or { error }
+  // snapshot is what freshness is hashed over: the content of the declared input, not the generator.
+  const loaders = {
+    tree(attrs, inputs) {
+      const depth = Number(attrs.depth || 99); const src = (attrs.src || '.').replace(/^\.\/?/, '');
+      const paths = inputs.tree.filter(p => !src || p === src || p.startsWith(src + '/')).map(p => src ? p.slice(src.length + 1) : p).filter(Boolean);
+      const all = new Set(); for (const p of paths) { const parts = p.split('/'); for (let k = 1; k <= parts.length; k++) all.add(parts.slice(0, k).join('/')); }
+      const visible = [...all].filter(p => p.split('/').length <= depth).sort();
+      return { snapshot: JSON.stringify(visible), text: drawTree(visible, src || '.'), lang: '' };
+    },
+    csv(attrs, inputs) {
+      if (attrs.src !== 'data.csv') return { error: 'no such file: ' + attrs.src };
+      return { snapshot: JSON.stringify(inputs.csv), rows: inputs.csv };
+    },
+    sql(attrs, inputs) {
+      if (attrs.db !== 'app.db') return { error: 'no such database: ' + attrs.db };
+      if (!inputs.db.tableExists) return { error: 'sqlite3 exited 1: no such table: files' };
+      return { snapshot: JSON.stringify(inputs.db.files), rows: inputs.db.files };
+    },
+    sh(attrs, inputs, config) {
+      if (!config.trustShell) return { error: 'sh loader is disabled for this repo; enable trust to run `' + attrs.cmd + '`' };
+      const cmd = attrs.cmd || '';
+      if (cmd === 'date') return { snapshot: null, text: '2026-09-02T01:' + String(10 + inputs.clock).padStart(2, '0') + ':00Z' };
+      if (cmd.startsWith('git rev-parse')) return { snapshot: null, text: 'a3f9c2e' };
+      return { snapshot: null, text: '(pretend output of `' + cmd + '`)' };
+    },
+  };
+
+  function drawTree(paths, root) {
+    const tree = {}; for (const p of paths) { let node = tree; for (const part of p.split('/')) node = node[part] = node[part] || {}; }
+    const out = [root]; const walk = (node, prefix) => { const keys = Object.keys(node); keys.forEach((k, i) => { const last = i === keys.length - 1; out.push(prefix + (last ? '└── ' : '├── ') + k); walk(node[k], prefix + (last ? '    ' : '│   ')); }); };
+    walk(tree, ''); return out.join('\n');
+  }
+
+  // ---- sinks: shape the loader's result into region text
+  const sinks = {
+    table(r) { const rows = r.rows || []; if (!rows.length) return '| (no rows) |\n|---|'; const cols = Object.keys(rows[0]); const w = cols.map(c => Math.max(c.length, ...rows.map(x => String(x[c]).length))); const line = a => '| ' + a.map((v, i) => String(v).padEnd(w[i])).join(' | ') + ' |'; return [line(cols), '|' + w.map(x => '-'.repeat(x + 2)).join('|') + '|', ...rows.map(x => line(cols.map(c => x[c])))].join('\n'); },
+    fence(r) { return '```' + (r.lang || '') + '\n' + (r.text ?? sinks.table(r)) + '\n```'; },
+    raw(r) { return r.text ?? sinks.table(r); },
+  };
+  const defaultSink = { tree: 'fence', csv: 'table', sql: 'table', sh: 'raw' };
+
+  // ---- render one region: sum = hash(generator line + input snapshot). sh has no declared inputs, so its sum is the generator alone.
+  function renderRegion(seg, inputs, config) {
+    const loader = loaders[seg.loader]; if (!loader) return { error: 'unknown loader "' + seg.loader + '"' };
+    const r = loader(seg.attrs, inputs, config); if (r.error) return { error: r.error };
+    const sink = sinks[seg.attrs.sink || defaultSink[seg.loader] || 'raw']; if (!sink) return { error: 'unknown sink "' + seg.attrs.sink + '"' };
+    const sum = hash(seg.openLine.trim() + '\n' + (r.snapshot === null ? '' : r.snapshot));
+    return { body: sink(r), sum };
+  }
+
+  // ---- the whole file. Returns text plus a per-region report. Never writes.
+  //   prior: the regions currently in the output (for refusing hand-edited regions and keeping last-good on error)
+  function render(template, inputs, config, prior, force) {
+    const segs = parse(template); const report = []; const out = [BANNER];
+    for (const s of segs) {
+      if (s.type === 'prose') { out.push(s.text); continue; }
+      if (s.type === 'error') { out.push(s.text); report.push({ name: '(parse)', status: 'error', message: s.message }); continue; }
+      const p = prior.regions[s.name];
+      const edited = p && p.writtenHash !== null && hash(p.body) !== p.writtenHash;
+      const r = renderRegion(s, inputs, config);
+      let body, sum, status, message;
+      if (edited && !force) { body = p.body; sum = p.sum; status = 'edited'; message = 'region was edited by hand in CLAUDE.md; left as is. Delete the sum or run with force to regenerate.'; }
+      else if (r.error) { body = p ? p.body : '(no previous output)'; sum = p ? p.sum : null; status = 'error'; message = r.error + '. Last good content kept.'; }
+      else { body = r.body; sum = r.sum; status = p && p.sum === r.sum && p.body === r.body ? 'fresh' : (p && p.sum === r.sum ? 'rewritten' : 'stale'); message = status === 'fresh' ? 'inputs unchanged' : status === 'rewritten' ? 'same inputs, different content (undeclared inputs)' : (p ? 'inputs changed; regenerated' : 'first render'); if (edited && force) message = 'hand edit discarded (force)'; }
+      out.push(s.indent + s.openLine.trim()); out.push(body); out.push(s.indent + '<!-- /computed' + (sum ? ' sum=' + sum : '') + ' -->');
+      report.push({ name: s.name, status, message, sum, body });
+    }
+    return { text: out.join('\n'), report };
+  }
+
+  // What the output currently holds, keyed by region name, plus what the tool last wrote for each.
+  function priorOf(state) {
+    const regions = {};
+    if (state.output !== null) for (const s of parse(state.output)) if (s.type === 'region') regions[s.name] = { body: s.body, sum: s.sum, writtenHash: state.writtenRegions[s.name] ?? null };
+    return { regions };
+  }
+
+  // Prose drift: hand edits outside regions in CLAUDE.md. In copy mode they are lost on the next run.
+  function proseDrift(state, rendered) {
+    if (state.output === null) return false;
+    const strip = t => parse(t).filter(s => s.type === 'prose').map(s => s.text).join('\n').replace(BANNER, '').trim();
+    return strip(state.output) !== strip(rendered);
+  }
+
+  // ---- state
+  const TEMPLATE = [
+    '# Project notes', '',
+    'Hand-written prose stays exactly as typed. The tool only touches regions.', '',
+    '## Layout', '',
+    '<!-- computed tree src=. depth=2 name=layout -->',
+    '<!-- /computed -->', '',
+    '## Data files', '',
+    '<!-- computed csv src=data.csv name=data -->',
+    '<!-- /computed -->', '',
+    '## Files in the database', '',
+    '<!-- computed sql db=app.db name=db -->',
+    '<!-- /computed -->', '',
+    'Run tests with `cargo test`.',
+  ].join('\n');
+
+  function initialState() {
+    return {
+      template: TEMPLATE,
+      output: null,                 // CLAUDE.md content, or null before the first run
+      writtenHash: null,            // hash of the whole file the tool last wrote (own-write guard)
+      writtenRegions: {},           // region name → hash of the body the tool last wrote (hand-edit detection)
+      inputs: {
+        tree: ['CLAUDE.md.tmpl', 'docs/research/note.md', 'src/main.rs', 'src/lib.rs', 'data.csv', 'app.db'],
+        csv: [{ name: 'docs', count: 1 }, { name: 'src', count: 2 }],
+        db: { tableExists: true, files: [{ path: 'src/main.rs', lines: 40 }, { path: 'src/lib.rs', lines: 120 }] },
+        clock: 0,
+      },
+      config: { trustShell: false },
+      pending: [],                  // filesystem events not yet delivered to the watcher
+      lastReport: null,             // { kind: 'run'|'check', exit, regions, prose, wrote }
+      log: [],
+      changedLines: [],             // output line numbers that changed in the last write, for the view
+    };
+  }
+
+  const log = (s, msg) => ({ ...s, log: [...s.log, msg] });
+  const queue = (s, path) => ({ ...s, pending: [...s.pending, path] });
+
+  function write(s, text, reportBase) {
+    if (s.output === text) return log({ ...s, lastReport: { ...reportBase, wrote: false } }, 'run: output identical, write skipped, mtime untouched');
+    const before = (s.output || '').split('\n'); const after = text.split('\n');
+    const changed = after.map((l, i) => l !== before[i] ? i : -1).filter(i => i >= 0);
+    const writtenRegions = {}; for (const r of reportBase.regions) if (r.body !== undefined) writtenRegions[r.name] = hash(r.body);
+    let n = { ...s, output: text, writtenHash: hash(text), writtenRegions, changedLines: changed, lastReport: { ...reportBase, wrote: true } };
+    n = log(n, 'run: wrote CLAUDE.md.tmp, rename(2) over CLAUDE.md (' + changed.length + ' lines changed)');
+    return queue(n, 'CLAUDE.md');
+  }
+
+  function run(s, force) {
+    const prior = priorOf(s);
+    const { text, report } = render(s.template, s.inputs, s.config, prior, force);
+    const drift = proseDrift(s, text);
+    const exit = report.some(r => r.status === 'error' || r.status === 'edited') ? 1 : 0;
+    let n = { ...s, inputs: { ...s.inputs, clock: s.inputs.clock + 1 } };
+    if (drift) n = log(n, 'run: prose outside regions in CLAUDE.md differs from the template; the template wins');
+    for (const r of report) if (r.status !== 'fresh') n = log(n, 'run: ' + r.name + ' → ' + r.status + ' (' + r.message + ')');
+    return write(n, text, { kind: force ? 'run --force' : 'run', exit, regions: report, prose: drift });
+  }
+
+  function check(s) {
+    if (s.output === null) return log({ ...s, lastReport: { kind: 'check', exit: 1, regions: [], prose: false, wrote: false, missing: true } }, 'check: CLAUDE.md does not exist, exit 1');
+    const prior = priorOf(s);
+    const { text, report } = render(s.template, s.inputs, s.config, prior, false);
+    const drift = proseDrift(s, text);
+    const dirty = report.some(r => r.status !== 'fresh') || drift;
+    return log({ ...s, lastReport: { kind: 'check', exit: dirty ? 1 : 0, regions: report, prose: drift, wrote: false } }, 'check: ' + (dirty ? 'drift found, exit 1' : 'clean, exit 0'));
+  }
+
+  // The watcher pipeline for one delivered event: settle → own-write guard → render.
+  function deliver(s) {
+    if (!s.pending.length) return log(s, 'watch: no pending events');
+    const [path, ...rest] = s.pending; let n = { ...s, pending: rest };
+    n = log(n, 'watch: event on ' + path + ' (directory watch, settled 50 ms)');
+    if (path === 'CLAUDE.md') {
+      if (n.output !== null && hash(n.output) === n.writtenHash) return log(n, 'watch: CLAUDE.md matches our last write, dropped (own-write guard)');
+      n = log(n, 'watch: CLAUDE.md changed by someone else; treating as hand edit, running check instead of overwriting');
+      return check(n);
+    }
+    n = log(n, 'watch: ' + path + ' is a template or declared input, single-flight render');
+    return run(n, false);
+  }
+
+  function editRegion(s, name) {
+    if (s.output === null) return log(s, 'nothing to edit: CLAUDE.md does not exist yet');
+    const segs = parse(s.output); const out = [];
+    for (const g of segs) { if (g.type === 'region') { out.push(g.indent + g.openLine.trim()); out.push(g.name === name ? g.body + '\n<!-- an agent added this line by hand -->' : g.body); out.push(g.indent + '<!-- /computed' + (g.sum ? ' sum=' + g.sum : '') + ' -->'); } else out.push(g.text); }
+    return queue(log({ ...s, output: out.join('\n'), changedLines: [] }, 'someone edited region "' + name + '" directly in CLAUDE.md'), 'CLAUDE.md');
+  }
+
+  function editProse(s) {
+    if (s.output === null) return log(s, 'nothing to edit: CLAUDE.md does not exist yet');
+    return queue(log({ ...s, output: s.output.replace('Run tests with `cargo test`.', 'Run tests with `cargo test`.\nAlso run `cargo clippy` before pushing.'), changedLines: [] }, 'someone added a sentence to CLAUDE.md, outside any region'), 'CLAUDE.md');
+  }
+
+  function reduce(s, a) {
+    switch (a.type) {
+      case 'reset': return initialState();
+      case 'run': return run(s, false);
+      case 'force': return run(s, true);
+      case 'check': return check(s);
+      case 'deliver': return deliver(s);
+      case 'setTemplate': return queue(log({ ...s, template: a.text }, 'template saved'), 'CLAUDE.md.tmpl');
+      case 'addFile': { const p = a.path || 'src/watcher.rs'; if (s.inputs.tree.includes(p)) return log(s, p + ' already exists'); return queue(log({ ...s, inputs: { ...s.inputs, tree: [...s.inputs.tree, p] } }, 'created ' + p), p); }
+      case 'removeFile': { const p = 'src/lib.rs'; return queue(log({ ...s, inputs: { ...s.inputs, tree: s.inputs.tree.filter(x => x !== p) } }, 'deleted ' + p), p); }
+      case 'addRow': return queue(log({ ...s, inputs: { ...s.inputs, csv: [...s.inputs.csv, { name: 'tests', count: s.inputs.csv.length + 1 }] } }, 'appended a row to data.csv'), 'data.csv');
+      case 'breakDb': return log({ ...s, inputs: { ...s.inputs, db: { ...s.inputs.db, tableExists: false } } }, 'dropped table "files" in app.db');
+      case 'fixDb': return queue(log({ ...s, inputs: { ...s.inputs, db: { ...s.inputs.db, tableExists: true } } }, 'recreated table "files" in app.db'), 'app.db');
+      case 'trust': return log({ ...s, config: { ...s.config, trustShell: !s.config.trustShell } }, 'shell loader ' + (s.config.trustShell ? 'disabled' : 'enabled') + ' for this repo');
+      case 'addShRegion': { if (s.template.includes('computed sh')) return log(s, 'template already has a sh region'); const t = s.template + '\n\n## Built at\n\n<!-- computed sh cmd=date name=built -->\n<!-- /computed -->\n'; return queue(log({ ...s, template: t }, 'added a `sh cmd=date` region to the template'), 'CLAUDE.md.tmpl'); }
+      case 'editRegion': return editRegion(s, a.name || 'layout');
+      case 'editProse': return editProse(s);
+      case 'deleteOutput': return log({ ...s, output: null, writtenHash: null, writtenRegions: {}, changedLines: [] }, 'deleted CLAUDE.md (fresh clone)');
+      default: return s;
+    }
+  }
+
+  return { initialState, reduce, parse, render, hash, BANNER };
+})();
+</script>
+
+<!-- ─────────── The page. Throwaway shell over the module above. ─────────── -->
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let state = Computed.initialState();
+  let scenarioIdx = 0, stepIdx = 0;
+
+  const ACTIONS = [
+    ['run', 'Run the tool', 'primary'],
+    ['check', 'Check (CI / pre-commit)', ''],
+    ['deliver', 'Deliver next filesystem event', ''],
+    ['addFile', 'Create src/watcher.rs', ''],
+    ['removeFile', 'Delete src/lib.rs', ''],
+    ['addRow', 'Append a row to data.csv', ''],
+    ['breakDb', 'Drop the database table', ''],
+    ['fixDb', 'Recreate the table', ''],
+    ['editRegion', 'Edit a region by hand in CLAUDE.md', ''],
+    ['editProse', 'Edit prose by hand in CLAUDE.md', ''],
+    ['force', 'Run with force', ''],
+    ['addShRegion', 'Add a `sh cmd=date` region', ''],
+    ['trust', 'Toggle shell trust', ''],
+    ['deleteOutput', 'Delete CLAUDE.md (simulate a fresh clone)', ''],
+    ['reset', 'Reset everything', ''],
+  ];
+  const label = Object.fromEntries(ACTIONS.map(a => [a[0], a[1]]));
+
+  const SCENARIOS = [
+    { title: 'A file appears', text: 'The motivating case. Run once, then create a file. The template did not change, so an mtime chain or a generator hash would see nothing. The sum is over the tree\'s content, so check reports drift and run regenerates only the layout region.', steps: ['run', 'addFile', 'check', 'run', 'check'] },
+    { title: 'The tool\'s own write comes back', text: 'Every write to CLAUDE.md fires a filesystem event on the directory the watcher is watching. Deliver it and watch the own-write guard drop it because the file still hashes to what we wrote. Then change an input and deliver that event: it renders, writes, and the write\'s echo is dropped again. No loop.', steps: ['run', 'deliver', 'addFile', 'deliver', 'deliver'] },
+    { title: 'Nothing changed', text: 'Run twice. The second run renders the same text, so the write is skipped and the file\'s mtime is untouched. This is what keeps downstream tools from rebuilding for no reason.', steps: ['run', 'run', 'check'] },
+    { title: 'Someone edits CLAUDE.md by hand', text: 'An agent or a person edits inside a region. The tool refuses to overwrite it (cog\'s rule) and exits 1 until you force. Then someone edits prose outside a region. In copy mode the template wins and the edit is lost, with a warning. Is that the behaviour we want, or should prose drift also refuse?', steps: ['run', 'editRegion', 'run', 'force', 'editProse', 'deliver', 'run'] },
+    { title: 'A renderer fails', text: 'Drop the database table and run. The sql region keeps its last good content and the run exits 1, but the other regions still update. Recreate the table and the next run repairs it.', steps: ['run', 'breakDb', 'addFile', 'run', 'fixDb', 'run'] },
+    { title: 'A shell region that is never the same twice', text: 'Add a region that runs `date`. It is disabled until the repo is trusted. Once trusted, its sum is over the generator alone because it has no declared inputs, so every run rewrites the file even though nothing you care about changed. The own-write guard still holds, but a watcher would churn on every input event.', steps: ['addShRegion', 'run', 'trust', 'run', 'run', 'check'] },
+    { title: 'A fresh clone', text: 'In copy mode CLAUDE.md is committed, so a clone has it. Delete it to simulate a clone that does not, then check: the missing file fails the check, and one run recreates it.', steps: ['run', 'deleteOutput', 'check', 'run', 'check'] },
+  ];
+
+  function dispatch(type, extra) {
+    state = Computed.reduce(state, { type, ...extra });
+    if (type === 'reset') { stepIdx = 0; }
+    render();
+  }
+
+  function startScenario(i) { scenarioIdx = i; stepIdx = 0; state = Computed.initialState(); render(); }
+
+  function stepClick(i) {
+    if (i !== stepIdx) return;
+    dispatch(SCENARIOS[scenarioIdx].steps[i]);
+    stepIdx = i + 1; render();
+  }
+
+  function esc(s) { return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+
+  function renderOutput() {
+    if (state.output === null) { $('output').textContent = '(CLAUDE.md does not exist yet. Run the tool.)'; $('outputMeta').textContent = ''; return; }
+    const lines = state.output.split('\n');
+    $('output').innerHTML = lines.map((l, i) => { const cls = [/<!--\s*\/?computed/.test(l) ? 'region-line' : '', state.changedLines.includes(i) ? 'changed' : ''].join(' ').trim(); return cls ? '<span class="' + cls + '">' + esc(l) + '</span>' : esc(l); }).join('\n');
+    $('outputMeta').innerHTML = '<small>' + lines.length + ' lines · hash ' + Computed.hash(state.output) + (Computed.hash(state.output) === state.writtenHash ? ' · matches last write' : ' · <span class="status-drift">differs from last write</span>') + '</small>';
+  }
+
+  function renderReport() {
+    const r = state.lastReport; const el = $('report');
+    if (!r) { el.className = 'report'; el.innerHTML = '<small>Nothing has run yet.</small>'; return; }
+    el.className = 'report ' + (r.exit === 0 ? 'ok' : 'bad');
+    let h = '<div><strong>' + r.kind + '</strong> → exit ' + r.exit + (r.kind.startsWith('run') ? (r.wrote ? ' · wrote CLAUDE.md' : ' · write skipped') : '') + '</div>';
+    if (r.missing) h += '<div class="status-error">CLAUDE.md is missing</div>';
+    h += '<dl class="kv" style="margin-top:8px">';
+    for (const g of r.regions) h += '<dt>' + esc(g.name) + '</dt><dd><span class="status-' + g.status + '">' + g.status + '</span> · ' + esc(g.message) + (g.sum ? ' <small>sum=' + g.sum + '</small>' : '') + '</dd>';
+    if (r.prose) h += '<dt>prose</dt><dd><span class="status-drift">drift</span> · CLAUDE.md prose differs from the template' + (r.kind === 'check' ? '' : '; overwritten') + '</dd>';
+    h += '</dl>';
+    el.innerHTML = h;
+  }
+
+  function renderWatch() {
+    $('watch').innerHTML = '<dt>pending events</dt><dd>' + (state.pending.length ? state.pending.map(esc).join(', ') : 'none') + '</dd>'
+      + '<dt>last write hash</dt><dd>' + (state.writtenHash || 'never written') + '</dd>'
+      + '<dt>shell trust</dt><dd>' + (state.config.trustShell ? 'enabled' : 'disabled') + '</dd>';
+    $('log').innerHTML = state.log.length ? state.log.map(l => '<div>' + esc(l) + '</div>').join('') : '<small>Quiet.</small>';
+    $('log').scrollTop = 1e6;
+  }
+
+  function renderInputs() {
+    const i = state.inputs;
+    $('inputs').innerHTML =
+      '<div><h2>tree · ' + i.tree.length + ' paths</h2><pre>' + esc(i.tree.slice().sort().join('\n')) + '</pre></div>' +
+      '<div><h2>data.csv</h2><pre>' + esc('name,count\n' + i.csv.map(r => r.name + ',' + r.count).join('\n')) + '</pre></div>' +
+      '<div><h2>app.db · table files</h2><pre>' + (i.db.tableExists ? esc(i.db.files.map(r => r.path + '  ' + r.lines).join('\n')) : '<span class="status-error">table dropped</span>') + '</pre></div>' +
+      '<div><h2>clock (for `date`)</h2><pre>run #' + i.clock + '</pre></div>';
+  }
+
+  function renderScenario() {
+    $('tabs').innerHTML = SCENARIOS.map((s, i) => '<button class="' + (i === scenarioIdx ? 'active' : '') + '" data-tab="' + i + '">' + esc(s.title) + '</button>').join('');
+    const s = SCENARIOS[scenarioIdx];
+    $('scenario').innerHTML = '<div class="scenario"><p>' + esc(s.text) + '</p><div class="btns">' + s.steps.map((st, i) => '<button class="step ' + (i < stepIdx ? 'done' : i === stepIdx ? 'next' : '') + '" data-step="' + i + '">' + (i + 1) + '. ' + esc(label[st]) + '</button>').join('') + '<button data-restart="1">Restart scenario</button></div></div>';
+  }
+
+  function render() {
+    if (document.activeElement !== $('template')) $('template').value = state.template;
+    renderOutput(); renderReport(); renderWatch(); renderInputs(); renderScenario();
+  }
+
+  $('freeplay').innerHTML = ACTIONS.map(a => '<button class="' + a[2] + '" data-action="' + a[0] + '">' + esc(a[1]) + '</button>').join('');
+  document.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.action === 'setTemplate') return dispatch('setTemplate', { text: $('template').value });
+    if (b.dataset.action) return dispatch(b.dataset.action);
+    if (b.dataset.tab !== undefined) return startScenario(Number(b.dataset.tab));
+    if (b.dataset.step !== undefined) return stepClick(Number(b.dataset.step));
+    if (b.dataset.restart) return startScenario(scenarioIdx);
+  });
+  render();
+})();
+</script>
+</body>
+</html>
