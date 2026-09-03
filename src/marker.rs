@@ -39,7 +39,7 @@ pub struct Region {
     pub opener: Opener,
 }
 
-/// The two sums a rendered closer carries, as 16 lowercase hex characters each.
+/// The two sums a rendered closer carries, as 64 lowercase hex characters each.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sums {
     pub input: String,
@@ -611,13 +611,13 @@ fn parse_closer(line: usize, content: &str) -> Result<Option<Sums>, ParseError> 
                 if slot.is_some() {
                     return Err(error(line, format!("duplicate attribute {k}= in closer")));
                 }
-                let ok = v.len() == 16
+                let ok = v.len() == 64
                     && v.bytes()
                         .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
                 if !ok {
                     return Err(error(
                         line,
-                        format!("malformed sum {k}={v}: expected 16 lowercase hex characters"),
+                        format!("malformed sum {k}={v}: expected 64 lowercase hex characters"),
                     ));
                 }
                 *slot = Some(v);
@@ -695,21 +695,27 @@ mod tests {
 
     #[test]
     fn a_rendered_region_keeps_its_body_bytes_and_sums() {
-        let text = "  <!-- computed tree | do not edit; run computed -->\n```text\n.\n```\n  <!-- /computed in=9f3a1c0b7d2e4f60 out=41c0d9e8b3a2f715 -->";
+        let text = "  <!-- computed tree | do not edit; run computed -->\n```text\n.\n```\n  <!-- /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->";
         let file = parse(text).unwrap();
         let r = region(&file, 0);
         assert_eq!(r.indent, "  ");
         assert_eq!(r.body, "```text\n.\n```\n");
         let sums = r.sums.as_ref().unwrap();
-        assert_eq!(sums.input, "9f3a1c0b7d2e4f60");
-        assert_eq!(sums.output, "41c0d9e8b3a2f715");
+        assert_eq!(
+            sums.input,
+            "9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60"
+        );
+        assert_eq!(
+            sums.output,
+            "41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715"
+        );
         assert_eq!(
             r.raw_opener,
             "  <!-- computed tree | do not edit; run computed -->\n"
         );
         assert_eq!(
             r.raw_closer,
-            "  <!-- /computed in=9f3a1c0b7d2e4f60 out=41c0d9e8b3a2f715 -->"
+            "  <!-- /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->"
         );
         assert_eq!(serialise(&file), text);
     }
@@ -790,7 +796,7 @@ mod tests {
 
     #[test]
     fn a_fence_inside_a_body_hides_a_closer_look_alike() {
-        let text = "<!-- computed exec cmd=x volatile -->\n\n````\n<!-- /computed -->\n````\n\n<!-- /computed in=0000000000000000 out=0000000000000000 -->\n";
+        let text = "<!-- computed exec cmd=x volatile -->\n\n````\n<!-- /computed -->\n````\n\n<!-- /computed in=0000000000000000000000000000000000000000000000000000000000000000 out=0000000000000000000000000000000000000000000000000000000000000000 -->\n";
         let file = parse(text).unwrap();
         let r = region(&file, 0);
         assert_eq!(r.body, "\n````\n<!-- /computed -->\n````\n\n");
@@ -823,9 +829,10 @@ mod tests {
             ("x\n<!-- computed tree -->\nbody\n", 2, "opener without closer"),
             ("x\n<!-- /computed -->\n", 2, "closer without opener"),
             ("<!-- computed tree -->\n<!-- computed tree -->\n<!-- /computed -->\n", 2, "opener inside a body"),
-            ("<!-- computed tree -->\n<!-- /computed in=9f3a1c0b7d2e4f60 -->\n", 2, "one sum"),
-            ("<!-- computed tree -->\n<!-- /computed in=9f3a out=41c0d9e8b3a2f715 -->\n", 2, "malformed sum"),
-            ("<!-- computed tree -->\n<!-- /computed in=9f3a1c0b7d2e4f6g out=41c0d9e8b3a2f715 -->\n", 2, "malformed sum"),
+            ("<!-- computed tree -->\n<!-- /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 -->\n", 2, "one sum"),
+            ("<!-- computed tree -->\n<!-- /computed in=9f3a out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->\n", 2, "malformed sum"),
+            ("<!-- computed tree -->\n<!-- /computed in=9f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->\n", 2, "malformed sum"),
+            ("<!-- computed tree -->\n<!-- /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f6g out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->\n", 2, "malformed sum"),
             ("<!-- computed tree -->\n<!-- /computed extra=1 -->\n", 2, "unknown attribute"),
             ("<!-- computed exec cmd=\"a --> b\" volatile -->\n<!-- /computed -->\n", 1, "-->"),
             ("<!-- computed exec cmd=\"unterminated volatile -->\n<!-- /computed -->\n", 1, "unterminated"),

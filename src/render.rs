@@ -173,25 +173,58 @@ impl Rendered {
 
 mod sum {
     use crate::marker::Opener;
+    use sha2::{Digest, Sha256};
 
     const DOMAIN: &str = "computed-in/1\n";
 
-    fn hex16(hash: blake3::Hash) -> String {
-        hash.to_hex()[..16].to_string()
+    fn hex(hash: impl AsRef<[u8]>) -> String {
+        hash.as_ref().iter().map(|b| format!("{b:02x}")).collect()
     }
 
     pub fn input(opener: &Opener, format_constant: u32, snapshot: &[u8]) -> String {
-        let mut h = blake3::Hasher::new();
+        let mut h = Sha256::new();
         h.update(DOMAIN.as_bytes());
         h.update(format!("{}/{}\n", opener.loader, format_constant).as_bytes());
         h.update(opener.canonical().as_bytes());
         h.update(b"\n");
         h.update(snapshot);
-        hex16(h.finalize())
+        hex(h.finalize())
     }
 
     pub fn output(body: &str) -> String {
-        hex16(blake3::hash(body.as_bytes()))
+        hex(Sha256::digest(body.as_bytes()))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::marker::parse;
+
+        #[test]
+        fn output_sum_is_the_full_sha256_of_the_body() {
+            assert_eq!(
+                output(""),
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            );
+            assert_eq!(
+                output("abc"),
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            );
+        }
+
+        #[test]
+        fn input_sum_is_the_full_sha256_of_the_domain_opener_and_snapshot() {
+            let file = parse("<!-- computed tree -->\n<!-- /computed -->\n").unwrap();
+            let opener = match &file.segments[0] {
+                crate::marker::Segment::Region(r) => &r.opener,
+                _ => unreachable!(),
+            };
+            // sha256("computed-in/1\ntree/1\n<!-- computed tree -->\n" + "snap")
+            assert_eq!(
+                input(opener, 1, b"snap"),
+                "606574c24273299a1ee6b2e45e8ca207180ad978ea09dc5f8cf8a42631d41a1a"
+            );
+        }
     }
 }
 

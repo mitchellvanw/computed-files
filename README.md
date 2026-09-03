@@ -15,7 +15,7 @@ Keep marked regions of a hand-written Markdown file current. The document is a v
     ├── lib.rs
     └── main.rs
 ```
-<!-- /computed in=9f3a1c0b7d2e4f60 out=41c0d9e8b3a2f715 -->
+<!-- /computed in=4b0267a37bd1187b38918aa56d344242263571578d5b300fb415b2fb4260d898 out=45ca178e8d4046c3d6663949c214424beef2e9912da4931b45621e1e5ecbf559 -->
 ~~~
 
 The prose around the markers is yours. The body between them belongs to the tool. `computed run` renders every region that needs it; `computed check` in CI exits 1 if anything drifted, without running a single command.
@@ -30,10 +30,10 @@ The dogfood target is `CLAUDE.md`. Agents and people edit that file constantly. 
 
 ## The two-sum closer
 
-Every closing marker carries two sums, the first 16 hex characters of a BLAKE3 hash each:
+Every closing marker carries two sums, the full 64 hex characters of a SHA-256 hash each:
 
 ```
-<!-- /computed in=9f3a1c0b7d2e4f60 out=41c0d9e8b3a2f715 -->
+<!-- /computed in=4b0267a37bd1187b38918aa56d344242263571578d5b300fb415b2fb4260d898 out=45ca178e8d4046c3d6663949c214424beef2e9912da4931b45621e1e5ecbf559 -->
 ```
 
 | Sum | Taken over | Answers |

@@ -7,7 +7,7 @@ Prose stays as typed.
 .
 └── moved
 ```
-  <!-- /computed in=cdfd1cc57fb91d8c out=a95c2b0822456b51 -->
+  <!-- /computed in=ab776198d058320ca639b1ea05990bfd667495942c93e095fe13e36ab1a7bf0f out=5baa1ab3e5c6138c59e2afadfd4dadfd4a7e950a719e7d21e0101bb9a788b039 -->
 
 ## Decisions
 
@@ -15,18 +15,18 @@ Prose stays as typed.
 
 # One
 
-<!-- /computed in=c8d86bd9701de9c6 out=e165ff3a4729d208 -->
+<!-- /computed in=f5e0cc096b3fb5a364500158a3b04cdbd48c2378e2a1a2a63104e66c0f7699cc out=471bf7217498f1e7fabd99d2d10d192b34df8db8de66dc4b81cb3825bff106ae -->
 
 <!-- computed exec cmd="cat Cargo.toml" inputs=Cargo.toml name=deps | do not edit; run computed -->
 
 [package]
 
-<!-- /computed in=e9ad8fb7b038ca0a out=8cd2e91a715fb7e9 -->
+<!-- /computed in=4caf708a6a15c6a34fe8a87c8dd180a5e6ead811db307cfdfaf37f53eb39cf4a out=6f8ae269b5e3bd8b6117c5d1b4556a006cfaba5f306a45a1869b744e932ca3ad -->
 
 <!-- computed exec cmd=date volatile name=now as=fence lang=text | do not edit; run computed -->
 ```text
 2026-09-03
 ```
-<!-- /computed in=448d645aa4e8d33c out=f83f52902a3e99f5 -->
+<!-- /computed in=98db2efa61f8c4dd2169c8090a5409a80150b4a398bc9579e8cb23a545069b1a out=a19c3bdbcab9cb9bed69204f176830e00c4bba88fc961da471f162b064665c7d -->
 
 The end.

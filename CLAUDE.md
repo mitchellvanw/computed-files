@@ -44,7 +44,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── fixtures
     └── render.rs
 ```
-<!-- /computed in=50bdd8f3ff226f1e out=0dc59481e21c9200 -->
+<!-- /computed in=763d3939163eb7ab70fd52696d3301d85cc291f1c44ba9e28ea64a43f8609c0f out=7197482b2f16496ca38acd1bb78a60ce7709f172c003ad2a11085ba982c71e8b -->
 
 ## Decisions
 
@@ -59,5 +59,6 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 # Exec trust is granted per clone, outside the working tree
 # Render is pure behind a `Loaders` seam
 # Loader text is normalised and exec runs in a pinned environment
+# Sums are full SHA-256
 
-<!-- /computed in=c48c1171d6c901ec out=18ff75c06e6e8068 -->
+<!-- /computed in=48a89adafa020089723179bef2f8fba11bfa08ca445b92e9e5c79217073c1033 out=2165d202039a50eb9b98ef71e709644c20cec0dae66c8664c76a258de7a63585 -->

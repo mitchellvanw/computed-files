@@ -129,11 +129,11 @@ A change to any normalisation rule bumps both loaders' format constants.
 
 ## When is a region fresh?
 
-A region carries two sums in its closer. Both are BLAKE3, stored as the first 16 hex characters.
+A region carries two sums in its closer. Both are SHA-256, stored as the full 64 lowercase hex characters ([ADR 0010](../adr/0010-sha-256-sums.md)).
 
-**Input sum.** BLAKE3 over, in order: the domain line `computed-in/1\n`; the loader and its format constant, `<loader>/<n>\n`; the canonical opener line (single-space tokens, suffix stripped, indentation stripped) followed by `\n`; the snapshot bytes.
+**Input sum.** SHA-256 over, in order: the domain line `computed-in/1\n`; the loader and its format constant, `<loader>/<n>\n`; the canonical opener line (single-space tokens, suffix stripped, indentation stripped) followed by `\n`; the snapshot bytes.
 
-**Output sum.** BLAKE3 over the body bytes exactly as they sit between the marker lines, each line with its terminator. An empty body hashes empty.
+**Output sum.** SHA-256 over the body bytes exactly as they sit between the marker lines, each line with its terminator. An empty body hashes empty.
 
 **Format constant.** Each loader carries an integer, starting at 1, bumped by hand only when that loader's output for the same inputs changes. It is hashed and never printed. The crate version is not in the sum: upgrading the binary re-renders only the loaders whose rendering changed, and a newer local binary cannot produce drift that CI cannot reproduce.
 
@@ -254,7 +254,7 @@ exec computed run
 
 Milestone 1 replaces `computed-proto` in place with one package, `computed`, edition 2021. `src/lib.rs` holds every module; `src/main.rs` calls `computed::cli::main()`. The prototype modules are deleted; what survives of them is already recorded as decisions ([ADR 0008](../adr/0008-render-is-pure-behind-a-loaders-seam.md)).
 
-Dependencies: `clap`, `ignore`, `globset`, `blake3`, `tempfile`, `anyhow` (cli only), `similar`, `toml`, `serde`, `wait-timeout`, `libc`. No `regex`: the opener tokeniser is hand-written because of the quoting rules. Dev: `assert_cmd`, `tempfile`. No snapshot-testing crate.
+Dependencies: `clap`, `ignore`, `globset`, `sha2`, `tempfile`, `anyhow` (cli only), `similar`, `toml`, `serde`, `wait-timeout`, `libc`. No `regex`: the opener tokeniser is hand-written because of the quoting rules. Dev: `assert_cmd`, `tempfile`. No snapshot-testing crate.
 
 Eight modules:
 
@@ -349,3 +349,4 @@ Out of scope for v0, and returning only if the destination is redrawn: copy layo
 | [0007](../adr/0007-exec-trust-per-clone.md) | Exec trust is granted per clone, outside the working tree. |
 | [0008](../adr/0008-render-is-pure-behind-a-loaders-seam.md) | Render is pure behind a `Loaders` seam. |
 | [0009](../adr/0009-loader-text-is-normalised-and-exec-runs-pinned.md) | Loader text is normalised and exec runs in a pinned environment. |
+| [0010](../adr/0010-sha-256-sums.md) | Sums are full SHA-256. |
