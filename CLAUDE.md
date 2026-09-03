@@ -61,4 +61,4 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 # Loader text is normalised and exec runs in a pinned environment
 # Sums are full SHA-256
 
-<!-- /computed in=48a89adafa020089723179bef2f8fba11bfa08ca445b92e9e5c79217073c1033 out=2165d202039a50eb9b98ef71e709644c20cec0dae66c8664c76a258de7a63585 -->
+<!-- /computed in=f2d430a251fd8f0ba9f00ceafac63462e31365aa27a38ad983b812c3be446fc3 out=2165d202039a50eb9b98ef71e709644c20cec0dae66c8664c76a258de7a63585 -->
