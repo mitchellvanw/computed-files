@@ -1,4 +1,5 @@
 //! `render` through a fake `Loaders` against golden files under `tests/fixtures`.
+//! The fixtures carry a `.txt` suffix so `computed` discovery in this repository skips them.
 //! Set `UPDATE_GOLDEN=1` to rewrite the expected files.
 
 use std::collections::HashMap;
@@ -139,7 +140,7 @@ fn run_case(input: &str, out: &str, mode: Mode, trusted: bool, fake: &mut Fake) 
     let file = marker::parse(&text).unwrap();
     let rendered = render::file(&file, mode, trusted, fake);
     if let Rendered::Written { text, .. } = &rendered {
-        golden(&format!("{out}.md"), text);
+        golden(&format!("{out}.txt"), text);
     }
     golden(&format!("{out}.report.txt"), &report_text(&rendered));
     rendered
@@ -176,7 +177,7 @@ fn standard() -> Fake {
 fn run_renders_an_unrendered_file() {
     let mut fake = standard();
     let r = run_case(
-        "unrendered.in.md",
+        "unrendered.in.txt",
         "unrendered.run",
         Mode::Run { force: false },
         true,
@@ -190,7 +191,7 @@ fn run_renders_an_unrendered_file() {
 fn run_on_a_fresh_file_is_unchanged_and_loads_only_volatile() {
     let mut fake = standard();
     let r = run_case(
-        "fresh.in.md",
+        "fresh.in.txt",
         "fresh.run",
         Mode::Run { force: false },
         true,
@@ -203,11 +204,11 @@ fn run_on_a_fresh_file_is_unchanged_and_loads_only_volatile() {
 #[test]
 fn check_never_loads() {
     let mut fake = standard();
-    run_case("fresh.in.md", "fresh.check", Mode::Check, false, &mut fake);
+    run_case("fresh.in.txt", "fresh.check", Mode::Check, false, &mut fake);
     assert!(fake.loads.is_empty());
     let mut fake = standard();
     let r = run_case(
-        "states.in.md",
+        "states.in.txt",
         "states.check",
         Mode::Check,
         false,
@@ -221,7 +222,7 @@ fn check_never_loads() {
 fn run_refuses_an_edited_region_and_writes_nothing() {
     let mut fake = standard();
     let r = run_case(
-        "states.in.md",
+        "states.in.txt",
         "states.run",
         Mode::Run { force: false },
         true,
@@ -238,7 +239,7 @@ fn run_refuses_an_edited_region_and_writes_nothing() {
 fn run_force_overwrites_edited_regions() {
     let mut fake = standard();
     let r = run_case(
-        "states.in.md",
+        "states.in.txt",
         "states.force",
         Mode::Run { force: true },
         true,
@@ -251,7 +252,7 @@ fn run_force_overwrites_edited_regions() {
 fn dry_run_reports_what_run_would_write() {
     let mut fake = standard();
     let r = run_case(
-        "states.in.md",
+        "states.in.txt",
         "states.dry-run",
         Mode::DryRun { force: true },
         true,
@@ -264,7 +265,7 @@ fn dry_run_reports_what_run_would_write() {
 fn untrusted_skips_exec_and_still_renders_tree() {
     let mut fake = standard();
     let r = run_case(
-        "unrendered.in.md",
+        "unrendered.in.txt",
         "unrendered.untrusted",
         Mode::Run { force: false },
         false,
@@ -302,7 +303,7 @@ fn loader_failure_keeps_the_body_and_sums() {
         ("now", Entry::Volatile("2026-09-03\n")),
     ]);
     let r = run_case(
-        "fresh.in.md",
+        "fresh.in.txt",
         "fresh.failure",
         Mode::Run { force: false },
         true,
@@ -338,7 +339,7 @@ fn text_that_fails_normalisation_is_a_loader_failure() {
         ("now", Entry::Volatile("ok\n")),
     ]);
     let r = run_case(
-        "unrendered.in.md",
+        "unrendered.in.txt",
         "unrendered.normalisation",
         Mode::Run { force: false },
         true,
@@ -356,7 +357,7 @@ fn a_hard_loader_error_skips_the_file() {
         ("now", Entry::Volatile("")),
     ]);
     let r = run_case(
-        "unrendered.in.md",
+        "unrendered.in.txt",
         "unrendered.hard",
         Mode::Run { force: false },
         true,
@@ -370,7 +371,7 @@ fn a_hard_loader_error_skips_the_file() {
 fn clean_empties_bodies_and_strips_sums() {
     let mut fake = standard();
     let r = run_case(
-        "fresh.in.md",
+        "fresh.in.txt",
         "fresh.clean",
         Mode::Clean {
             force: false,
@@ -383,7 +384,7 @@ fn clean_empties_bodies_and_strips_sums() {
     assert!(fake.loads.is_empty());
     let mut fake = standard();
     let r = run_case(
-        "states.in.md",
+        "states.in.txt",
         "states.clean",
         Mode::Clean {
             force: false,
@@ -395,7 +396,7 @@ fn clean_empties_bodies_and_strips_sums() {
     assert!(matches!(r, Rendered::Refused { .. }));
     let mut fake = standard();
     run_case(
-        "states.in.md",
+        "states.in.txt",
         "states.clean-force",
         Mode::Clean {
             force: true,
@@ -406,7 +407,7 @@ fn clean_empties_bodies_and_strips_sums() {
     );
     let mut fake = standard();
     run_case(
-        "states.in.md",
+        "states.in.txt",
         "states.clean-dry-run",
         Mode::Clean {
             force: true,
@@ -417,7 +418,7 @@ fn clean_empties_bodies_and_strips_sums() {
     );
     let mut fake = standard();
     let r = run_case(
-        "unrendered.in.md",
+        "unrendered.in.txt",
         "unrendered.clean",
         Mode::Clean {
             force: false,
@@ -430,7 +431,7 @@ fn clean_empties_bodies_and_strips_sums() {
         matches!(r, Rendered::Written { .. }),
         "the unrendered region with a stray body is emptied"
     );
-    let cleaned = marker::parse(&read("unrendered.clean.md")).unwrap();
+    let cleaned = marker::parse(&read("unrendered.clean.txt")).unwrap();
     let r = render::file(
         &cleaned,
         Mode::Clean {
@@ -446,7 +447,7 @@ fn clean_empties_bodies_and_strips_sums() {
 
 #[test]
 fn a_cleaned_file_renders_back_to_the_fresh_file() {
-    let fresh = marker::parse(&read("fresh.in.md")).unwrap();
+    let fresh = marker::parse(&read("fresh.in.txt")).unwrap();
     let mut fake = standard();
     let Rendered::Written { text: cleaned, .. } = render::file(
         &fresh,
@@ -461,7 +462,7 @@ fn a_cleaned_file_renders_back_to_the_fresh_file() {
     };
     let file = marker::parse(&cleaned).unwrap();
     match render::file(&file, Mode::Run { force: false }, true, &mut fake) {
-        Rendered::Written { text, .. } => assert_eq!(text, read("fresh.in.md")),
+        Rendered::Written { text, .. } => assert_eq!(text, read("fresh.in.txt")),
         other => panic!("{other:?}"),
     }
 }

@@ -1,0 +1,9 @@
+repos:
+  - repo: local
+    hooks:
+      - id: computed
+        name: computed run
+        entry: computed run
+        language: system
+        always_run: true
+        pass_filenames: false
