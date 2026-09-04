@@ -22,6 +22,25 @@ The prose around the markers is yours. The body between them belongs to the tool
 
 One static binary, Rust, no runtime to install. The full design is in [`docs/spec/computed-v0.md`](docs/spec/computed-v0.md); the decisions that are hard to reverse are under [`docs/adr/`](docs/adr/). This repository is its own first user: [`CLAUDE.md`](CLAUDE.md) carries a tree region and an exec region, kept current by `computed run` in pre-commit and verified by `computed check` in CI.
 
+## Install
+
+```
+cargo install computed
+```
+
+Or take a prebuilt binary from the [latest release](https://github.com/mitchellvanw/computed-files/releases/latest) — macOS on Apple silicon or Intel, Linux on x86-64 or arm64, no toolchain needed. Each archive's SHA-256 is listed in the release's `SHA256SUMS`.
+
+## For an agent
+
+This repository is also a Claude Code plugin. Installing it hands an agent the marker grammar, the setup procedure and the region states in every project, without a checkout:
+
+```
+/plugin marketplace add mitchellvanw/computed-files
+/plugin install computed@computed
+```
+
+The skill at [`claude-code-plugin/skills/computed-setup/SKILL.md`](claude-code-plugin/skills/computed-setup/SKILL.md) runs setup as a wizard: it surveys the repository, asks only what the survey left open, then writes the regions and the hook. The grammar and the states sit beside it in [`REFERENCE.md`](claude-code-plugin/skills/computed-setup/REFERENCE.md), whose command block is itself a `computed` region over `src/cli.rs`, so CI fails if the command line moves and the skill does not.
+
 ## Why another region rewriter
 
 Tools like cog, mdsh, and markdown-magic already rewrite the span between two comment markers. They share one gap: they remember what they wrote, not what they read. cog stores a checksum over the output, so it can tell you a region was hand-edited. It cannot tell you the inputs moved. To answer "is this file fresh" they have to run every generator again, which is the slow path and, for shell regions, the untrusted one.
@@ -119,25 +138,6 @@ Pre-commit runs `run`, CI runs `check`. The committed [`.pre-commit-config.yaml`
 #!/bin/sh
 exec computed run
 ```
-
-## Install
-
-```
-cargo install computed
-```
-
-Or take a prebuilt binary from the [latest release](https://github.com/mitchellvanw/computed-files/releases/latest) — macOS on Apple silicon or Intel, Linux on x86-64 or arm64, no toolchain needed. Each archive's SHA-256 is listed in the release's `SHA256SUMS`.
-
-## For an agent
-
-This repository is also a Claude Code plugin. Installing it hands an agent the marker grammar, the setup procedure and the region states in every project, without a checkout:
-
-```
-/plugin marketplace add mitchellvanw/computed-files
-/plugin install computed
-```
-
-The skill at [`claude-code-plugin/skills/computed-setup/SKILL.md`](claude-code-plugin/skills/computed-setup/SKILL.md) runs setup as a wizard: it surveys the repository, asks only what the survey left open, then writes the regions and the hook. The grammar and the states sit beside it in [`REFERENCE.md`](claude-code-plugin/skills/computed-setup/REFERENCE.md), whose command block is itself a `computed` region over `src/cli.rs`, so CI fails if the command line moves and the skill does not.
 
 ## Try it
 
