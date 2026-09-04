@@ -272,7 +272,7 @@ $ echo $?
       <p class="font-mono text-xs text-ink-2 m-0 mt-5 mb-2">the Claude Code plugin</p>
       <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>/plugin marketplace add mitchellvanw/computed-files
 /plugin install computed@computed</code></pre>
-      <p class="mt-2 text-sm text-ink-2">A setup wizard for an agent: it reads what the repository already answers, asks only what is left, then writes the regions and the hook.</p>
+      <p class="mt-2 text-sm text-ink-2">Installs the <code>computed-setup</code> skill, a wizard: it surveys the repository first, then asks only what it could not work out — which files, which loader, how drift should be caught — and writes the regions, the hook and the CI step. The marker grammar and the region states ride along for the agent to read when a run reports something.</p>
 
       <p class="font-mono text-xs text-ink-2 m-0 mt-5 mb-2">then, in a repository</p>
       <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>computed trust   <span class="text-ink-2"># once per clone, only for exec regions</span>
