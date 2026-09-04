@@ -86,28 +86,17 @@
     table { border-collapse: collapse; }
   }
 
-  /* the document panel */
+  /* the file card */
   .doc { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; }
-  .doc .ln { display: block; white-space: pre; padding: 0 1rem; min-height: 1.6em; }
+  .doc .ln { display: block; white-space: pre; padding: 0 1rem; min-height: 1.6em; position: relative; }
   .doc .marker { color: var(--ink-3); }
-  .doc .region { background: var(--wash); border-left: 3px solid var(--wash-2); transition: background .5s ease, border-color .5s ease; }
-  .doc .region.is-stale { background: var(--sum-soft); border-left-color: var(--sum); }
-  .doc .region.is-edited { background: var(--warn-soft); border-left-color: var(--warn); }
-  .doc .grow { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .45s ease; }
-  .doc .grow > div { overflow: hidden; min-height: 0; }
-  .doc .grow.open { grid-template-rows: 1fr; }
-  .doc .hash { display: inline-block; transition: color .3s ease, background .3s ease; padding: 0 .2em; border-radius: 3px; }
-  .doc .hash.flip { color: var(--sum); background: var(--sum-soft); }
-  .doc .hash.bad { color: var(--warn); background: var(--warn-soft); text-decoration: line-through; }
-  .pill { display: inline-flex; align-items: center; gap: .4em; padding: .1em .6em; border-radius: 999px; font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--line); color: var(--ink-2); transition: all .3s ease; }
-  .pill::before { content: ""; width: .5em; height: .5em; border-radius: 50%; background: currentColor; }
-  .pill.fresh { color: var(--sum); border-color: var(--sum); }
-  .pill.stale { color: var(--sum); border-color: var(--sum); background: var(--sum-soft); }
-  .pill.edited { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
-  .event { transition: opacity .4s ease, transform .4s ease; }
-  .event[hidden] { display: none; }
-  .measuring, .measuring * { transition: none !important; }
-  .event.enter { opacity: 0; transform: translateY(6px); }
+  .doc .region { background: var(--wash); border-left: 3px solid var(--wash-2); }
+  .doc .k { position: absolute; right: .75rem; top: .15em; }
+  .k { display: inline-flex; align-items: center; justify-content: center; width: 1.35rem; height: 1.35rem; border-radius: 999px; background: var(--sum); color: var(--ground); font-family: var(--font-sans); font-size: 11px; font-weight: 600; flex: none; }
+  .step { counter-increment: step; }
+  .step::before { content: counter(step); display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); font-family: var(--font-mono); font-size: 12px; margin-bottom: .75rem; }
+
+  /* the comparison */
   .cmp { border-collapse: separate; border-spacing: 0; }
   .cmp thead th { font-weight: 500; font-size: 0.85rem; color: var(--ink-2); text-align: center; padding: 0 .5rem .75rem; vertical-align: bottom; line-height: 1.3; }
   .cmp tbody th { text-align: left; font-weight: 500; padding: 1rem .75rem 1rem 0; white-space: nowrap; border-top: 1px solid var(--line); }
@@ -123,28 +112,6 @@
   .cmp .us th { border-radius: 6px 0 0 6px; padding-left: .75rem; border-left: 1px solid var(--wash-2); }
   .cmp .us td:last-child { border-radius: 0 6px 6px 0; border-right: 1px solid var(--wash-2); }
   .cmp .us .no { border-color: var(--wash-2); }
-  .step-dot { width: 2.25rem; height: 4px; border-radius: 2px; background: var(--line); transition: background .3s; }
-  .step-dot[aria-current="step"] { background: var(--sum); }
-
-  /* svg diagrams */
-  .fig svg { max-width: 100%; height: auto; display: block; margin-inline: auto; }
-  .fig .box { fill: var(--ground-2); stroke: var(--line); }
-  .fig .box-own { fill: var(--wash); stroke: var(--wash-2); }
-  .fig .t { fill: var(--ink); font-size: 12.5px; }
-  .fig .t2 { fill: var(--ink-2); font-size: 11.5px; }
-  .fig .edge { stroke: var(--ink-2); fill: none; stroke-width: 1.4; }
-  .fig .edge-sum { stroke: var(--sum); }
-  .fig .edge-warn { stroke: var(--warn); }
-  .fig .edge-dashed { stroke-dasharray: 5 4; }
-  .fig .leaf { fill: var(--sum-soft); stroke: var(--sum); }
-  .fig .leaf-warn { fill: var(--warn-soft); stroke: var(--warn); }
-  .fig .leaf-neutral { fill: var(--ground-2); stroke: var(--ink-3); }
-  .fig .tsum { fill: var(--sum); }
-  .fig .twarn { fill: var(--warn); }
-
-  @media (prefers-reduced-motion: reduce) {
-    .doc .region, .doc .grow, .doc .hash, .pill, .event, .step-dot { transition: none; }
-  }
 </style>
 </head>
 <body>
@@ -152,150 +119,105 @@
 <main class="mx-auto max-w-[1040px] px-5 sm:px-8 pb-24">
 
   <!-- ─────────────────────────── hero ─────────────────────────── -->
-  <header class="pt-14 sm:pt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:items-start">
+  <header class="pt-14 sm:pt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] lg:items-start">
     <div class="max-w-[30rem]">
-      <p class="font-mono text-sm text-ink-2 m-0 flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap"><span>computed</span><span aria-hidden="true">·</span><a href="how-it-works.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">mitchellvanw/computed-files</a></p>
+      <p class="font-mono text-sm text-ink-2 m-0 flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap"><span>computed</span><span aria-hidden="true">·</span><a href="how-it-works.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">GitHub</a></p>
       <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">Markdown sections that know when they are stale.</h1>
-      <p class="text-ink-2 text-[1.05rem]"><code>computed</code> is a command-line tool. You mark a span in a Markdown file and say what fills it, a directory tree or the output of a command. It writes that span and leaves the rest of the file alone.</p>
-      <p class="text-ink-2 text-[1.05rem] mt-4">It is built for <code>CLAUDE.md</code> and <code>AGENTS.md</code>, the files a coding agent reads before every task. The tree or module list in them falls behind the code without anyone noticing. <code>computed check</code> notices, from a pre-commit hook or CI, in the time it takes to read the file.</p>
-      <p class="text-ink-2 text-[1.05rem] mt-4">The card is a <code>CLAUDE.md</code> with two such spans. Replay steps through a new file, a hand edit, and a forced rerun.</p>
-      <div class="mt-6 flex items-center gap-3">
-        <button id="replay" type="button" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Replay</button>
-        <button id="pause" type="button" aria-pressed="false" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Pause</button>
-        <div id="steps" class="flex gap-1.5" role="tablist" aria-label="Steps"></div>
+      <p class="text-ink-2 text-[1.05rem]"><code>computed</code> fills a marked region of a Markdown file from a directory tree or a command, and writes down what it read and what it wrote. When the code moves on, <code>computed check</code> says so. It never runs the command to find out.</p>
+      <p class="text-ink-2 text-[1.05rem] mt-4">Built for <code>CLAUDE.md</code> and <code>AGENTS.md</code>. One binary, no runtime, no cache directory.</p>
+      <div class="mt-6 flex flex-wrap gap-3">
+        <a href="#start" class="font-mono text-sm px-3 py-1.5 rounded border border-sum bg-sum-soft text-sum hover:bg-sum hover:text-ground">Get started</a>
+        <a href="how-it-works.html" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum">Read the rules</a>
       </div>
     </div>
 
-    <!-- the live document -->
-    <div id="hero-card" class="rounded-lg border border-line bg-ground overflow-hidden shadow-[0_1px_0_var(--line)]">
-      <div class="flex items-center justify-between px-4 py-2 border-b border-line bg-ground-2 font-mono text-xs text-ink-2">
-        <span>CLAUDE.md</span>
-        <span id="report" class="text-ink-2">check → exit 0</span>
-      </div>
-      <div class="grid md:grid-cols-[minmax(0,1fr)_12.5rem]">
+    <div>
+      <div class="rounded-lg border border-line bg-ground overflow-hidden shadow-[0_1px_0_var(--line)]">
+        <div class="flex items-center justify-between px-4 py-2 border-b border-line bg-ground-2 font-mono text-xs text-ink-2">
+          <span>CLAUDE.md</span>
+          <span>after <code>computed run</code></span>
+        </div>
         <div class="doc py-3 overflow-x-auto">
+          <span class="ln"># myapp</span>
+          <span class="ln"></span>
+          <span class="ln">Run tests with `cargo test`. Keep modules under `src/` small.</span>
+          <span class="ln"></span>
           <span class="ln">## Layout</span>
           <span class="ln"></span>
-          <div id="r-layout" class="region">
-            <span class="ln marker">&lt;!-- computed tree src=. depth=2 name=layout | do not edit; run computed --&gt;</span>
+          <div class="region">
+            <span class="ln marker">&lt;!-- computed tree src=. depth=2 | do not edit; run computed --&gt;<span class="k">1</span></span>
             <span class="ln">```text</span>
             <span class="ln">.</span>
             <span class="ln">├── CLAUDE.md</span>
-            <span class="ln">├── docs</span>
-            <span class="ln">├── scripts</span>
-            <span class="ln">└── src</span>
-            <span class="ln">    ├── lib.rs</span>
-            <span class="ln" id="l-main">    └── main.rs</span>
-            <div class="grow" id="g-watcher"><div><span class="ln">    └── watcher.rs</span></div></div>
+            <span class="ln">├── Cargo.toml<span class="k">2</span></span>
+            <span class="ln">├── src</span>
+            <span class="ln">│   ├── cli.rs</span>
+            <span class="ln">│   ├── lib.rs</span>
+            <span class="ln">│   └── main.rs</span>
+            <span class="ln">└── tests</span>
+            <span class="ln">    └── cli.rs</span>
             <span class="ln">```</span>
-            <div class="grow" id="g-edit"><div><span class="ln text-warn">&lt;!-- an agent added this line by hand --&gt;</span></div></div>
-            <span class="ln marker">&lt;!-- /computed in=<span class="hash" id="h-sum">ab558c86…</span> out=<span class="hash" id="h-out">d53ea485…</span> --&gt;</span>
+            <span class="ln marker">&lt;!-- /computed <span class="text-sum">in=</span>ab558c86… <span class="text-sum">out=</span>d53ea485… --&gt;<span class="k">3</span></span>
           </div>
           <span class="ln"></span>
-          <span class="ln">## Decisions</span>
+          <span class="ln">## Conventions</span>
           <span class="ln"></span>
-          <div class="region">
-            <span class="ln marker">&lt;!-- computed exec cmd=scripts/adr-index.sh inputs=docs/adr/*.md name=adrs | do not edit; run computed --&gt;</span>
-            <span class="ln"></span>
-            <span class="ln">- [Rust for the prototype](docs/adr/0001-rust-for-the-prototype.md)</span>
-            <span class="ln">- [Two sums in the closer](docs/adr/0002-two-sum-closer.md)</span>
-            <span class="ln"></span>
-            <span class="ln marker">&lt;!-- /computed in=1e8d787e… out=dab14b7f… --&gt;</span>
-          </div>
-          <span class="ln"></span>
-          <span class="ln">Run tests with `cargo test`.</span>
+          <span class="ln">Errors are `anyhow`. No `unwrap` outside tests.</span>
         </div>
-        <aside class="border-t md:border-t-0 md:border-l border-line px-4 py-3 text-sm flex flex-col gap-3">
-          <div class="flex items-center justify-between gap-2">
-            <span class="font-mono text-xs text-ink-2">layout</span>
-            <span class="pill fresh" id="pill-layout">fresh</span>
-          </div>
-          <div class="flex items-center justify-between gap-2">
-            <span class="font-mono text-xs text-ink-2">adrs</span>
-            <span class="pill fresh">fresh</span>
-          </div>
-          <div class="border-t border-line pt-3 mt-1 flex flex-col gap-2" id="events" aria-live="polite">
-            <p class="event m-0 text-ink-2" data-step="0">Nothing has happened yet. Both regions match their sums.</p>
-            <p class="event m-0" data-step="1" hidden><span class="text-ink-2">Someone runs</span> <code class="text-xs">touch src/watcher.rs</code><span class="text-ink-2">. Nobody edited the file, but the tree is an input, so <code class="text-xs">in=</code> changes and <code class="text-xs">run</code> regenerates the region.</span></p>
-            <p class="event m-0" data-step="2" hidden><span class="text-ink-2">An agent appends a line inside the region. The body no longer hashes to <code class="text-xs">out=</code>. The tool refuses to overwrite it and exits 1.</span></p>
-            <p class="event m-0" data-step="3" hidden><span class="text-ink-2">You run</span> <code class="text-xs">computed run --force</code><span class="text-ink-2">. The hand edit is discarded, both sums are recomputed, and <code class="text-xs">check</code> passes again.</span></p>
-          </div>
-        </aside>
       </div>
+      <ol class="list-none p-0 m-0 mt-5 grid gap-3 text-[0.95rem]">
+        <li class="flex gap-3"><span class="k">1</span><span>The opening comment says what fills the region. Here, a tree of the repository, two levels deep. Everything outside the two comments is yours, and a run never touches it.</span></li>
+        <li class="flex gap-3"><span class="k">2</span><span>The body. <code>computed run</code> wrote it. If a person or an agent edits it, the next run refuses to overwrite the edit and exits 1.</span></li>
+        <li class="flex gap-3"><span class="k">3</span><span>Two hashes in the closing comment. <code>in=</code> is what the tool read, the opening comment plus the paths it listed. <code>out=</code> is what it wrote. Both live in the file, so a fresh clone can check them.</span></li>
+      </ol>
     </div>
   </header>
 
-  <!-- ─────────────────────────── harness ─────────────────────────── -->
+  <!-- ─────────────────────────── why ─────────────────────────── -->
   <section class="mt-24 max-w-[42rem]">
-    <h2 class="text-2xl mb-3">One more part of the harness</h2>
-    <p>A project that runs coding agents already has a harness around them. Type checks, tests, linters, a pre-commit hook, CI. Birgitta Böckeler sorts these controls into two kinds. Guides are feedforward: they steer the agent before it acts. Sensors are feedback: they look at what the agent did and push back. A <code>CLAUDE.md</code> or <code>AGENTS.md</code> is a guide. Nearly everything else in the harness is a sensor.</p>
-    <p class="mt-3">The guide has no sensor of its own. The tree and the module table in it drift as the code moves, and nothing in the loop notices. An agent takes the file as an accurate description of the repo, so a stale guide does more damage than none.</p>
-    <p class="mt-3"><code>computed</code> is that sensor. It sits next to the others, in the same hook and the same CI job. <code>computed check</code> compares the sums and exits 1 when a region no longer matches its inputs. It never runs a generator, so it costs what a read costs. The context file stays a guide. Its freshness becomes something the harness measures, like everything else it measures.</p>
-    <p class="mt-3 text-ink-2 text-[0.95rem]">The vocabulary is from <a href="https://martinfowler.com/articles/harness-engineering.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Harness engineering for coding agent users</a>, Birgitta Böckeler on martinfowler.com, April 2026.</p>
+    <h2 class="text-2xl mb-3">The file an agent reads first is the one nobody checks</h2>
+    <p>A coding agent reads <code>CLAUDE.md</code> before every task and takes it as true. Most of the file is prose, and prose stays right. The part that goes wrong is the generated part. The directory tree, the module list, the index of decisions. The code moves, the list does not, and nothing notices. The agent starts each task with a map that was right a month ago, and it does not second-guess the map.</p>
+    <p class="mt-3">Everything else around an agent pushes back when it is wrong. Tests fail. The type checker complains. The context file gets no such signal. <code>computed check</code> is that signal, and it runs in the same hook and the same CI job as the others.</p>
+    <p class="mt-3 text-ink-2 text-[0.95rem]">The guides-and-sensors framing is Birgitta Böckeler's, in <a href="https://martinfowler.com/articles/harness-engineering.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Harness engineering for coding agent users</a>, April 2026.</p>
   </section>
 
-  <!-- ─────────────────────────── two sums ─────────────────────────── -->
-  <section class="mt-24 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
-    <div>
-      <h2 class="text-2xl mb-3">Two sums, no state</h2>
-      <p>Tools that rewrite a marked span already exist. cog, mdsh, markdown-magic. They store a checksum of what they wrote, at best. None of them store what they read, so "is this fresh" means running every generator again. <a href="#others" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">The comparison</a> is below.</p>
-      <p class="mt-3">Every closer here carries both. The input sum hashes the opener line plus a snapshot of the inputs. The output sum hashes the body. Together they answer both questions from the rendered file alone, with no cache directory that a fresh clone would lose.</p>
+  <!-- ─────────────────────────── how ─────────────────────────── -->
+  <section class="mt-24">
+    <h2 class="text-2xl mb-3">Three steps, two commands</h2>
+    <div class="mt-8 grid gap-6 md:grid-cols-3" style="counter-reset: step">
+      <div class="step rounded-lg border border-line bg-ground-2 p-5">
+        <h3 class="text-lg font-medium mb-2">Mark a region</h3>
+        <pre class="m-0 mb-3 text-[12.5px] leading-relaxed overflow-x-auto text-ink-2"><code>&lt;!-- computed tree src=. depth=2 --&gt;
+&lt;!-- /computed --&gt;</code></pre>
+        <p class="text-[0.95rem]">Two comments, anywhere in the file. The first names what fills the gap. <code>tree</code> lists a directory. <code>exec</code> runs a command and pastes its output.</p>
+      </div>
+      <div class="step rounded-lg border border-line bg-ground-2 p-5">
+        <h3 class="text-lg font-medium mb-2">Run fills it</h3>
+        <pre class="m-0 mb-3 text-[12.5px] leading-relaxed overflow-x-auto text-ink-2"><code>$ computed run
+CLAUDE.md:7  tree unrendered written</code></pre>
+        <p class="text-[0.95rem]"><code>run</code> writes the body and the two hashes into the closing comment. Commit the result. There is no cache and no build directory to lose.</p>
+      </div>
+      <div class="step rounded-lg border border-line bg-ground-2 p-5">
+        <h3 class="text-lg font-medium mb-2">Check reads it</h3>
+        <pre class="m-0 mb-3 text-[12.5px] leading-relaxed overflow-x-auto text-ink-2"><code>$ computed check
+CLAUDE.md:7  tree stale
+$ echo $?
+1</code></pre>
+        <p class="text-[0.95rem]"><code>check</code> hashes the inputs again and compares. Exit 1 on drift. It runs no command from the repository, so it needs no trust and no runtime.</p>
+      </div>
     </div>
-    <figure class="fig">
-      <svg width="690" height="250" viewBox="0 0 690 250" role="img" aria-label="The opener line and an input snapshot are hashed into sum; the written body is hashed into out. Both land in the closing marker.">
-        <defs>
-          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
-        </defs>
-        <g class="text-ink-2">
-          <!-- inputs column -->
-          <rect x="10" y="20" width="200" height="34" rx="4" class="box"/>
-          <text x="22" y="42" class="t">&lt;!-- computed tree src=. --&gt;</text>
-          <rect x="10" y="62" width="200" height="60" rx="4" class="box"/>
-          <text x="22" y="82" class="t">snapshot</text>
-          <text x="22" y="99" class="t2">tree: sorted visible paths</text>
-          <text x="22" y="114" class="t2">exec: the declared inputs</text>
-
-          <rect x="10" y="170" width="200" height="50" rx="4" class="box-own"/>
-          <text x="22" y="191" class="t">body as written</text>
-          <text x="22" y="208" class="t2">the fenced tree, the command output</text>
-
-          <!-- hash boxes -->
-          <rect x="290" y="52" width="90" height="38" rx="19" class="box"/>
-          <text x="335" y="76" class="t" text-anchor="middle">sha256</text>
-          <rect x="290" y="176" width="90" height="38" rx="19" class="box"/>
-          <text x="335" y="200" class="t" text-anchor="middle">sha256</text>
-
-          <!-- arrows in -->
-          <path d="M210 37 C250 37 250 71 290 71" class="edge" marker-end="url(#ar)"/>
-          <path d="M210 92 C250 92 250 71 290 71" class="edge" marker-end="url(#ar)"/>
-          <path d="M210 195 L290 195" class="edge" marker-end="url(#ar)"/>
-
-          <!-- closer -->
-          <rect x="430" y="100" width="250" height="60" rx="4" class="box"/>
-          <text x="445" y="123" class="t">&lt;!-- /computed</text>
-          <text x="455" y="143" class="t"><tspan class="tsum">in=</tspan>e07c41d2… <tspan class="tsum">out=</tspan>9b31f0aa… --&gt;</text>
-
-          <path d="M380 71 C410 71 410 118 445 118" class="edge edge-sum" marker-end="url(#ar)"/>
-          <text x="392" y="60" class="t2 tsum">what it read</text>
-          <path d="M380 195 C410 195 410 145 445 145" class="edge edge-sum" marker-end="url(#ar)"/>
-          <text x="392" y="220" class="t2 tsum">what it wrote</text>
-        </g>
-      </svg>
-      <figcaption class="mt-3">The opener is part of the input hash, so changing <code>depth=2</code> to <code>depth=3</code> is a changed input, not a hand edit.</figcaption>
-    </figure>
+    <p class="mt-6 text-ink-2">What counts as an input, what happens when a command fails, and how a hand edit is told apart from drift are on <a href="how-it-works.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a>.</p>
   </section>
 
   <!-- ─────────────────────────── the others ─────────────────────────── -->
   <section class="mt-24" id="others">
     <h2 class="text-2xl mb-3">Why not cog, or mdsh, or markdown-magic?</h2>
-    <p class="text-[1.15rem] leading-[1.6]">They all rewrite the span between two comments, and they all do it well. What none of them write down is what the span was computed from. So the only way to ask "is this still right" is to run everything again.</p>
+    <p class="text-[1.15rem] leading-[1.6]">They rewrite the span between two comments, and they do it well. None of them write down what the span was computed from. So the only way to ask "is this still right" is to run everything again.</p>
     <div class="mt-10 overflow-x-auto">
-      <table class="cmp w-full min-w-[40rem]">
+      <table class="cmp w-full min-w-[34rem]">
         <thead>
           <tr>
             <th class="text-left"></th>
-            <th>Rewrites<br>in place</th>
-            <th>Knows what<br>it wrote</th>
             <th>Knows what<br>it read</th>
             <th>Checks without<br>a rerun</th>
             <th>Refuses a<br>hand edit</th>
@@ -304,87 +226,57 @@
         <tbody>
           <tr>
             <th scope="row">cog <span class="sub">Python, any text file</span></th>
-            <td><span class="yes">yes</span></td>
-            <td><span class="yes">yes</span><span class="note">with <code>-c</code></span></td>
             <td><span class="no">no</span></td>
             <td><span class="no">no</span><span class="note"><code>--check</code> reruns</span></td>
             <td><span class="yes">yes</span><span class="note">with <code>-c</code></span></td>
           </tr>
           <tr>
             <th scope="row">mdsh <span class="sub">Rust, shell in the marker</span></th>
-            <td><span class="yes">yes</span></td>
-            <td><span class="no">no</span></td>
             <td><span class="no">no</span></td>
             <td><span class="no">no</span><span class="note"><code>--frozen</code> reruns</span></td>
             <td><span class="no">no</span></td>
           </tr>
           <tr>
             <th scope="row">markdown-magic <span class="sub">Node, named transforms</span></th>
-            <td><span class="yes">yes</span></td>
-            <td><span class="no">no</span></td>
             <td><span class="no">no</span></td>
             <td><span class="no">no</span><span class="note"><code>dryRun</code> reruns</span></td>
             <td><span class="no">no</span></td>
           </tr>
           <tr>
             <th scope="row">embedme <span class="sub">Node, file ranges</span></th>
-            <td><span class="yes">yes</span></td>
-            <td><span class="no">no</span></td>
             <td><span class="no">no</span></td>
             <td><span class="no">no</span><span class="note"><code>--verify</code> reruns</span></td>
             <td><span class="no">no</span></td>
           </tr>
           <tr class="us">
             <th scope="row">computed <span class="sub">Rust, one binary</span></th>
-            <td><span class="yes">yes</span></td>
-            <td><span class="yes">yes</span><span class="note"><span class="text-sum">out=</span> in every closer</span></td>
             <td><span class="yes">yes</span><span class="note"><span class="text-sum">in=</span> in every closer</span></td>
-            <td><span class="yes">yes</span><span class="note"><code>check</code> runs no loader</span></td>
+            <td><span class="yes">yes</span><span class="note"><code>check</code> runs nothing</span></td>
             <td><span class="yes">yes</span><span class="note">until <code>--force</code></span></td>
           </tr>
         </tbody>
       </table>
     </div>
-    <div class="mt-10 grid gap-8 md:grid-cols-2">
-      <div>
-        <h3 class="text-lg font-medium mb-2">Where they are ahead</h3>
-        <p>markdown-magic has a <code>fileTree</code> transform and a plugin API. cog runs on any text file and has done so for twenty years. Both have users we do not. cog's checksum is where the output sum comes from, and org-babel's <code>:cache</code>, a hash of the block and its arguments, is the nearest thing to the input sum. We have two loaders and read markdown only.</p>
-      </div>
-      <div>
-        <h3 class="text-lg font-medium mb-2">Why the second sum matters</h3>
-        <p>A rerun is fine for a table of contents. It is not fine for a shell command in a file an agent reads before every task. The rerun needs the generator, its runtime, and permission to execute text from a checkout. CI has none of those, so nobody checks. Two hashes in the closer make the check a read.</p>
-      </div>
-    </div>
-    <p class="mt-6 text-ink-2 text-[0.95rem]">From each tool's own docs, September 2026. The survey with sources is in <a href="https://github.com/mitchellvanw/computed-files/blob/main/docs/research/computed-markdown-prior-art.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/research</a>.</p>
+    <p class="mt-8 max-w-[42rem]">cog has run on any text file for twenty years, and markdown-magic already ships a file tree transform. Both have more users than we do. A rerun is fine for a table of contents. It is not fine for a shell command in a file an agent reads before every task, because the rerun needs the generator, its runtime, and permission to execute text from a checkout. CI usually has none of those, so nobody checks.</p>
+    <p class="mt-3 text-ink-2 text-[0.95rem]">From each tool's own docs, September 2026. The survey with sources is in <a href="https://github.com/mitchellvanw/computed-files/blob/main/docs/research/computed-markdown-prior-art.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/research</a>.</p>
   </section>
 
-  <!-- ─────────────────────────── promises ─────────────────────────── -->
-  <section class="mt-24">
-    <h2 class="text-2xl mb-3">Two things a run will not do</h2>
-    <p>The region is the only thing the tool owns, and even there it errs on the side of leaving your file alone.</p>
-    <div class="mt-6 grid gap-8 md:grid-cols-2">
-      <div>
-        <h3 class="text-lg font-medium mb-2">Hand edits are refused, not reverted</h3>
-        <p>An agent that edited a region had a reason. Overwriting it on the next run loses that work without a trace. The region stays, the run exits 1, and regenerating takes an explicit <code>--force</code> or deleting the sum.</p>
-      </div>
-      <div>
-        <h3 class="text-lg font-medium mb-2">A failed loader keeps the last good body</h3>
-        <p>Deleting an input does not blank the region. Body and sums stay as they were, the run exits 1 so CI notices, and restoring the file repairs it on the next run.</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────────────────────── hooks ─────────────────────────── -->
-  <section class="mt-24 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start">
+  <!-- ─────────────────────────── start ─────────────────────────── -->
+  <section class="mt-24 grid gap-10 md:grid-cols-2" id="start">
     <div>
-      <h2 class="text-2xl mb-3">Pre-commit runs, CI checks</h2>
-      <p>The pre-commit hook runs <code>computed run</code>. When it rewrites a file the commit fails and you re-stage, the same way rustfmt behaves. CI runs <code>computed check</code>, which compares sums and exits 1 on drift without running anything from the repo.</p>
-      <p class="mt-3">The hook has to run on every commit, not only when a Markdown file is staged. A change under <code>src/</code> makes the tree region stale without touching <code>CLAUDE.md</code>, and a filename-filtered hook would never see it. Running it twice is a no-op, so it is safe to run everywhere.</p>
+      <h2 class="text-2xl mb-3">Get started</h2>
+      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install --git \
+  https://github.com/mitchellvanw/computed-files
+
+computed trust   <span class="text-ink-2"># once per clone, only for exec regions</span>
+computed run     <span class="text-ink-2"># fill stale regions</span>
+computed check   <span class="text-ink-2"># exit 1 on drift, runs nothing</span></code></pre>
+      <p class="mt-4 text-ink-2">With no paths, both commands walk the current directory for <code>.md</code> files and skip whatever <code>.gitignore</code> skips. An <code>exec</code> region only runs in a clone you have trusted on this machine, so a checkout cannot run commands on its own.</p>
     </div>
-    <div class="grid gap-4">
-      <div>
-        <p class="font-mono text-xs text-ink-2 m-0 mb-2">.pre-commit-config.yaml</p>
-        <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>repos:
+    <div>
+      <h2 class="text-2xl mb-3">Wire it in</h2>
+      <p class="font-mono text-xs text-ink-2 m-0 mb-2">.pre-commit-config.yaml</p>
+      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>repos:
   - repo: local
     hooks:
       - id: computed
@@ -393,136 +285,19 @@
         language: system
         always_run: true
         pass_filenames: false</code></pre>
-      </div>
-      <div>
-        <p class="font-mono text-xs text-ink-2 m-0 mb-2">.github/workflows/ci.yml</p>
-        <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>- run: cargo build --release
+      <p class="font-mono text-xs text-ink-2 m-0 mt-4 mb-2">.github/workflows/ci.yml</p>
+      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>- run: cargo build --release
 - run: ./target/release/computed check</code></pre>
-      </div>
-    </div>
-  </section>
-
-  <!-- ─────────────────────────── try it ─────────────────────────── -->
-  <section class="mt-24 grid gap-10 md:grid-cols-2">
-    <div>
-      <h2 class="text-2xl mb-3">Try it</h2>
-      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install --git \
-  https://github.com/mitchellvanw/computed-files
-
-computed trust          <span class="text-ink-2"># once per clone</span>
-computed run            <span class="text-ink-2"># render stale regions</span>
-computed check          <span class="text-ink-2"># exit 1 on drift, runs nothing</span>
-computed run --dry-run  <span class="text-ink-2"># the diff run would write</span>
-computed run --force    <span class="text-ink-2"># overwrite a hand edit</span>
-computed clean          <span class="text-ink-2"># empty regions, keep markers</span></code></pre>
-      <p class="mt-4 text-ink-2">With no paths it walks the current directory for <code>.md</code> files, using the same ignore rules as the tree loader.</p>
-    </div>
-    <div>
-      <h2 class="text-2xl mb-3">Two regions to start with</h2>
-      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>## Layout
-
-&lt;!-- computed tree src=. depth=2 name=layout --&gt;
-&lt;!-- /computed --&gt;
-
-## Decisions
-
-&lt;!-- computed exec cmd="grep -h '^# ' docs/adr/*.md"
-     inputs=docs/adr/*.md name=adrs --&gt;
-&lt;!-- /computed --&gt;</code></pre>
-      <p class="mt-4 text-ink-2">Empty closers mean unrendered. The first <code>run</code> fills both and writes the sums. The rest of the rules, the states, the loaders and the exit codes, are on <a href="how-it-works.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a>.</p>
+      <p class="mt-4 text-ink-2">The hook runs on every commit, not only when a Markdown file is staged. A new file under <code>src/</code> makes the tree stale without touching <code>CLAUDE.md</code>. When the hook rewrites a file the commit stops and you stage again, the same as rustfmt.</p>
     </div>
   </section>
 
   <footer class="mt-24 pt-6 border-t border-line text-sm text-ink-2 flex flex-wrap gap-x-6 gap-y-1">
     <span>computed, a prototype</span>
     <a href="how-it-works.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a>
-    <span>Rust, one binary, no runtime</span>
     <span>The vocabulary is in <a href="https://github.com/mitchellvanw/computed-files/blob/main/CONTEXT.md" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">CONTEXT.md</a>; the decisions in <a href="https://github.com/mitchellvanw/computed-files/tree/main/docs/adr" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/adr</a></span>
     <a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Source on GitHub</a>
   </footer>
 </main>
-
-<script>
-(() => {
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const $ = (id) => document.getElementById(id);
-  const region = $('r-layout'), sum = $('h-sum'), out = $('h-out');
-  const gw = $('g-watcher'), ge = $('g-edit'), pill = $('pill-layout'), report = $('report');
-  const events = [...document.querySelectorAll('#events .event')];
-  const stepsEl = $('steps');
-
-  const STEPS = [
-    { report: 'check → exit 0', region: '', pill: ['fresh', 'fresh'], sum: ['ab558c86…', ''], out: ['d53ea485…', ''], watcher: false, edit: false },
-    { report: 'run → exit 0 · written', region: 'is-stale', pill: ['stale', 'stale · regenerated'], sum: ['e07c41d2…', 'flip'], out: ['9b31f0aa…', 'flip'], watcher: true, edit: false },
-    { report: 'run → exit 1 · refused', region: 'is-edited', pill: ['edited', 'edited · refused'], sum: ['e07c41d2…', ''], out: ['9b31f0aa…', 'bad'], watcher: true, edit: true },
-    { report: 'run --force → exit 0 · written', region: 'is-stale', pill: ['stale', 'hand edit discarded'], sum: ['e07c41d2…', ''], out: ['9b31f0aa…', 'flip'], watcher: true, edit: false },
-  ];
-
-  STEPS.forEach((_, i) => {
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'step-dot cursor-pointer border-0 p-0'; b.setAttribute('role', 'tab');
-    b.setAttribute('aria-label', 'Step ' + (i + 1));
-    b.addEventListener('click', () => { stop(); cur = i; show(i); });
-    stepsEl.appendChild(b);
-  });
-  const dots = [...stepsEl.children];
-
-  function show(i) {
-    const s = STEPS[i];
-    report.textContent = s.report;
-    region.className = 'region ' + s.region;
-    pill.className = 'pill ' + s.pill[0]; pill.textContent = s.pill[1];
-    sum.textContent = s.sum[0]; sum.className = 'hash ' + s.sum[1];
-    out.textContent = s.out[0]; out.className = 'hash ' + s.out[1];
-    gw.classList.toggle('open', s.watcher);
-    $('l-main').textContent = s.watcher ? '    ├── main.rs' : '    └── main.rs';
-    ge.classList.toggle('open', s.edit);
-    events.forEach((e, k) => {
-      const on = k === i;
-      if (on && e.hidden) { e.hidden = false; e.classList.add('enter'); requestAnimationFrame(() => e.classList.remove('enter')); }
-      else if (!on) e.hidden = true;
-    });
-    dots.forEach((d, k) => k === i ? d.setAttribute('aria-current', 'step') : d.removeAttribute('aria-current'));
-  }
-
-  const pauseBtn = $('pause');
-  let timer = null, cur = 0;
-  function setPaused(p) {
-    pauseBtn.textContent = p ? 'Resume' : 'Pause';
-    pauseBtn.setAttribute('aria-pressed', String(p));
-  }
-  function stop() { if (timer) { clearTimeout(timer); timer = null; } setPaused(true); }
-  function tick() {
-    cur = (cur + 1) % STEPS.length; show(cur);
-    timer = setTimeout(tick, cur === 0 ? 3400 : 2600);
-  }
-  function resume() { if (timer) return; setPaused(false); timer = setTimeout(tick, 2600); }
-  function play(from) { stop(); cur = from; show(cur); setPaused(false); timer = setTimeout(tick, 2200); }
-  $('replay').addEventListener('click', () => play(0));
-  pauseBtn.addEventListener('click', () => timer ? stop() : resume());
-  // Pin the card to its tallest state so the steps never move the page.
-  const card = $('hero-card');
-  function reserve() {
-    card.classList.add('measuring');
-    card.style.minHeight = '';
-    gw.classList.add('open'); ge.classList.add('open');
-    let h = 0;
-    events.forEach((_, k) => {
-      events.forEach((e, j) => { e.hidden = j !== k; });
-      h = Math.max(h, card.offsetHeight);
-    });
-    card.style.minHeight = h + 'px';
-    show(cur);
-    void card.offsetHeight;
-    card.classList.remove('measuring');
-  }
-  reserve(); setPaused(true);
-  let rt = null;
-  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(reserve, 150); });
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(reserve);
-  if (!reduce) setTimeout(() => play(0), 900);
-
-})();
-</script>
 </body>
 </html>
