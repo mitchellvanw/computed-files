@@ -137,7 +137,7 @@ This repository is also a Claude Code plugin. Installing it hands an agent the m
 /plugin install computed
 ```
 
-The skill lives at [`skills/computed/SKILL.md`](skills/computed/SKILL.md), and its command block is itself a `computed` region over `src/cli.rs`, so CI fails if the command line moves and the skill does not.
+The skill at [`skills/computed/SKILL.md`](skills/computed/SKILL.md) runs setup as a wizard: it surveys the repository, asks only what the survey left open, then writes the regions and the hook. The grammar and the states sit beside it in [`REFERENCE.md`](skills/computed/REFERENCE.md), whose command block is itself a `computed` region over `src/cli.rs`, so CI fails if the command line moves and the skill does not.
 
 ## Try it
 
