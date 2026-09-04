@@ -37,9 +37,13 @@ This repository is also a Claude Code plugin. Installing it hands an agent the m
 ```
 /plugin marketplace add mitchellvanw/computed-files
 /plugin install computed@computed
+/reload-plugins
+/computed-setup
 ```
 
-The skill at [`claude-code-plugin/skills/computed-setup/SKILL.md`](claude-code-plugin/skills/computed-setup/SKILL.md) runs setup as a wizard: it surveys the repository, asks only what the survey left open, then writes the regions and the hook. The grammar and the states sit beside it in [`REFERENCE.md`](claude-code-plugin/skills/computed-setup/REFERENCE.md), whose command block is itself a `computed` region over `src/cli.rs`, so CI fails if the command line moves and the skill does not.
+`/reload-plugins` makes the skill available without leaving the session. `/computed-setup` runs the wizard: it surveys the repository, asks only what the survey left open, then writes the regions, the hook and the CI step, and stops when `computed check` exits 0.
+
+The wizard is [`claude-code-plugin/skills/computed-setup/SKILL.md`](claude-code-plugin/skills/computed-setup/SKILL.md). The grammar and the states sit beside it in [`REFERENCE.md`](claude-code-plugin/skills/computed-setup/REFERENCE.md), whose command block is itself a `computed` region over `src/cli.rs`, so CI fails if the command line moves and the skill does not.
 
 ## Why another region rewriter
 
