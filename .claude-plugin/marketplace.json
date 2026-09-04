@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "computed",
-      "source": "./plugin",
+      "source": "./claude-code-plugin",
       "description": "Install, wire up and write regions for computed, the CLI that keeps marked spans of a Markdown file current by computation."
     }
   ]

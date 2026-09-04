@@ -21,14 +21,14 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 ├── Cargo.toml
 ├── LICENSE-MIT
 ├── README.md
+├── claude-code-plugin
+│   └── skills
 ├── docs
 │   ├── adr
 │   ├── how-it-works.html
 │   ├── index.html
 │   ├── research
 │   └── spec
-├── plugin
-│   └── skills
 ├── prototypes
 │   ├── computed-markdown.prototype.html
 │   └── hand-edit.prototype.html
@@ -51,7 +51,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── fixtures
     └── render.rs
 ```
-<!-- /computed in=c6a3de3330302731853da64918f03138acb1e3758d59b23970454edae07c0f90 out=4acee3f4296905808869fd89bce9f8f9c44c1e3797ab4b4084823585d4afec38 -->
+<!-- /computed in=85a55790250fef962dbd557e2f6453a919b4b7f01bc4b4f60f3d23f7ddf62b85 out=15cdd181ee1751ef46af8b5e41ff71d7c13e5bccc00d77c8820f65d83bbf9321 -->
 
 ## Decisions
 

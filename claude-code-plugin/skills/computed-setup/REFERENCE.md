@@ -46,7 +46,7 @@ computed clean    [paths] [--force] [--dry-run]
 computed trust    [path]
 computed untrust  [path]
 ```
-<!-- /computed in=687b29d6d058ec41ddb9012f13357ba079cdc79b8dba90a6abbbb95d7c0ce2cd out=afa1d18e99f8290357f2309dcdf34bb74cf49bbf8acadcaab7bad3967715bbc8 -->
+<!-- /computed in=bc2a87e4776058cb8d8b9ee79fa926aa7557cab8ebc2300c908c356cfe7a9a91 out=afa1d18e99f8290357f2309dcdf34bb74cf49bbf8acadcaab7bad3967715bbc8 -->
 
 With no paths, the current directory is walked with the tree loader's ignore settings and every `.md` file is read. An explicit file is read whatever its extension. `run --dry-run` prints the diff `run` would write and writes nothing.
 

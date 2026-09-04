@@ -10,7 +10,7 @@ documentation = "https://mitchellvanw.github.io/computed-files/how-it-works.html
 readme = "README.md"
 keywords = ["markdown", "documentation", "codegen", "pre-commit", "cli"]
 categories = ["command-line-utilities", "development-tools", "text-processing"]
-exclude = [".scratch/", "prototypes/", "docs/research/", ".github/", ".claude-plugin/", "plugin/"]
+exclude = [".scratch/", "prototypes/", "docs/research/", ".github/", ".claude-plugin/", "claude-code-plugin/"]
 
 [lib]
 name = "computed"
