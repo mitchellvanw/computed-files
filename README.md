@@ -120,7 +120,17 @@ Pre-commit runs `run`, CI runs `check`. The committed [`.pre-commit-config.yaml`
 exec computed run
 ```
 
+## Install
+
+```
+cargo install computed
+```
+
+Or take a prebuilt binary from the [latest release](https://github.com/mitchellvanw/computed-files/releases/latest) — macOS on Apple silicon or Intel, Linux on x86-64 or arm64, no toolchain needed. Each archive's SHA-256 is listed in the release's `SHA256SUMS`.
+
 ## Try it
+
+From a clone of this repository, against its own `CLAUDE.md`:
 
 ```
 cargo install --path .

@@ -19,6 +19,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 ├── CONTEXT.md
 ├── Cargo.lock
 ├── Cargo.toml
+├── LICENSE-MIT
 ├── README.md
 ├── docs
 │   ├── adr
@@ -47,7 +48,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── fixtures
     └── render.rs
 ```
-<!-- /computed in=01a44f5c35a41b0698cbab957414cdabcfd17ea9036da7d7016584096fc10470 out=bd0fc00c995bc65c4f2ba5db140bf1b531759f07e661eb8402c7b6bb61a81c5e -->
+<!-- /computed in=92d6e0266a80e84b91816278be092562aeba9f8ada1a61a7dbc5be639aa0fc79 out=0ede9cf871428c78c25c4961bcab0b6ce8319121d0ec8782e0d1884380e42269 -->
 
 ## Decisions
 
