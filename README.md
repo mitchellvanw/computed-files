@@ -41,9 +41,9 @@ This repository is also a Claude Code plugin. Installing it hands an agent the m
 /computed-setup
 ```
 
-`/reload-plugins` makes the skill live in this session. `/computed-setup` then surveys the repository, asks only what it cannot work out, and writes the regions, the hook and the CI step.
+`/reload-plugins` makes the skills live in this session. `/computed-setup` installs and wires the tool, then offers `/discover-regions`, which finds the hand-written blocks worth computing and writes the markers.
 
-The wizard is [`claude-code-plugin/skills/computed-setup/SKILL.md`](claude-code-plugin/skills/computed-setup/SKILL.md). The grammar and the states sit beside it in [`REFERENCE.md`](claude-code-plugin/skills/computed-setup/REFERENCE.md), whose command block is itself a `computed` region over `src/cli.rs`, so CI fails if the command line moves and the skill does not.
+The two wizards are [`computed-setup`](claude-code-plugin/skills/computed-setup/SKILL.md) and [`discover-regions`](claude-code-plugin/skills/discover-regions/SKILL.md). They share [`REFERENCE.md`](claude-code-plugin/skills/REFERENCE.md), whose command block is itself a `computed` region over `src/cli.rs`, so CI fails if the command line moves and the skills do not.
 
 ## Why another region rewriter
 

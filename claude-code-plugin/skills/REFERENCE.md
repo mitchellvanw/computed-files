@@ -1,6 +1,6 @@
 # computed reference
 
-The marker grammar, the command surface, and what every region state means. The setup procedure is in [`SKILL.md`](SKILL.md).
+The marker grammar, the commands, and what every region state means. Setting the tool up is [`computed-setup/SKILL.md`](computed-setup/SKILL.md). Turning hand-written blocks into regions is [`discover-regions/SKILL.md`](discover-regions/SKILL.md).
 
 ## Markers
 
@@ -17,7 +17,7 @@ A region is an opener, a body the tool owns, and a closer.
 <!-- /computed in=4b0267a3…c898 out=45ca178e…f559 -->
 ~~~
 
-`in=` covers the canonical opener plus a snapshot of the region's inputs, so it answers "did the inputs move". `out=` covers the body the tool wrote, so it answers "did someone edit this by hand". Both are full SHA-256, and together they are the whole state — there is no cache directory and no sidecar.
+`in=` covers the canonical opener plus a snapshot of the region's inputs, so it answers "did the inputs move". `out=` covers the body the tool wrote, so it answers "did someone edit this by hand". Both are full SHA-256, and together they are the whole state. There is no cache directory and no sidecar.
 
 Markers inside a fenced code block are prose, so an example like the ones above renders nothing.
 
@@ -32,13 +32,13 @@ Every region also takes `name=` for stable reports, `as=raw|fence` to pick the s
 
 `inputs=` is a comma-separated list of globs, and it is what makes an exec region checkable: `check` re-snapshots those paths and compares sums without running the command. `volatile` declares there is nothing worth snapshotting, so the region re-renders on every `run` and `check` always passes it.
 
-Relative paths in a marker resolve against the directory of the file that holds the marker, and an exec command runs there — not the repository root, not the shell's working directory. An exec command gets `COMPUTED_ROOT`, `COMPUTED_FILE` and `COMPUTED_REGION` in its environment and runs under `LC_ALL=C`, `TZ=UTC` and an empty `LANGUAGE`, so it gives the same bytes on a laptop and in CI. `tree` follows `.gitignore`.
+Relative paths in a marker resolve against the directory of the file that holds the marker, and an exec command runs there, not in the repository root and not in the shell's working directory. An exec command gets `COMPUTED_ROOT`, `COMPUTED_FILE` and `COMPUTED_REGION` in its environment and runs under `LC_ALL=C`, `TZ=UTC` and an empty `LANGUAGE`, so it gives the same bytes on a laptop and in CI. `tree` follows `.gitignore`.
 
 An exec region runs only in a clone `computed trust` has granted, recorded in `~/.config/computed/trust.toml` and never in the working tree. Cloning a repository therefore executes nothing in it.
 
 ## Commands
 
-<!-- computed exec cmd=../../../scripts/cli-commands.sh inputs=../../../src/cli.rs,../../../scripts/cli-commands.sh name=commands as=fence | do not edit; run computed -->
+<!-- computed exec cmd=../../scripts/cli-commands.sh inputs=../../src/cli.rs,../../scripts/cli-commands.sh name=commands as=fence | do not edit; run computed -->
 ```
 computed run      [paths] [--force] [--dry-run] [--trust]
 computed check    [paths]
@@ -46,7 +46,7 @@ computed clean    [paths] [--force] [--dry-run]
 computed trust    [path]
 computed untrust  [path]
 ```
-<!-- /computed in=bc2a87e4776058cb8d8b9ee79fa926aa7557cab8ebc2300c908c356cfe7a9a91 out=afa1d18e99f8290357f2309dcdf34bb74cf49bbf8acadcaab7bad3967715bbc8 -->
+<!-- /computed in=f711e7db08a6fb99dda2f6d04527f6502a9aca33cff2fe8e31afd78897e42bf9 out=afa1d18e99f8290357f2309dcdf34bb74cf49bbf8acadcaab7bad3967715bbc8 -->
 
 With no paths, the current directory is walked with the tree loader's ignore settings and every `.md` file is read. An explicit file is read whatever its extension. `run --dry-run` prints the diff `run` would write and writes nothing.
 
@@ -70,7 +70,7 @@ One line per region goes to stderr, as `path:line name loader state`. Fresh regi
 
 ## Acting on a state
 
-- **`stale`** — run `computed run`.
-- **`edited`** — the body no longer matches `out=`. `run` refuses the whole file, leaves every region in it untouched and exits 1. Keep the hand-written change somewhere if it was wanted, then `computed run --force` hands the body back to the tool.
-- **`untrusted`** — an exec region in a clone with no grant. Run `computed trust`, or pass `run --trust` for a single invocation.
-- **a loader failure** — the command's stderr prints under the region's line, the last good body and sums stay put, and the run exits 1. Repair the input and run again.
+- **`stale`**. Run `computed run`.
+- **`edited`**. The body no longer matches `out=`. `run` refuses the whole file, leaves every region in it untouched and exits 1. Keep the hand-written change somewhere if it was wanted, then `computed run --force` hands the body back to the tool.
+- **`untrusted`**. An exec region in a clone with no grant. Run `computed trust`, or pass `run --trust` for a single invocation.
+- **A loader failure**. The command's stderr prints under the region's line, the last good body and sums stay put, and the run exits 1. Repair the input and run again.

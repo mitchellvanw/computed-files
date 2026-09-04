@@ -274,7 +274,7 @@ $ echo $?
 /plugin install computed@computed
 <span class="text-ink-2">/reload-plugins</span>
 /computed-setup</code></pre>
-      <p class="mt-2 text-sm text-ink-2"><code>/reload-plugins</code> makes the skill live in this session. <code>/computed-setup</code> then surveys the repository, asks only what it cannot work out, and writes the regions, the hook and the CI step.</p>
+      <p class="mt-2 text-sm text-ink-2"><code>/reload-plugins</code> makes the skills live in this session. <code>/computed-setup</code> installs and wires the tool, then offers <code>/discover-regions</code>, which turns hand-written blocks into regions.</p>
 
       <p class="font-mono text-xs text-ink-2 m-0 mt-5 mb-2">then, in a repository</p>
       <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>computed trust   <span class="text-ink-2"># once per clone, only for exec regions</span>
