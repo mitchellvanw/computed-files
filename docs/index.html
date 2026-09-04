@@ -155,9 +155,10 @@
   <header class="pt-14 sm:pt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:items-start">
     <div class="max-w-[30rem]">
       <p class="font-mono text-sm text-ink-2 m-0 flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap"><span>computed</span><span aria-hidden="true">·</span><a href="how-it-works.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">mitchellvanw/computed-files</a></p>
-      <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">The document is a view. The truth lives somewhere else.</h1>
-      <p class="text-ink-2 text-[1.05rem]">A Markdown file with regions the tool owns, such as a directory tree or the output of a command. Everything else stays as you typed it. Two hashes in each closing marker say whether a region still matches what it was rendered from.</p>
-      <p class="text-ink-2 text-[1.05rem] mt-4">Three things that happen in a repo, and what the file does about each.</p>
+      <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">Markdown sections that know when they are stale.</h1>
+      <p class="text-ink-2 text-[1.05rem]"><code>computed</code> is a command-line tool. You mark a span in a Markdown file and say what fills it, a directory tree or the output of a command. It writes that span and leaves the rest of the file alone.</p>
+      <p class="text-ink-2 text-[1.05rem] mt-4">It is built for <code>CLAUDE.md</code> and <code>AGENTS.md</code>, the files a coding agent reads before every task. The tree or module list in them falls behind the code without anyone noticing. <code>computed check</code> notices, from a pre-commit hook or CI, in the time it takes to read the file.</p>
+      <p class="text-ink-2 text-[1.05rem] mt-4">The card is a <code>CLAUDE.md</code> with two such spans. Replay steps through a new file, a hand edit, and a forced rerun.</p>
       <div class="mt-6 flex items-center gap-3">
         <button id="replay" type="button" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Replay</button>
         <button id="pause" type="button" aria-pressed="false" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum cursor-pointer">Pause</button>
