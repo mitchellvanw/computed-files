@@ -286,8 +286,8 @@ computed check   <span class="text-ink-2"># exit 1 on drift, runs nothing</span>
         always_run: true
         pass_filenames: false</code></pre>
       <p class="font-mono text-xs text-ink-2 m-0 mt-4 mb-2">.github/workflows/ci.yml</p>
-      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>- run: cargo build --release
-- run: ./target/release/computed check</code></pre>
+      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>- run: cargo install --git https://github.com/mitchellvanw/computed-files
+- run: computed check</code></pre>
       <p class="mt-4 text-ink-2">The hook runs on every commit, not only when a Markdown file is staged. A new file under <code>src/</code> makes the tree stale without touching <code>CLAUDE.md</code>. When the hook rewrites a file the commit stops and you stage again, the same as rustfmt.</p>
     </div>
   </section>
