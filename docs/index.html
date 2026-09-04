@@ -224,12 +224,12 @@
     </div>
   </header>
 
-  <!-- ─────────────────────────── guides and sensors ─────────────────────────── -->
+  <!-- ─────────────────────────── harness ─────────────────────────── -->
   <section class="mt-24 max-w-[42rem]">
-    <h2 class="text-2xl mb-3">Guides and sensors</h2>
-    <p>Birgitta Böckeler splits the controls around a coding agent into two kinds. Guides are feedforward. They steer the agent before it acts. Sensors are feedback. They look at what the agent did and give it a signal to correct against. A <code>CLAUDE.md</code> or <code>AGENTS.md</code> is a guide. The harness injects it ahead of every task, and the agent takes it as an accurate description of the repo.</p>
-    <p class="mt-3">A guide is only useful while it matches the code. Nothing in the loop notices when the tree or the module table drifts, so the agent starts each task with a picture that was accurate a month ago. A wrong guide does more damage than none, because the agent does not second-guess it.</p>
-    <p class="mt-3">The two sums add the missing sensor. <code>computed check</code> compares them and exits 1 when a region no longer matches its inputs. It never runs a generator, so it fits in a pre-commit hook and in CI. The context file stays a guide. Its freshness becomes something the harness can measure.</p>
+    <h2 class="text-2xl mb-3">One more part of the harness</h2>
+    <p>A project that runs coding agents already has a harness around them. Type checks, tests, linters, a pre-commit hook, CI. Birgitta Böckeler sorts these controls into two kinds. Guides are feedforward: they steer the agent before it acts. Sensors are feedback: they look at what the agent did and push back. A <code>CLAUDE.md</code> or <code>AGENTS.md</code> is a guide. Nearly everything else in the harness is a sensor.</p>
+    <p class="mt-3">The guide has no sensor of its own. The tree and the module table in it drift as the code moves, and nothing in the loop notices. An agent takes the file as an accurate description of the repo, so a stale guide does more damage than none.</p>
+    <p class="mt-3"><code>computed</code> is that sensor. It sits next to the others, in the same hook and the same CI job. <code>computed check</code> compares the sums and exits 1 when a region no longer matches its inputs. It never runs a generator, so it costs what a read costs. The context file stays a guide. Its freshness becomes something the harness measures, like everything else it measures.</p>
     <p class="mt-3 text-ink-2 text-[0.95rem]">The vocabulary is from <a href="https://martinfowler.com/articles/harness-engineering.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Harness engineering for coding agent users</a>, Birgitta Böckeler on martinfowler.com, April 2026.</p>
   </section>
 
