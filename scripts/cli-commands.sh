@@ -1,7 +1,7 @@
 #!/bin/sh
 # Emit one synopsis line per command, arguments and flags taken from the
 # binary's own help. Used by the `commands` region in
-# skills/computed/REFERENCE.md, so a change to the command line shows up there.
+# skills/computed-setup/REFERENCE.md, so a change to the command line shows up there.
 set -eu
 for c in run check clean trust untrust; do
   help=$(computed "$c" --help)

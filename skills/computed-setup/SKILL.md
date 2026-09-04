@@ -1,5 +1,5 @@
 ---
-name: computed
+name: computed-setup
 description: Set up the computed CLI in a repository and act on what it reports. Use when installing or wiring computed into a project, adding a `<!-- computed -->` region, or working out what `computed run` or `computed check` just said — stale, edited, untrusted, or a loader failure.
 ---
 

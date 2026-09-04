@@ -34,7 +34,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── adr-index.sh
 │   └── cli-commands.sh
 ├── skills
-│   └── computed
+│   └── computed-setup
 ├── src
 │   ├── cli.rs
 │   ├── fs.rs
@@ -51,7 +51,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── fixtures
     └── render.rs
 ```
-<!-- /computed in=491ec10d3759fd19e8eff9b8be58584786371657fb54cf51fa6134938d78a06f out=6962e6b6b774e205b8a7e5ce514e04e535da25660bf84a6b7e087cd8d58d9abd -->
+<!-- /computed in=f71689313b77d6eee411c860f53ccc79459b13ae342bea9094560a07356ab5dd out=453441c99fd6d7878a294be198117675190d4ea10c6d26fe135be8ac48fe79c6 -->
 
 ## Decisions
 

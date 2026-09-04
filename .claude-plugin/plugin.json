@@ -1,6 +1,6 @@
 {
   "name": "computed",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Install, wire up and write regions for computed, the CLI that keeps marked spans of a Markdown file current by computation.",
   "author": {
     "name": "Mitchell van Wijngaarden"
