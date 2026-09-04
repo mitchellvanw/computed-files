@@ -22,6 +22,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 ├── README.md
 ├── docs
 │   ├── adr
+│   ├── how-it-works.html
 │   ├── index.html
 │   ├── research
 │   └── spec
@@ -46,7 +47,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── fixtures
     └── render.rs
 ```
-<!-- /computed in=ab558c86778950fd932e1ac34030775fd6779221281888032086f341be25f3ec out=d53ea4856723a0aa609807d2c518ebe59962ebd6d79b02abe57fc07bf08c584e -->
+<!-- /computed in=01a44f5c35a41b0698cbab957414cdabcfd17ea9036da7d7016584096fc10470 out=bd0fc00c995bc65c4f2ba5db140bf1b531759f07e661eb8402c7b6bb61a81c5e -->
 
 ## Decisions
 

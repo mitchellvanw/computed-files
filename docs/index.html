@@ -154,7 +154,7 @@
   <!-- ─────────────────────────── hero ─────────────────────────── -->
   <header class="pt-14 sm:pt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)] lg:items-start">
     <div class="max-w-[30rem]">
-      <p class="font-mono text-sm text-ink-2 m-0 flex items-center gap-3"><span>computed</span><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">mitchellvanw/computed-files</a></p>
+      <p class="font-mono text-sm text-ink-2 m-0 flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap"><span>computed</span><span aria-hidden="true">·</span><a href="how-it-works.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">mitchellvanw/computed-files</a></p>
       <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">The document is a view. The truth lives somewhere else.</h1>
       <p class="text-ink-2 text-[1.05rem]">A Markdown file with regions the tool owns, such as a directory tree or the output of a command. Everything else stays as you typed it. Two hashes in each closing marker say whether a region still matches what it was rendered from.</p>
       <p class="text-ink-2 text-[1.05rem] mt-4">Three things that happen in a repo, and what the file does about each.</p>
@@ -357,74 +357,11 @@
     <p class="mt-6 text-ink-2 text-[0.95rem]">From each tool's own docs, September 2026. The survey with sources is in <a href="https://github.com/mitchellvanw/computed-files/blob/main/docs/research/computed-markdown-prior-art.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/research</a>.</p>
   </section>
 
-  <!-- ─────────────────────────── states ─────────────────────────── -->
+  <!-- ─────────────────────────── promises ─────────────────────────── -->
   <section class="mt-24">
-    <h2 class="text-2xl mb-3">Six states a region can be in</h2>
-    <p>Every state is derived from the file and its inputs alone, in this order. No loader runs to find out.</p>
-    <figure class="fig mt-8 overflow-x-auto">
-      <svg width="900" height="400" viewBox="0 0 900 400" role="img" aria-label="Decision chain: a closer without sums is unrendered; a body that does not hash to out= is edited; a region with no snapshot is volatile; an input sum that differs is stale; otherwise fresh." class="min-w-[720px]">
-        <defs>
-          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
-        </defs>
-        <g class="text-ink-2">
-          <!-- q1 sums present -->
-          <rect x="10" y="150" width="140" height="52" rx="6" class="box"/>
-          <text x="80" y="172" class="t" text-anchor="middle">closer has sums?</text>
-          <text x="80" y="189" class="t2" text-anchor="middle">in= and out= present</text>
-          <path d="M80 202 L80 330" class="edge" marker-end="url(#ar2)"/>
-          <text x="87" y="270" class="t2">no</text>
-          <rect x="10" y="332" width="140" height="52" rx="6" class="leaf-neutral"/>
-          <text x="80" y="354" class="t" text-anchor="middle">unrendered</text>
-          <text x="80" y="371" class="t2" text-anchor="middle">rendered regardless</text>
-
-          <path d="M150 176 L230 176" class="edge" marker-end="url(#ar2)"/>
-          <text x="190" y="168" class="t2" text-anchor="middle">yes</text>
-
-          <!-- q2 body -->
-          <rect x="232" y="150" width="160" height="52" rx="6" class="box"/>
-          <text x="312" y="172" class="t" text-anchor="middle">body hashes to out=?</text>
-          <text x="312" y="189" class="t2" text-anchor="middle">the hand-edit test</text>
-          <path d="M312 202 L312 330" class="edge edge-warn" marker-end="url(#ar2)"/>
-          <text x="319" y="270" class="t2 twarn">no</text>
-          <rect x="232" y="332" width="160" height="52" rx="6" class="leaf-warn"/>
-          <text x="312" y="354" class="t twarn" text-anchor="middle">edited</text>
-          <text x="312" y="371" class="t2" text-anchor="middle">refused · exit 1</text>
-
-          <path d="M392 176 L462 176" class="edge" marker-end="url(#ar2)"/>
-          <text x="427" y="168" class="t2" text-anchor="middle">yes</text>
-
-          <!-- q3 snapshot -->
-          <rect x="464" y="150" width="150" height="52" rx="6" class="box"/>
-          <text x="539" y="172" class="t" text-anchor="middle">has a snapshot?</text>
-          <text x="539" y="189" class="t2" text-anchor="middle">volatile exec has none</text>
-          <path d="M539 150 L539 64" class="edge" marker-end="url(#ar2)"/>
-          <text x="546" y="110" class="t2">no</text>
-          <rect x="464" y="10" width="150" height="52" rx="6" class="leaf-neutral"/>
-          <text x="539" y="32" class="t" text-anchor="middle">volatile</text>
-          <text x="539" y="49" class="t2" text-anchor="middle">re-run on every run</text>
-
-          <path d="M614 176 L694 176" class="edge" marker-end="url(#ar2)"/>
-          <text x="654" y="168" class="t2" text-anchor="middle">yes</text>
-
-          <!-- q4 input sum -->
-          <rect x="696" y="150" width="160" height="52" rx="6" class="box"/>
-          <text x="776" y="172" class="t" text-anchor="middle">in= matches inputs?</text>
-          <text x="776" y="189" class="t2" text-anchor="middle">opener + snapshot</text>
-          <path d="M776 202 L776 330" class="edge edge-sum" marker-end="url(#ar2)"/>
-          <text x="783" y="270" class="t2 tsum">no</text>
-          <rect x="696" y="332" width="160" height="52" rx="6" class="leaf"/>
-          <text x="776" y="354" class="t tsum" text-anchor="middle">stale</text>
-          <text x="776" y="371" class="t2" text-anchor="middle">regenerated</text>
-          <path d="M776 150 L776 64" class="edge edge-sum" marker-end="url(#ar2)"/>
-          <text x="783" y="110" class="t2 tsum">yes</text>
-          <rect x="696" y="10" width="160" height="52" rx="6" class="leaf"/>
-          <text x="776" y="32" class="t tsum" text-anchor="middle">fresh</text>
-          <text x="776" y="49" class="t2" text-anchor="middle">left untouched</text>
-        </g>
-      </svg>
-      <figcaption class="mt-3">Only <code>fresh</code> passes <code>check</code>. <code>run</code> renders stale, volatile and unrendered regions and refuses an edited one until <code>--force</code>. A region can be stale and edited at once, and is still refused. A loader failure is not a state. The old body and sums stay, the run exits 1.</figcaption>
-    </figure>
-    <div class="mt-10 grid gap-8 md:grid-cols-2">
+    <h2 class="text-2xl mb-3">Two things a run will not do</h2>
+    <p>The region is the only thing the tool owns, and even there it errs on the side of leaving your file alone.</p>
+    <div class="mt-6 grid gap-8 md:grid-cols-2">
       <div>
         <h3 class="text-lg font-medium mb-2">Hand edits are refused, not reverted</h3>
         <p>An agent that edited a region had a reason. Overwriting it on the next run loses that work without a trace. The region stays, the run exits 1, and regenerating takes an explicit <code>--force</code> or deleting the sum.</p>
@@ -436,73 +373,12 @@
     </div>
   </section>
 
-  <!-- ─────────────────────────── loaders and sinks ─────────────────────────── -->
-  <section class="mt-24">
-    <h2 class="text-2xl mb-3">Two loaders, two sinks</h2>
-    <p>A loader returns text plus the snapshot the input sum is taken over. A sink turns that text into the body that lands in the file. Each loader has a default sink, and an opener can pick the other with <code>as=</code>.</p>
-    <div class="mt-8 grid gap-4 md:grid-cols-[1fr_auto_1fr_auto_1fr] items-stretch font-mono text-sm">
-      <div class="grid gap-2">
-        <div class="rounded border border-line bg-ground-2 p-3"><div>tree <span class="text-ink-2">src= depth= all dirs</span></div><div class="text-ink-2 text-xs mt-1">snapshot: the listed paths · honours .gitignore</div></div>
-        <div class="rounded border border-warn bg-warn-soft p-3"><div>exec <span class="text-ink-2">cmd= inputs= | volatile</span></div><div class="text-ink-2 text-xs mt-1">snapshot: the input files' bytes · runs only in a trusted clone</div></div>
-      </div>
-      <div class="hidden md:flex items-center text-ink-3" aria-hidden="true">→</div>
-      <div class="rounded border border-line p-3 flex flex-col justify-center gap-1">
-        <div>text<span class="text-ink-2">, normalised</span></div>
-        <div class="text-ink-2 text-xs">LF endings, no trailing newline, no marker lines</div>
-        <div class="text-ink-2 text-xs mt-2">and the snapshot, hashed with the opener into <span class="text-sum">in=</span></div>
-      </div>
-      <div class="hidden md:flex items-center text-ink-3" aria-hidden="true">→</div>
-      <div class="grid gap-2">
-        <div class="rounded border border-wash-2 bg-wash p-3"><div>fence</div><div class="text-ink-2 text-xs mt-1">``` block with lang= · default for tree</div></div>
-        <div class="rounded border border-wash-2 bg-wash p-3"><div>raw</div><div class="text-ink-2 text-xs mt-1">text as is · default for exec</div></div>
-      </div>
-    </div>
-    <p class="mt-6 text-ink-2">Relative paths resolve against the directory of the file holding the marker, not the repository root or the shell's working directory. So a region reads the same from a pre-commit hook, from CI, or from a terminal, and moving the file moves its regions with it.</p>
-    <p class="mt-3 text-ink-2">An <code>exec</code> region runs only in a repository you have trusted on this machine with <code>computed trust</code>. The grant lives in your config directory, so nothing inside a clone can grant itself. CI passes <code>run --trust</code> for one invocation. <code>check</code> never runs a loader, so it needs no trust at all.</p>
-  </section>
-
-  <!-- ─────────────────────────── one file ─────────────────────────── -->
-  <section class="mt-24">
-    <h2 class="text-2xl mb-3">One file, two owners</h2>
-    <p>There is no template rendered to a sibling. The file you commit is the file the tool edits, and the tool owns the region bodies and nothing else. Everything outside a marker pair is yours, and a run never touches it.</p>
-    <p class="mt-3">Inside a region it is the other way round. The output sum hashes the body as written, so <code>run</code> can tell a hand edit from the file alone and refuses to overwrite it. The opener suffix <code>| do not edit; run computed</code> is the only generated-content marker, and it applies to the region, not the file.</p>
-    <figure class="fig mt-8">
-      <svg width="660" height="210" viewBox="0 0 660 210" role="img" aria-label="One CLAUDE.md file. Bands outside the regions are yours and a prose edit there is kept. Bands inside the regions belong to the tool and an edit there is refused.">
-        <defs>
-          <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
-        </defs>
-        <g class="text-ink-2">
-          <rect x="20" y="20" width="220" height="170" rx="6" class="box"/>
-          <text x="130" y="42" class="t" text-anchor="middle">CLAUDE.md</text>
-          <rect x="34" y="56" width="192" height="14" rx="2" fill="var(--line)"/>
-          <rect x="34" y="76" width="192" height="34" rx="2" class="box-own"/>
-          <rect x="34" y="116" width="192" height="14" rx="2" fill="var(--warn)" opacity=".7"/>
-          <rect x="34" y="136" width="192" height="22" rx="2" class="box-own"/>
-          <rect x="34" y="136" width="192" height="22" rx="2" fill="var(--warn)" opacity=".35"/>
-          <rect x="34" y="164" width="192" height="14" rx="2" fill="var(--line)"/>
-
-          <rect x="300" y="52" width="40" height="12" rx="2" fill="var(--line)"/>
-          <text x="350" y="62" class="t2">yours · prose, headings, between regions</text>
-          <rect x="300" y="72" width="40" height="12" rx="2" class="box-own"/>
-          <text x="350" y="82" class="t2">the tool's · region bodies, hashed to out=</text>
-
-          <path d="M300 123 L228 123" class="edge edge-warn" marker-end="url(#ar3)"/>
-          <text x="310" y="127" class="t2">edit outside a region → kept</text>
-          <path d="M300 147 L228 147" class="edge edge-warn" marker-end="url(#ar3)"/>
-          <text x="310" y="151" class="t2">edit inside a region → refused</text>
-        </g>
-      </svg>
-      <figcaption class="mt-3">Writes go through a temp file and <code>rename(2)</code> with the original's mode bits, and nothing is written when the bytes would be identical. The output sum is what tells the two kinds of edit apart.</figcaption>
-    </figure>
-  </section>
-
   <!-- ─────────────────────────── hooks ─────────────────────────── -->
   <section class="mt-24 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start">
     <div>
       <h2 class="text-2xl mb-3">Pre-commit runs, CI checks</h2>
       <p>The pre-commit hook runs <code>computed run</code>. When it rewrites a file the commit fails and you re-stage, the same way rustfmt behaves. CI runs <code>computed check</code>, which compares sums and exits 1 on drift without running anything from the repo.</p>
-      <p class="mt-3">The hook has to run on every commit, not only when a Markdown file is staged. A change under <code>src/</code> makes the tree region stale without touching <code>CLAUDE.md</code>, and a filename-filtered hook would never see it.</p>
-      <p class="mt-3">Every write goes through a temp file and <code>rename(2)</code>, and nothing is written when the bytes would be identical. So <code>run</code> twice is a no-op and the mtime never moves. There is no watcher. A daemon is a convenience over <code>run</code>, and it waits until dogfooding shows agents reading stale regions between commits.</p>
+      <p class="mt-3">The hook has to run on every commit, not only when a Markdown file is staged. A change under <code>src/</code> makes the tree region stale without touching <code>CLAUDE.md</code>, and a filename-filtered hook would never see it. Running it twice is a no-op, so it is safe to run everywhere.</p>
     </div>
     <div class="grid gap-4">
       <div>
@@ -552,17 +428,13 @@ computed clean          <span class="text-ink-2"># empty regions, keep markers</
 &lt;!-- computed exec cmd="grep -h '^# ' docs/adr/*.md"
      inputs=docs/adr/*.md name=adrs --&gt;
 &lt;!-- /computed --&gt;</code></pre>
-      <p class="mt-4 text-ink-2">Empty closers mean unrendered. The first <code>run</code> fills both and writes the sums.</p>
-      <ul class="mt-4 grid gap-2 list-none p-0 m-0 text-[0.98rem]">
-        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 0</code><span>Nothing to report.</span></li>
-        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 1</code><span>The content said no: drift, a refused edit, a failed loader, an untrusted region.</span></li>
-        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 2</code><span>The tool could not answer: a usage or marker parse error.</span></li>
-      </ul>
+      <p class="mt-4 text-ink-2">Empty closers mean unrendered. The first <code>run</code> fills both and writes the sums. The rest of the rules, the states, the loaders and the exit codes, are on <a href="how-it-works.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a>.</p>
     </div>
   </section>
 
   <footer class="mt-24 pt-6 border-t border-line text-sm text-ink-2 flex flex-wrap gap-x-6 gap-y-1">
     <span>computed, a prototype</span>
+    <a href="how-it-works.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a>
     <span>Rust, one binary, no runtime</span>
     <span>The vocabulary is in <a href="https://github.com/mitchellvanw/computed-files/blob/main/CONTEXT.md" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">CONTEXT.md</a>; the decisions in <a href="https://github.com/mitchellvanw/computed-files/tree/main/docs/adr" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/adr</a></span>
     <a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Source on GitHub</a>
