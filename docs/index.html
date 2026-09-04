@@ -271,6 +271,7 @@ computed trust   <span class="text-ink-2"># once per clone, only for exec region
 computed run     <span class="text-ink-2"># fill stale regions</span>
 computed check   <span class="text-ink-2"># exit 1 on drift, runs nothing</span></code></pre>
       <p class="mt-4 text-ink-2">No Rust toolchain? Take a prebuilt binary for macOS or Linux from the <a href="https://github.com/mitchellvanw/computed-files/releases/latest" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">latest release</a>.</p>
+      <p class="mt-4 text-ink-2">Working through an agent? The repository is a Claude Code plugin: <code>/plugin marketplace add mitchellvanw/computed-files</code>, then <code>/plugin install computed</code>.</p>
       <p class="mt-4 text-ink-2">With no paths, both commands walk the current directory for <code>.md</code> files and skip whatever <code>.gitignore</code> skips. An <code>exec</code> region only runs in a clone you have trusted on this machine, so a checkout cannot run commands on its own.</p>
     </div>
     <div>

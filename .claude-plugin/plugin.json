@@ -1,0 +1,12 @@
+{
+  "name": "computed",
+  "version": "0.1.0",
+  "description": "Install, wire up and write regions for computed, the CLI that keeps marked spans of a Markdown file current by computation.",
+  "author": {
+    "name": "Mitchell van Wijngaarden"
+  },
+  "homepage": "https://mitchellvanw.github.io/computed-files/",
+  "repository": "https://github.com/mitchellvanw/computed-files",
+  "license": "MIT",
+  "keywords": ["markdown", "documentation", "codegen", "pre-commit"]
+}

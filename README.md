@@ -128,6 +128,17 @@ cargo install computed
 
 Or take a prebuilt binary from the [latest release](https://github.com/mitchellvanw/computed-files/releases/latest) — macOS on Apple silicon or Intel, Linux on x86-64 or arm64, no toolchain needed. Each archive's SHA-256 is listed in the release's `SHA256SUMS`.
 
+## For an agent
+
+This repository is also a Claude Code plugin. Installing it hands an agent the marker grammar, the setup procedure and the region states in every project, without a checkout:
+
+```
+/plugin marketplace add mitchellvanw/computed-files
+/plugin install computed
+```
+
+The skill lives at [`skills/computed/SKILL.md`](skills/computed/SKILL.md), and its command block is itself a `computed` region over `src/cli.rs`, so CI fails if the command line moves and the skill does not.
+
 ## Try it
 
 From a clone of this repository, against its own `CLAUDE.md`:

@@ -1,0 +1,15 @@
+{
+  "name": "computed",
+  "description": "The computed CLI: keep marked spans of a Markdown file current by computation.",
+  "owner": {
+    "name": "Mitchell van Wijngaarden",
+    "url": "https://github.com/mitchellvanw"
+  },
+  "plugins": [
+    {
+      "name": "computed",
+      "source": "./",
+      "description": "Install, wire up and write regions for computed, the CLI that keeps marked spans of a Markdown file current by computation."
+    }
+  ]
+}

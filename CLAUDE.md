@@ -31,7 +31,10 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── computed-markdown.prototype.html
 │   └── hand-edit.prototype.html
 ├── scripts
-│   └── adr-index.sh
+│   ├── adr-index.sh
+│   └── cli-commands.sh
+├── skills
+│   └── computed
 ├── src
 │   ├── cli.rs
 │   ├── fs.rs
@@ -48,7 +51,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── fixtures
     └── render.rs
 ```
-<!-- /computed in=92d6e0266a80e84b91816278be092562aeba9f8ada1a61a7dbc5be639aa0fc79 out=0ede9cf871428c78c25c4961bcab0b6ce8319121d0ec8782e0d1884380e42269 -->
+<!-- /computed in=491ec10d3759fd19e8eff9b8be58584786371657fb54cf51fa6134938d78a06f out=6962e6b6b774e205b8a7e5ce514e04e535da25660bf84a6b7e087cd8d58d9abd -->
 
 ## Decisions
 
