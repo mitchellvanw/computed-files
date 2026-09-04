@@ -38,7 +38,7 @@ An exec region runs only in a clone `computed trust` has granted, recorded in `~
 
 ## Commands
 
-<!-- computed exec cmd=../../scripts/cli-commands.sh inputs=../../src/cli.rs,../../scripts/cli-commands.sh name=commands as=fence | do not edit; run computed -->
+<!-- computed exec cmd=../../../scripts/cli-commands.sh inputs=../../../src/cli.rs,../../../scripts/cli-commands.sh name=commands as=fence | do not edit; run computed -->
 ```
 computed run      [paths] [--force] [--dry-run] [--trust]
 computed check    [paths]
@@ -46,7 +46,7 @@ computed clean    [paths] [--force] [--dry-run]
 computed trust    [path]
 computed untrust  [path]
 ```
-<!-- /computed in=595515939409c976b2968a6c45abc41af8bdacd1ffd5aa8e3c695327ce9e0fcf out=afa1d18e99f8290357f2309dcdf34bb74cf49bbf8acadcaab7bad3967715bbc8 -->
+<!-- /computed in=687b29d6d058ec41ddb9012f13357ba079cdc79b8dba90a6abbbb95d7c0ce2cd out=afa1d18e99f8290357f2309dcdf34bb74cf49bbf8acadcaab7bad3967715bbc8 -->
 
 With no paths, the current directory is walked with the tree loader's ignore settings and every `.md` file is read. An explicit file is read whatever its extension. `run --dry-run` prints the diff `run` would write and writes nothing.
 
