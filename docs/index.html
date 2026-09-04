@@ -108,6 +108,21 @@
   .event[hidden] { display: none; }
   .measuring, .measuring * { transition: none !important; }
   .event.enter { opacity: 0; transform: translateY(6px); }
+  .cmp { border-collapse: separate; border-spacing: 0; }
+  .cmp thead th { font-weight: 500; font-size: 0.85rem; color: var(--ink-2); text-align: center; padding: 0 .5rem .75rem; vertical-align: bottom; line-height: 1.3; }
+  .cmp tbody th { text-align: left; font-weight: 500; padding: 1rem .75rem 1rem 0; white-space: nowrap; border-top: 1px solid var(--line); }
+  .cmp tbody td { text-align: center; padding: 1rem .5rem; border-top: 1px solid var(--line); vertical-align: top; }
+  .cmp .sub { display: block; font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); font-weight: 400; margin-top: .15rem; }
+  .cmp .yes, .cmp .no { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 999px; font-size: 0; }
+  .cmp .yes { background: var(--sum-soft); color: var(--sum); }
+  .cmp .no { color: var(--ink-3); border: 1px solid var(--line); }
+  .cmp .yes::before { content: "✓"; font-size: 14px; font-weight: 600; }
+  .cmp .no::before { content: "–"; font-size: 14px; }
+  .cmp .note { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-top: .35rem; white-space: nowrap; }
+  .cmp .us th, .cmp .us td { background: var(--wash); border-top: 1px solid var(--wash-2); border-bottom: 1px solid var(--wash-2); }
+  .cmp .us th { border-radius: 6px 0 0 6px; padding-left: .75rem; border-left: 1px solid var(--wash-2); }
+  .cmp .us td:last-child { border-radius: 0 6px 6px 0; border-right: 1px solid var(--wash-2); }
+  .cmp .us .no { border-color: var(--wash-2); }
   .step-dot { width: 2.25rem; height: 4px; border-radius: 2px; background: var(--line); transition: background .3s; }
   .step-dot[aria-current="step"] { background: var(--sum); }
 
@@ -227,7 +242,7 @@
   <section class="mt-24 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]">
     <div>
       <h2 class="text-2xl mb-3">Two sums, no state</h2>
-      <p>Tools that rewrite a marked span already exist. cog, mdsh, markdown-magic. They store a checksum of what they wrote, at best. None of them store what they read, so "is this fresh" means running every generator again.</p>
+      <p>Tools that rewrite a marked span already exist. cog, mdsh, markdown-magic. They store a checksum of what they wrote, at best. None of them store what they read, so "is this fresh" means running every generator again. <a href="#others" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">The comparison</a> is below.</p>
       <p class="mt-3">Every closer here carries both. The input sum hashes the opener line plus a snapshot of the inputs. The output sum hashes the body. Together they answer both questions from the rendered file alone, with no cache directory that a fresh clone would lose.</p>
     </div>
     <figure class="fig">
@@ -272,6 +287,79 @@
       </svg>
       <figcaption class="mt-3">The opener is part of the input hash, so changing <code>depth=2</code> to <code>depth=3</code> is a changed input, not a hand edit.</figcaption>
     </figure>
+  </section>
+
+  <!-- ─────────────────────────── the others ─────────────────────────── -->
+  <section class="mt-24" id="others">
+    <h2 class="text-2xl mb-3">Why not cog, or mdsh, or markdown-magic?</h2>
+    <p class="text-[1.15rem] leading-[1.6]">They all rewrite the span between two comments, and they all do it well. What none of them write down is what the span was computed from. So the only way to ask "is this still right" is to run everything again.</p>
+    <div class="mt-10 overflow-x-auto">
+      <table class="cmp w-full min-w-[40rem]">
+        <thead>
+          <tr>
+            <th class="text-left"></th>
+            <th>Rewrites<br>in place</th>
+            <th>Knows what<br>it wrote</th>
+            <th>Knows what<br>it read</th>
+            <th>Checks without<br>a rerun</th>
+            <th>Refuses a<br>hand edit</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">cog <span class="sub">Python, any text file</span></th>
+            <td><span class="yes">yes</span></td>
+            <td><span class="yes">yes</span><span class="note">with <code>-c</code></span></td>
+            <td><span class="no">no</span></td>
+            <td><span class="no">no</span><span class="note"><code>--check</code> reruns</span></td>
+            <td><span class="yes">yes</span><span class="note">with <code>-c</code></span></td>
+          </tr>
+          <tr>
+            <th scope="row">mdsh <span class="sub">Rust, shell in the marker</span></th>
+            <td><span class="yes">yes</span></td>
+            <td><span class="no">no</span></td>
+            <td><span class="no">no</span></td>
+            <td><span class="no">no</span><span class="note"><code>--frozen</code> reruns</span></td>
+            <td><span class="no">no</span></td>
+          </tr>
+          <tr>
+            <th scope="row">markdown-magic <span class="sub">Node, named transforms</span></th>
+            <td><span class="yes">yes</span></td>
+            <td><span class="no">no</span></td>
+            <td><span class="no">no</span></td>
+            <td><span class="no">no</span><span class="note"><code>dryRun</code> reruns</span></td>
+            <td><span class="no">no</span></td>
+          </tr>
+          <tr>
+            <th scope="row">embedme <span class="sub">Node, file ranges</span></th>
+            <td><span class="yes">yes</span></td>
+            <td><span class="no">no</span></td>
+            <td><span class="no">no</span></td>
+            <td><span class="no">no</span><span class="note"><code>--verify</code> reruns</span></td>
+            <td><span class="no">no</span></td>
+          </tr>
+          <tr class="us">
+            <th scope="row">computed <span class="sub">Rust, one binary</span></th>
+            <td><span class="yes">yes</span></td>
+            <td><span class="yes">yes</span><span class="note"><span class="text-sum">out=</span> in every closer</span></td>
+            <td><span class="yes">yes</span><span class="note"><span class="text-sum">in=</span> in every closer</span></td>
+            <td><span class="yes">yes</span><span class="note"><code>check</code> runs no loader</span></td>
+            <td><span class="yes">yes</span><span class="note">until <code>--force</code></span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-10 grid gap-8 md:grid-cols-2">
+      <div>
+        <h3 class="text-lg font-medium mb-2">Where they are ahead</h3>
+        <p>markdown-magic has a <code>fileTree</code> transform and a plugin API. cog runs on any text file and has done so for twenty years. Both have users we do not. cog's checksum is where the output sum comes from, and org-babel's <code>:cache</code>, a hash of the block and its arguments, is the nearest thing to the input sum. We have two loaders and read markdown only.</p>
+      </div>
+      <div>
+        <h3 class="text-lg font-medium mb-2">Why the second sum matters</h3>
+        <p>A rerun is fine for a table of contents. It is not fine for a shell command in a file an agent reads before every task. The rerun needs the generator, its runtime, and permission to execute text from a checkout. CI has none of those, so nobody checks. Two hashes in the closer make the check a read.</p>
+      </div>
+    </div>
+    <p class="mt-6 text-ink-2 text-[0.95rem]">From each tool's own docs, September 2026. The survey with sources is in <a href="https://github.com/mitchellvanw/computed-files/blob/main/docs/research/computed-markdown-prior-art.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/research</a>.</p>
   </section>
 
   <!-- ─────────────────────────── states ─────────────────────────── -->
