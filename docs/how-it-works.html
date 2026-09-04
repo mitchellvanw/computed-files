@@ -86,46 +86,6 @@
     table { border-collapse: collapse; }
   }
 
-  /* the document panel */
-  .doc { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; }
-  .doc .ln { display: block; white-space: pre; padding: 0 1rem; min-height: 1.6em; }
-  .doc .marker { color: var(--ink-3); }
-  .doc .region { background: var(--wash); border-left: 3px solid var(--wash-2); transition: background .5s ease, border-color .5s ease; }
-  .doc .region.is-stale { background: var(--sum-soft); border-left-color: var(--sum); }
-  .doc .region.is-edited { background: var(--warn-soft); border-left-color: var(--warn); }
-  .doc .grow { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .45s ease; }
-  .doc .grow > div { overflow: hidden; min-height: 0; }
-  .doc .grow.open { grid-template-rows: 1fr; }
-  .doc .hash { display: inline-block; transition: color .3s ease, background .3s ease; padding: 0 .2em; border-radius: 3px; }
-  .doc .hash.flip { color: var(--sum); background: var(--sum-soft); }
-  .doc .hash.bad { color: var(--warn); background: var(--warn-soft); text-decoration: line-through; }
-  .pill { display: inline-flex; align-items: center; gap: .4em; padding: .1em .6em; border-radius: 999px; font-family: var(--font-mono); font-size: 12px; border: 1px solid var(--line); color: var(--ink-2); transition: all .3s ease; }
-  .pill::before { content: ""; width: .5em; height: .5em; border-radius: 50%; background: currentColor; }
-  .pill.fresh { color: var(--sum); border-color: var(--sum); }
-  .pill.stale { color: var(--sum); border-color: var(--sum); background: var(--sum-soft); }
-  .pill.edited { color: var(--warn); border-color: var(--warn); background: var(--warn-soft); }
-  .event { transition: opacity .4s ease, transform .4s ease; }
-  .event[hidden] { display: none; }
-  .measuring, .measuring * { transition: none !important; }
-  .event.enter { opacity: 0; transform: translateY(6px); }
-  .cmp { border-collapse: separate; border-spacing: 0; }
-  .cmp thead th { font-weight: 500; font-size: 0.85rem; color: var(--ink-2); text-align: center; padding: 0 .5rem .75rem; vertical-align: bottom; line-height: 1.3; }
-  .cmp tbody th { text-align: left; font-weight: 500; padding: 1rem .75rem 1rem 0; white-space: nowrap; border-top: 1px solid var(--line); }
-  .cmp tbody td { text-align: center; padding: 1rem .5rem; border-top: 1px solid var(--line); vertical-align: top; }
-  .cmp .sub { display: block; font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); font-weight: 400; margin-top: .15rem; }
-  .cmp .yes, .cmp .no { display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 999px; font-size: 0; }
-  .cmp .yes { background: var(--sum-soft); color: var(--sum); }
-  .cmp .no { color: var(--ink-3); border: 1px solid var(--line); }
-  .cmp .yes::before { content: "✓"; font-size: 14px; font-weight: 600; }
-  .cmp .no::before { content: "–"; font-size: 14px; }
-  .cmp .note { display: block; font-family: var(--font-mono); font-size: 11px; color: var(--ink-3); margin-top: .35rem; white-space: nowrap; }
-  .cmp .us th, .cmp .us td { background: var(--wash); border-top: 1px solid var(--wash-2); border-bottom: 1px solid var(--wash-2); }
-  .cmp .us th { border-radius: 6px 0 0 6px; padding-left: .75rem; border-left: 1px solid var(--wash-2); }
-  .cmp .us td:last-child { border-radius: 0 6px 6px 0; border-right: 1px solid var(--wash-2); }
-  .cmp .us .no { border-color: var(--wash-2); }
-  .step-dot { width: 2.25rem; height: 4px; border-radius: 2px; background: var(--line); transition: background .3s; }
-  .step-dot[aria-current="step"] { background: var(--sum); }
-
   /* svg diagrams */
   .fig svg { max-width: 100%; height: auto; display: block; margin-inline: auto; }
   .fig .box { fill: var(--ground-2); stroke: var(--line); }
@@ -142,25 +102,144 @@
   .fig .tsum { fill: var(--sum); }
   .fig .twarn { fill: var(--warn); }
 
-  @media (prefers-reduced-motion: reduce) {
-    .doc .region, .doc .grow, .doc .hash, .pill, .event, .step-dot { transition: none; }
-  }
+  /* reference tables */
+  .ref { width: 100%; font-size: 0.95rem; }
+  .ref th { text-align: left; font-weight: 500; color: var(--ink-2); font-size: 0.85rem; padding: 0 1rem .5rem 0; border-bottom: 1px solid var(--line); }
+  .ref td { padding: .55rem 1rem .55rem 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .ref td:first-child { font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
+  .toc a { text-decoration: none; }
+  .toc a:hover { color: var(--sum); }
+  h2 { scroll-margin-top: 2rem; }
 </style>
 </head>
 <body>
 
 <main class="mx-auto max-w-[1040px] px-5 sm:px-8 pb-24">
 
-  <header class="pt-14 sm:pt-20 max-w-[42rem]">
-    <p class="font-mono text-sm text-ink-2 m-0 flex items-center gap-3"><a href="index.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">computed</a><span aria-hidden="true">·</span><span>how it works</span></p>
-    <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">The rules, in the order the tool applies them.</h1>
-    <p class="text-ink-2 text-[1.05rem]">Everything on this page is derived from the file and its inputs alone. No loader runs to find out what state a region is in, and a run never touches text outside a marker pair.</p>
+  <header class="pt-14 sm:pt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
+    <div class="max-w-[30rem]">
+      <p class="font-mono text-sm text-ink-2 m-0 flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap"><a href="index.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">computed</a><span aria-hidden="true">·</span><span>how it works</span><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">GitHub</a></p>
+      <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">The rules, in the order the tool applies them.</h1>
+      <p class="text-ink-2 text-[1.05rem]">What a marker may say, what goes into each hash, what a region can be, and what <code>run</code> and <code>check</code> do about it. Everything here is decided from the file and its inputs. The full spec is <a href="https://github.com/mitchellvanw/computed-files/blob/main/docs/spec/computed-v0.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">computed-v0.md</a>.</p>
+    </div>
+    <nav class="toc font-mono text-sm lg:pt-10" aria-label="Sections">
+      <ol class="list-none p-0 m-0 grid gap-1.5 sm:grid-cols-2">
+        <li><a href="#markers">1 · The markers</a></li>
+        <li><a href="#hashes">2 · The two hashes</a></li>
+        <li><a href="#loaders">3 · Tree and exec</a></li>
+        <li><a href="#states">4 · The states</a></li>
+        <li><a href="#edits">5 · Hand edits</a></li>
+        <li><a href="#trust">6 · Who may run a command</a></li>
+        <li><a href="#commands">7 · Commands and exit codes</a></li>
+        <li><a href="#writes">8 · How files are written</a></li>
+      </ol>
+    </nav>
   </header>
 
+  <!-- ─────────────────────────── markers ─────────────────────────── -->
+  <section class="mt-24" id="markers">
+    <h2 class="text-2xl mb-3">The markers</h2>
+    <p>A region is the span between two whole-line HTML comments. The first names what fills the region. The second carries the hashes. Anything between them is the body, and the tool owns it.</p>
+    <pre class="mt-6 rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>&lt;!-- computed <span class="text-sum">tree</span> src=. depth=2 name=layout | do not edit; run computed --&gt;
+```text
+.
+├── docs
+└── src
+```
+&lt;!-- /computed <span class="text-sum">in=</span>9f3a1c0b… <span class="text-sum">out=</span>41c0d9e8… --&gt;</code></pre>
+    <div class="mt-8 overflow-x-auto">
+      <table class="ref min-w-[36rem]">
+        <thead><tr><th>In the opening comment</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td>tree · exec</td><td>The first word picks what fills the region. There are two.</td></tr>
+          <tr><td>name=</td><td>Optional. Reports use it instead of the line number. Unique per file.</td></tr>
+          <tr><td>as=fence · as=raw</td><td>How the text lands in the file. <code>fence</code> wraps it in a code block, <code>raw</code> pastes it as Markdown. Tree defaults to fence, exec to raw.</td></tr>
+          <tr><td>lang=</td><td>The language on the code fence. Empty by default.</td></tr>
+          <tr><td>| do not edit; run computed</td><td>The tool adds this suffix when it renders. You do not write it, and the parser ignores it.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-6 text-ink-2">A closing comment with no hashes means the region has never been rendered. A closing comment with one hash, an unknown word, a duplicate name, or a region inside another region is a parse error. The file is left alone and the exit code is 2. Markers inside a fenced code block are ignored, which is how this page's examples survive.</p>
+  </section>
+
+  <!-- ─────────────────────────── hashes ─────────────────────────── -->
+  <section class="mt-24 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]" id="hashes">
+    <div>
+      <h2 class="text-2xl mb-3">The two hashes</h2>
+      <p><code>in=</code> is a SHA-256 over the opening comment and a snapshot of the inputs. For tree, the snapshot is the list of paths it printed. For exec, it is the bytes of every file named in <code>inputs=</code>. If either changes, the region is stale.</p>
+      <p class="mt-3"><code>out=</code> is a SHA-256 over the body, byte for byte. If it no longer matches, someone edited the body.</p>
+      <p class="mt-3">Both live in the closing comment, so a fresh clone carries everything <code>check</code> needs. There is no cache and no sidecar file. The binary's version is not part of either hash, so upgrading does not make every region stale.</p>
+    </div>
+    <figure class="fig">
+      <svg width="690" height="250" viewBox="0 0 690 250" role="img" aria-label="The opener line and an input snapshot are hashed into sum; the written body is hashed into out. Both land in the closing marker.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+        </defs>
+        <g class="text-ink-2">
+          <!-- inputs column -->
+          <rect x="10" y="20" width="200" height="34" rx="4" class="box"/>
+          <text x="22" y="42" class="t">&lt;!-- computed tree src=. --&gt;</text>
+          <rect x="10" y="62" width="200" height="60" rx="4" class="box"/>
+          <text x="22" y="82" class="t">snapshot</text>
+          <text x="22" y="99" class="t2">tree: sorted visible paths</text>
+          <text x="22" y="114" class="t2">exec: the declared inputs</text>
+
+          <rect x="10" y="170" width="200" height="50" rx="4" class="box-own"/>
+          <text x="22" y="191" class="t">body as written</text>
+          <text x="22" y="208" class="t2">the fenced tree, the command output</text>
+
+          <!-- hash boxes -->
+          <rect x="290" y="52" width="90" height="38" rx="19" class="box"/>
+          <text x="335" y="76" class="t" text-anchor="middle">sha256</text>
+          <rect x="290" y="176" width="90" height="38" rx="19" class="box"/>
+          <text x="335" y="200" class="t" text-anchor="middle">sha256</text>
+
+          <!-- arrows in -->
+          <path d="M210 37 C250 37 250 71 290 71" class="edge" marker-end="url(#ar)"/>
+          <path d="M210 92 C250 92 250 71 290 71" class="edge" marker-end="url(#ar)"/>
+          <path d="M210 195 L290 195" class="edge" marker-end="url(#ar)"/>
+
+          <!-- closer -->
+          <rect x="430" y="100" width="250" height="60" rx="4" class="box"/>
+          <text x="445" y="123" class="t">&lt;!-- /computed</text>
+          <text x="455" y="143" class="t"><tspan class="tsum">in=</tspan>e07c41d2… <tspan class="tsum">out=</tspan>9b31f0aa… --&gt;</text>
+
+          <path d="M380 71 C410 71 410 118 445 118" class="edge edge-sum" marker-end="url(#ar)"/>
+          <text x="392" y="60" class="t2 tsum">what it read</text>
+          <path d="M380 195 C410 195 410 145 445 145" class="edge edge-sum" marker-end="url(#ar)"/>
+          <text x="392" y="220" class="t2 tsum">what it wrote</text>
+        </g>
+      </svg>
+      <figcaption class="mt-3">The opening comment is part of the input hash. Changing <code>depth=2</code> to <code>depth=3</code> is a changed input, not a hand edit.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ─────────────────────────── loaders ─────────────────────────── -->
+  <section class="mt-24" id="loaders">
+    <h2 class="text-2xl mb-3">Tree and exec</h2>
+    <div class="mt-6 grid gap-6 md:grid-cols-2">
+      <div class="rounded-lg border border-line bg-ground-2 p-5">
+        <h3 class="text-lg font-medium mb-1">tree</h3>
+        <pre class="m-0 mb-3 text-[12.5px] leading-relaxed overflow-x-auto text-ink-2"><code>&lt;!-- computed tree src=. depth=2 all dirs --&gt;</code></pre>
+        <p class="text-[0.95rem]">Lists a directory the way <code>tree</code> does, without sizes or dates. <code>src=</code> defaults to the file's own directory and <code>depth=</code> to unlimited. <code>all</code> includes dotfiles, <code>dirs</code> lists only directories.</p>
+        <p class="text-[0.95rem] mt-3">Inside a git repository it skips what <code>.gitignore</code> skips, with no flag to turn that on or off. Names are sorted by byte order so two machines print the same listing.</p>
+      </div>
+      <div class="rounded-lg border border-warn bg-warn-soft p-5">
+        <h3 class="text-lg font-medium mb-1">exec</h3>
+        <pre class="m-0 mb-3 text-[12.5px] leading-relaxed overflow-x-auto text-ink-2"><code>&lt;!-- computed exec cmd="cargo tree --depth 1" inputs=Cargo.lock --&gt;
+&lt;!-- computed exec cmd=date volatile --&gt;</code></pre>
+        <p class="text-[0.95rem]">Runs <code>cmd=</code> with <code>/bin/sh -c</code> and pastes its standard output. You must say what the command reads. <code>inputs=</code> takes comma-separated globs, and every matched file's bytes go into the snapshot. <code>volatile</code> says the command has no inputs and should run every time.</p>
+        <p class="text-[0.95rem] mt-3">The command runs with the file's directory as its working directory, a 30 second limit you can change with <code>timeout=</code>, and <code>LC_ALL=C</code> and <code>TZ=UTC</code> set so its output does not depend on the machine. An exec region only runs in a repository you have trusted. See <a href="#trust" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">who may run a command</a>.</p>
+      </div>
+    </div>
+    <p class="mt-6 text-ink-2">Relative paths resolve against the directory of the file holding the marker, not the repository root or the shell's working directory. So a region reads the same from a hook, from CI, and from a terminal, and moving the file moves its regions with it. A path that leaves the repository is an error, because such a region would render differently on every machine.</p>
+    <p class="mt-3 text-ink-2">Before the text lands in the file, line endings become LF and trailing newlines are stripped. A command that prints invalid UTF-8, a control character, or a line that looks like a marker has failed. When a command fails, times out, or exits non-zero, the old body and both hashes stay, its stderr is printed under the region's line, and the run exits 1. Deleting an input does not blank a region.</p>
+  </section>
+
   <!-- ─────────────────────────── states ─────────────────────────── -->
-  <section class="mt-24">
-    <h2 class="text-2xl mb-3">Six states a region can be in</h2>
-    <p>Four questions, asked in this order. The first one that says no names the state.</p>
+  <section class="mt-24" id="states">
+    <h2 class="text-2xl mb-3">The states</h2>
+    <p>Four questions, asked in this order. The first one that says no names the state. <code>check</code> asks them and reports. <code>run</code> asks them and then renders every region that is not fresh.</p>
     <figure class="fig mt-8 overflow-x-auto">
       <svg width="900" height="400" viewBox="0 0 900 400" role="img" aria-label="Decision chain: a closer without sums is unrendered; a body that does not hash to out= is edited; a region with no snapshot is volatile; an input sum that differs is stale; otherwise fresh." class="min-w-[720px]">
         <defs>
@@ -222,41 +301,33 @@
           <text x="776" y="49" class="t2" text-anchor="middle">left untouched</text>
         </g>
       </svg>
-      <figcaption class="mt-3">Only <code>fresh</code> passes <code>check</code>. <code>run</code> renders stale, volatile and unrendered regions and refuses an edited one until <code>--force</code>. A region can be stale and edited at once, and is still refused. A loader failure is not a state. The old body and sums stay, the run exits 1.</figcaption>
+      <figcaption class="mt-3">A loader failure is not a state. The old body and both hashes stay, and the run exits 1.</figcaption>
     </figure>
-  </section>
-
-  <!-- ─────────────────────────── loaders and sinks ─────────────────────────── -->
-  <section class="mt-24">
-    <h2 class="text-2xl mb-3">Two loaders, two sinks</h2>
-    <p>A loader returns text plus the snapshot the input sum is taken over. A sink turns that text into the body that lands in the file. Each loader has a default sink, and an opener can pick the other with <code>as=</code>.</p>
-    <div class="mt-8 grid gap-4 md:grid-cols-[1fr_auto_1fr_auto_1fr] items-stretch font-mono text-sm">
-      <div class="grid gap-2">
-        <div class="rounded border border-line bg-ground-2 p-3"><div>tree <span class="text-ink-2">src= depth= all dirs</span></div><div class="text-ink-2 text-xs mt-1">snapshot: the listed paths · honours .gitignore</div></div>
-        <div class="rounded border border-warn bg-warn-soft p-3"><div>exec <span class="text-ink-2">cmd= inputs= | volatile</span></div><div class="text-ink-2 text-xs mt-1">snapshot: the input files' bytes · runs only in a trusted clone</div></div>
-      </div>
-      <div class="hidden md:flex items-center text-ink-3" aria-hidden="true">→</div>
-      <div class="rounded border border-line p-3 flex flex-col justify-center gap-1">
-        <div>text<span class="text-ink-2">, normalised</span></div>
-        <div class="text-ink-2 text-xs">LF endings, no trailing newline, no marker lines</div>
-        <div class="text-ink-2 text-xs mt-2">and the snapshot, hashed with the opener into <span class="text-sum">in=</span></div>
-      </div>
-      <div class="hidden md:flex items-center text-ink-3" aria-hidden="true">→</div>
-      <div class="grid gap-2">
-        <div class="rounded border border-wash-2 bg-wash p-3"><div>fence</div><div class="text-ink-2 text-xs mt-1">``` block with lang= · default for tree</div></div>
-        <div class="rounded border border-wash-2 bg-wash p-3"><div>raw</div><div class="text-ink-2 text-xs mt-1">text as is · default for exec</div></div>
-      </div>
+    <div class="mt-8 overflow-x-auto">
+      <table class="ref min-w-[36rem]">
+        <thead><tr><th>State</th><th>What it means</th><th>check</th><th>run</th></tr></thead>
+        <tbody>
+          <tr><td>fresh</td><td>Both hashes match.</td><td>silent, exit 0</td><td>left untouched</td></tr>
+          <tr><td>stale</td><td>The inputs or the opening comment changed.</td><td>reported, exit 1</td><td>rendered</td></tr>
+          <tr><td>edited</td><td>The body no longer matches <code>out=</code>.</td><td>reported, exit 1</td><td>refused, exit 1</td></tr>
+          <tr><td>stale+edited</td><td>Both.</td><td>reported, exit 1</td><td>refused, exit 1</td></tr>
+          <tr><td>volatile</td><td>An exec region with no inputs and an unedited body.</td><td>silent</td><td>rendered every time</td></tr>
+          <tr><td>unrendered</td><td>The closing comment has no hashes.</td><td>reported, exit 1</td><td>rendered, whatever the body holds</td></tr>
+          <tr><td>untrusted</td><td>Not a state of the region but of the clone: an exec region in a repository you have not trusted.</td><td>not a concern, check runs nothing</td><td>skipped, exit 1</td></tr>
+        </tbody>
+      </table>
     </div>
-    <p class="mt-6 text-ink-2">Relative paths resolve against the directory of the file holding the marker, not the repository root or the shell's working directory. So a region reads the same from a pre-commit hook, from CI, or from a terminal, and moving the file moves its regions with it.</p>
-    <p class="mt-3 text-ink-2">An <code>exec</code> region runs only in a repository you have trusted on this machine with <code>computed trust</code>. The grant lives in your config directory, so nothing inside a clone can grant itself. CI passes <code>run --trust</code> for one invocation. <code>check</code> never runs a loader, so it needs no trust at all.</p>
+    <p class="mt-6 text-ink-2">Because <code>check</code> never runs a command, a command whose output changes for the same inputs is invisible until you pass <code>--force</code>. That is the price of a check that needs no runtime and no trust.</p>
   </section>
 
-  <!-- ─────────────────────────── one file ─────────────────────────── -->
-  <section class="mt-24">
-    <h2 class="text-2xl mb-3">One file, two owners</h2>
-    <p>There is no template rendered to a sibling. The file you commit is the file the tool edits, and the tool owns the region bodies and nothing else. Everything outside a marker pair is yours, and a run never touches it.</p>
-    <p class="mt-3">Inside a region it is the other way round. The output sum hashes the body as written, so <code>run</code> can tell a hand edit from the file alone and refuses to overwrite it. The opener suffix <code>| do not edit; run computed</code> is the only generated-content marker, and it applies to the region, not the file.</p>
-    <p class="mt-3">Every write goes through a temp file and <code>rename(2)</code>, and nothing is written when the bytes would be identical. So <code>run</code> twice is a no-op and the mtime never moves. There is no watcher. A daemon is a convenience over <code>run</code>, and it waits until dogfooding shows agents reading stale regions between commits.</p>
+  <!-- ─────────────────────────── edits ─────────────────────────── -->
+  <section class="mt-24 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start" id="edits">
+    <div>
+      <h2 class="text-2xl mb-3">Hand edits</h2>
+      <p>The file you commit is the file the tool edits. Outside a marker pair everything is yours and a run never touches it. Inside, the body is the tool's, and an edit there is refused rather than overwritten. The region stays as edited, the whole file is left unwritten, and the run exits 1.</p>
+      <p class="mt-3">To regenerate, pass <code>--force</code>, which overwrites every edited region in the files you name, or delete both hashes from the closing comment. Editing the opening comment is not a hand edit. It changes <code>in=</code>, so the region is stale and renders on the next run.</p>
+      <p class="mt-3">The reason to refuse rather than warn is the pre-commit path. A warning from a hook that still writes and exits 0 is an overwrite with a line nobody reads. On <code>CLAUDE.md</code> the editor is usually an agent, and a failed hook is the one signal that reaches it.</p>
+    </div>
     <figure class="fig mt-8">
       <svg width="660" height="210" viewBox="0 0 660 210" role="img" aria-label="One CLAUDE.md file. Bands outside the regions are yours and a prose edit there is kept. Bands inside the regions belong to the tool and an edit there is refused.">
         <defs>
@@ -283,26 +354,64 @@
           <text x="310" y="151" class="t2">edit inside a region → refused</text>
         </g>
       </svg>
-      <figcaption class="mt-3">A prose edit outside a region is kept. An edit inside one is refused. The output sum is what tells the two apart.</figcaption>
+      <figcaption class="mt-3">A prose edit outside a region is kept. An edit inside one is refused. The output hash is what tells the two apart.</figcaption>
     </figure>
   </section>
 
-  <!-- ─────────────────────────── exit codes ─────────────────────────── -->
-  <section class="mt-24 max-w-[42rem]">
-    <h2 class="text-2xl mb-3">Three exit codes</h2>
-    <p>Both <code>run</code> and <code>check</code> report the same way, so a hook or a CI step reads one number.</p>
-      <ul class="mt-6 grid gap-2 list-none p-0 m-0 text-[0.98rem]">
-        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 0</code><span>Nothing to report.</span></li>
-        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 1</code><span>The content said no: drift, a refused edit, a failed loader, an untrusted region.</span></li>
-        <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 2</code><span>The tool could not answer: a usage or marker parse error.</span></li>
-      </ul>
+  <!-- ─────────────────────────── trust ─────────────────────────── -->
+  <section class="mt-24 max-w-[42rem]" id="trust">
+    <h2 class="text-2xl mb-3">Who may run a command</h2>
+    <p>An exec region runs only in a repository you have trusted on this machine. The model is the one direnv and git's <code>safe.directory</code> use.</p>
+    <pre class="mt-6 rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>computed trust            <span class="text-ink-2"># this repository, on this machine</span>
+computed untrust          <span class="text-ink-2"># take it back</span>
+computed run --trust      <span class="text-ink-2"># this one invocation, for CI</span></code></pre>
+    <p class="mt-6">The grant is stored in <code>~/.config/computed/trust.toml</code>, keyed by the repository root. Nothing inside a checkout can grant itself. In an untrusted clone, <code>run</code> skips every exec region, reports it as untrusted, still renders the tree regions, and exits 1. <code>check</code> never runs a command, so it needs no trust at all.</p>
+    <p class="mt-3 text-ink-2">This defends against one thing: cloning a repository and having <code>computed run</code> execute its commands before anyone has read them. A malicious branch pulled into a clone you already trust runs on the next <code>run</code>, the same as a Makefile or a pre-commit hook would.</p>
+  </section>
 
+  <!-- ─────────────────────────── commands ─────────────────────────── -->
+  <section class="mt-24" id="commands">
+    <h2 class="text-2xl mb-3">Commands and exit codes</h2>
+    <div class="grid gap-10 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+      <div class="overflow-x-auto">
+        <table class="ref min-w-[30rem]">
+          <tbody>
+            <tr><td>run [paths]</td><td>Render every region that is not fresh and write the files. Exit 1 when it wrote, refused, or a command failed.</td></tr>
+            <tr><td>run --dry-run</td><td>Print the diff each file would get, write nothing. The only place the pending diff is shown.</td></tr>
+            <tr><td>run --force</td><td>Also overwrite edited regions.</td></tr>
+            <tr><td>run --trust</td><td>Treat every file as trusted for this invocation.</td></tr>
+            <tr><td>check [paths]</td><td>Report the state of every region. Runs no command. Exit 1 on anything but fresh.</td></tr>
+            <tr><td>clean [paths]</td><td>Empty every body and strip the hashes, leaving the markers. The next run rebuilds them.</td></tr>
+            <tr><td>trust · untrust [path]</td><td>Grant or revoke exec for the repository containing the path.</td></tr>
+            <tr><td>-v</td><td>Also print the regions that are fine.</td></tr>
+          </tbody>
+        </table>
+        <p class="mt-6 text-ink-2">With no paths, a command walks the current directory for <code>.md</code> files, skipping what <code>.gitignore</code> skips. A file you name is read whatever its extension.</p>
+      </div>
+      <div>
+        <p class="font-mono text-xs text-ink-2 m-0 mb-2">one line per region, on stderr</p>
+        <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>CLAUDE.md:12 layout tree stale      written
+CLAUDE.md:40 deps   exec edited     refused; run with --force
+CLAUDE.md:58        exec untrusted  skipped; run `computed trust`</code></pre>
+        <ul class="mt-6 grid gap-2 list-none p-0 m-0 text-[0.98rem]">
+          <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 0</code><span>Nothing to report. Everything is fresh.</span></li>
+          <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 1</code><span>The content said no. Drift, a written file, a refused edit, a failed command, an untrusted region.</span></li>
+          <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 2</code><span>The tool could not answer. A usage error, a parse error, a path outside the repository, an <code>inputs=</code> glob that matches nothing.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────── writes ─────────────────────────── -->
+  <section class="mt-24 max-w-[42rem]" id="writes">
+    <h2 class="text-2xl mb-3">How files are written</h2>
+    <p>Every write goes to a temporary file that is then renamed over the original, keeping its permissions. Nothing is written when the bytes would be identical, so running twice changes nothing and the file's modification time does not move. A file with one refused region is not written at all, even if other regions in it are merely stale. Other files in the same invocation still are.</p>
+    <p class="mt-3 text-ink-2">There is no watch command. Pre-commit runs <code>run</code> and CI runs <code>check</code>, and that has been enough so far. A watcher would sit on top of <code>run</code> and gets built when dogfooding shows agents reading stale regions between commits.</p>
   </section>
 
   <footer class="mt-24 pt-6 border-t border-line text-sm text-ink-2 flex flex-wrap gap-x-6 gap-y-1">
     <span>computed, a prototype</span>
     <a href="index.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Home</a>
-    <span>Rust, one binary, no runtime</span>
     <span>The vocabulary is in <a href="https://github.com/mitchellvanw/computed-files/blob/main/CONTEXT.md" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">CONTEXT.md</a>; the decisions in <a href="https://github.com/mitchellvanw/computed-files/tree/main/docs/adr" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/adr</a></span>
     <a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Source on GitHub</a>
   </footer>
