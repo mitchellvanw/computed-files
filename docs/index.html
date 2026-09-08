@@ -88,10 +88,12 @@
 
   /* the file card */
   .doc { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.6; }
+  #hero-doc { min-height: 25em; }
   .doc .ln { display: block; white-space: pre; padding: 0 1rem; min-height: 1.6em; position: relative; }
   .doc .marker { color: var(--ink-3); }
   .doc .region { background: var(--wash); border-left: 3px solid var(--wash-2); }
   .doc .k { position: absolute; right: .75rem; top: .15em; }
+  .doc .region .k { box-shadow: 0 0 0 5px var(--wash); }
   .k { display: inline-flex; align-items: center; justify-content: center; width: 1.35rem; height: 1.35rem; border-radius: 999px; background: var(--sum); color: var(--ground); font-family: var(--font-sans); font-size: 11px; font-weight: 600; flex: none; }
   .step { counter-increment: step; }
   .step::before { content: counter(step); display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); font-family: var(--font-mono); font-size: 12px; margin-bottom: .75rem; }
@@ -112,6 +114,27 @@
   .cmp .us th { border-radius: 6px 0 0 6px; padding-left: .75rem; border-left: 1px solid var(--wash-2); }
   .cmp .us td:last-child { border-radius: 0 6px 6px 0; border-right: 1px solid var(--wash-2); }
   .cmp .us .no { border-color: var(--wash-2); }
+
+  /* measured numbers, with the command that produced them */
+  .repro { border-top: 1px solid var(--line); margin-top: .9rem; padding-top: .7rem; }
+  .repro summary { cursor: pointer; list-style: none; font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); }
+  .repro summary::-webkit-details-marker { display: none; }
+  .repro summary::after { content: " →"; }
+  .repro summary:hover { color: var(--sum); }
+  .repro pre { margin: .7rem 0 0; font-size: 12px; line-height: 1.6; overflow-x: auto; color: var(--ink-2); }
+  .stat { font-family: var(--font-mono); font-size: 2.1rem; line-height: 1; color: var(--sum); letter-spacing: -0.02em; }
+
+  /* a terminal transcript that is real output */
+  .term { font-family: var(--font-mono); font-size: 11.5px; line-height: 1.7; white-space: pre; overflow-x: auto; }
+  .term .p { color: var(--ink-3); }
+  .term .ok { color: var(--sum); }
+  .term .bad { color: var(--warn); }
+
+  /* catalogue rows */
+  .card-mark { font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6; color: var(--ink-2); background: var(--ground); border: 1px solid var(--line); border-radius: 4px; padding: .55rem .7rem; overflow-x: auto; white-space: pre; }
+  .who { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; padding: .1rem .45rem; border-radius: 3px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+  .who-agent { background: var(--wash); border-color: var(--wash-2); color: var(--sum); }
+  .who-human { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
 </style>
 </head>
 <body>
@@ -119,59 +142,84 @@
 <main class="mx-auto max-w-[1040px] px-5 sm:px-8 pb-24">
 
   <!-- ─────────────────────────── hero ─────────────────────────── -->
-  <header class="pt-14 sm:pt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] lg:items-start">
+  <header class="pt-14 sm:pt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] lg:items-start">
     <div class="max-w-[30rem]">
-      <p class="font-mono text-sm text-ink-2 m-0 flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap"><span>computed</span><span aria-hidden="true">·</span><a href="how-it-works.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">GitHub</a></p>
+      <p class="font-mono text-sm text-ink-2 m-0 flex flex-wrap items-center gap-x-3 gap-y-1"><span>computed</span><span aria-hidden="true">·</span><a href="catalogue.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">What to compute</a><span aria-hidden="true">·</span><a href="how-it-works.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">GitHub</a></p>
       <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">Markdown sections that know when they are stale.</h1>
       <p class="text-ink-2 text-[1.05rem]"><code>computed</code> fills a marked region of a Markdown file from a directory tree or a command, and writes down what it read and what it wrote. When the code moves on, <code>computed check</code> says so. It never runs the command to find out.</p>
       <p class="text-ink-2 text-[1.05rem] mt-4">Built for <code>CLAUDE.md</code> and <code>AGENTS.md</code>. One binary, no runtime, no cache directory.</p>
-      <div class="mt-6 flex flex-wrap gap-3">
-        <a href="#start" class="font-mono text-sm px-3 py-1.5 rounded border border-sum bg-sum-soft text-sum hover:bg-sum hover:text-ground">Get started</a>
-        <a href="how-it-works.html" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum">Read the rules</a>
+<!-- computed exec cmd=../scripts/site-install.sh inputs=../Cargo.toml,../scripts/site-install.sh name=install as=raw | do not edit; run computed -->
+
+<pre class="mt-6 rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install computed   <span class="text-ink-2"># v0.1.0</span>
+computed run             <span class="text-ink-2"># fill what moved</span>
+computed check           <span class="text-ink-2"># exit 1 on drift</span></code></pre>
+
+<!-- /computed in=b9b0384cbf59571c0e0530e2eaa5751cb821e83a0a7c3b00233acae91988585e out=0768613205b8abff34f260bec13edc76489fec1dd761e03b830af5303ed73d0e -->
+      <p class="mt-2 text-ink-3 text-[0.85rem] font-mono">↑ a computed region of this page, rendered from Cargo.toml and checked in CI</p>
+      <div class="mt-5 flex flex-wrap gap-3">
+        <a href="catalogue.html" class="font-mono text-sm px-3 py-1.5 rounded border border-sum bg-sum-soft text-sum hover:bg-sum hover:text-ground">40 things to compute</a>
+        <a href="#start" class="font-mono text-sm px-3 py-1.5 rounded border border-line bg-ground-2 hover:border-sum hover:text-sum">Set it up</a>
       </div>
     </div>
 
     <div>
       <div class="rounded-lg border border-line bg-ground overflow-hidden shadow-[0_1px_0_var(--line)]">
-        <div class="flex items-center justify-between px-4 py-2 border-b border-line bg-ground-2 font-mono text-xs text-ink-2">
-          <span>CLAUDE.md</span>
-          <span>after <code>computed run</code></span>
+        <div class="flex items-center justify-between gap-4 px-4 py-2 border-b border-line bg-ground-2 font-mono text-xs text-ink-2">
+          <span id="hero-file">CLAUDE.md</span>
+          <span id="hero-kind"></span>
         </div>
-        <div class="doc py-3 overflow-x-auto">
-          <span class="ln"># myapp</span>
-          <span class="ln"></span>
-          <span class="ln">Run tests with `cargo test`. Keep modules under `src/` small.</span>
-          <span class="ln"></span>
-          <span class="ln">## Layout</span>
-          <span class="ln"></span>
-          <div class="region">
-            <span class="ln marker">&lt;!-- computed tree src=. depth=2 | do not edit; run computed --&gt;<span class="k">1</span></span>
-            <span class="ln">```text</span>
-            <span class="ln">.</span>
-            <span class="ln">├── CLAUDE.md</span>
-            <span class="ln">├── Cargo.toml<span class="k">2</span></span>
-            <span class="ln">├── src</span>
-            <span class="ln">│   ├── cli.rs</span>
-            <span class="ln">│   ├── lib.rs</span>
-            <span class="ln">│   └── main.rs</span>
-            <span class="ln">└── tests</span>
-            <span class="ln">    └── cli.rs</span>
-            <span class="ln">```</span>
-            <span class="ln marker">&lt;!-- /computed <span class="text-sum">in=</span>ab558c86… <span class="text-sum">out=</span>d53ea485… --&gt;<span class="k">3</span></span>
-          </div>
-          <span class="ln"></span>
-          <span class="ln">## Conventions</span>
-          <span class="ln"></span>
-          <span class="ln">Errors are `anyhow`. No `unwrap` outside tests.</span>
-        </div>
+        <div class="doc py-3 overflow-x-auto" id="hero-doc"></div>
+      </div>
+      <div class="mt-3 flex items-start justify-between gap-4">
+        <p class="text-ink-2 text-[0.92rem] m-0 max-w-none" id="hero-note"></p>
+        <button type="button" id="hero-next" class="shrink-0 font-mono text-xs px-2 py-1 rounded border border-line bg-ground-2 text-ink-2 hover:border-sum hover:text-sum">another &#x21bb;</button>
       </div>
       <ol class="list-none p-0 m-0 mt-5 grid gap-3 text-[0.95rem]">
-        <li class="flex gap-3"><span class="k">1</span><span>The opening comment says what fills the region. Here, a tree of the repository, two levels deep. Everything outside the two comments is yours, and a run never touches it.</span></li>
-        <li class="flex gap-3"><span class="k">2</span><span>The body. <code>computed run</code> wrote it. If a person or an agent edits it, the next run refuses to overwrite the edit and exits 1.</span></li>
-        <li class="flex gap-3"><span class="k">3</span><span>Two hashes in the closing comment. <code>in=</code> is what the tool read, the opening comment plus the paths it listed. <code>out=</code> is what it wrote. Both live in the file, so a fresh clone can check them.</span></li>
+        <li class="flex gap-3"><span class="k">1</span><span>The opener says what fills the region and what that reads, on one line. Paths resolve against the file holding the marker, so the region travels with the file. Touch anything it names and the region is stale.</span></li>
+        <li class="flex gap-3"><span class="k">2</span><span>The body. <code>computed run</code> wrote it, and it belongs to the tool. If a person or an agent edits it, the next run refuses to overwrite the edit and exits 1.</span></li>
+        <li class="flex gap-3"><span class="k">3</span><span>Two hashes in the closer, elided here because each is 64 characters. <code>in=</code> is what the tool read: the opener plus the bytes of every input. <code>out=</code> is what it wrote. Both live in the file, so a fresh clone can check them without running anything. The four regions running in this repository carry theirs in the open — <a href="https://github.com/mitchellvanw/computed-files/blob/main/CLAUDE.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">read CLAUDE.md</a>.</span></li>
       </ol>
     </div>
   </header>
+
+  <!-- ─────────────────────────── measured ─────────────────────────── -->
+  <section class="mt-24">
+    <h2 class="text-2xl mb-6">Three numbers from this repository</h2>
+    <div class="grid gap-6 md:grid-cols-3">
+      <div class="rounded-lg border border-line bg-ground-2 p-5">
+        <p class="stat m-0">8 of 41</p>
+        <p class="mt-3 text-[0.95rem]">Commits since this repo started using the tool in which the file-tree region's body changed. About one commit in five moved a fact a hand-written tree would have got wrong, silently.</p>
+        <details class="repro">
+          <summary>reproduce</summary>
+          <pre><code>body() { git show "$1:CLAUDE.md" |
+  awk '/^&lt;!-- computed tree /{f=1;next}
+       /^&lt;!-- \/computed /{f=0} f'; }
+for c in $(git log --format=%h 3624abc..65650a8); do
+  [ "$(body $c)" = "$(body $c^)" ] || echo $c
+done | wc -l</code></pre>
+        </details>
+      </div>
+      <div class="rounded-lg border border-line bg-ground-2 p-5">
+        <p class="stat m-0">3.5 ms</p>
+        <p class="mt-3 text-[0.95rem]"><code>computed check</code> over this whole repository, executing nothing. Mean of 477 runs, ± 0.6 ms, on an Apple M4 Pro. That is the cost of knowing the answer, which is why it can sit in the same hook as <code>rustfmt</code>.</p>
+        <details class="repro">
+          <summary>reproduce</summary>
+          <pre><code>cargo build --release
+hyperfine --warmup 3 -N \
+  './target/release/computed check'</code></pre>
+        </details>
+      </div>
+      <div class="rounded-lg border border-warn bg-warn-soft p-5">
+        <p class="stat m-0" style="color: var(--warn)">1 of 4</p>
+        <p class="mt-3 text-[0.95rem]">Copies of this project's own command synopsis that are a computed region. The other three are hand-typed, in the README, the spec, and the page you would read next. We are not immune, and that is the point of the <a href="catalogue.html" class="underline decoration-warn underline-offset-4">catalogue</a>.</p>
+        <details class="repro">
+          <summary>reproduce</summary>
+          <pre><code>grep -rl 'computed untrust' \
+  README.md docs/ claude-code-plugin/</code></pre>
+        </details>
+      </div>
+    </div>
+  </section>
 
   <!-- ─────────────────────────── why ─────────────────────────── -->
   <section class="mt-24 max-w-[42rem]">
@@ -181,9 +229,49 @@
     <p class="mt-3 text-ink-2 text-[0.95rem]">The guides-and-sensors framing is Birgitta Böckeler's, in <a href="https://martinfowler.com/articles/harness-engineering.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Harness engineering for coding agent users</a>, April 2026.</p>
   </section>
 
+  <!-- ─────────────────────────── the contradiction ─────────────────────────── -->
+  <section class="mt-24">
+    <h2 class="text-2xl mb-3">Three vendors, three answers, one missing option</h2>
+    <p class="max-w-[42rem]">Everyone writing guidance for agent context files is choosing between a fact that rots and a fact the agent does not have. Nobody offers the third thing, so the advice contradicts itself.</p>
+    <div class="mt-8 grid gap-5 md:grid-cols-3">
+      <blockquote class="rounded-lg border border-line bg-ground-2 p-5 m-0">
+        <p class="text-[0.98rem] m-0">“Reference files instead of copying their contents — this keeps rules short and prevents them from becoming stale as code changes.”</p>
+        <footer class="mt-3 font-mono text-xs text-ink-2">Cursor, rules documentation</footer>
+      </blockquote>
+      <blockquote class="rounded-lg border border-line bg-ground-2 p-5 m-0">
+        <p class="text-[0.98rem] m-0">Requests to “refer to external resources” are listed among the instructions that “may not have the intended results.”</p>
+        <footer class="mt-3 font-mono text-xs text-ink-2">GitHub, custom instructions documentation</footer>
+      </blockquote>
+      <blockquote class="rounded-lg border border-line bg-ground-2 p-5 m-0">
+        <p class="text-[0.98rem] m-0"><code>/doctor</code> proposes cutting “directory layouts, dependency lists, and architecture overviews”, while the feature overview asks for project structure.</p>
+        <footer class="mt-3 font-mono text-xs text-ink-2">Anthropic, Claude Code documentation</footer>
+      </blockquote>
+    </div>
+    <p class="mt-8 max-w-[42rem]">Reference it and the agent has to spend a turn fetching it, if it can. Copy it and it is wrong within the month. A computed region is the copy, with the receipt attached: the agent reads it inline at no cost, and the moment the thing it was copied from moves, <code>check</code> fails.</p>
+    <p class="mt-3 text-ink-2 text-[0.95rem]">Quoted from each vendor's own documentation, September 2026. Sources are numbered in <a href="https://github.com/mitchellvanw/computed-files/blob/main/docs/research/landing-page-and-site-craft.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/research</a>.</p>
+  </section>
+
+  <!-- ─────────────────────────── airflow ─────────────────────────── -->
+  <section class="mt-24 grid gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)] lg:items-start">
+    <div>
+      <h2 class="text-2xl mb-3">Apache Airflow already built this by hand</h2>
+      <p>Their <code>AGENTS.md</code> carries a marked region regenerated by a pre-commit hook, and a separate validator that introspects the live command tree to catch the region drifting. The validator's own docstring names the two bugs that made them write it: a documented command that never existed, and a rename that left the doc pointing at the old name.</p>
+      <p class="mt-3">That is <code>run</code> and <code>check</code>, in Python, for one repository, without the sums, and it cannot leave that repository. Home Assistant and LangChain have their own versions. The need is not hypothetical; it has been paid for several times, badly.</p>
+      <p class="mt-3 text-ink-2 text-[0.95rem]">From the projects' own trees, September 2026. Sources in <a href="https://github.com/mitchellvanw/computed-files/blob/main/docs/research/landing-page-and-site-craft.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/research</a>.</p>
+    </div>
+    <div class="rounded-lg border border-line bg-ground-2 p-5">
+      <p class="font-mono text-xs text-ink-2 m-0 mb-2">apache/airflow · AGENTS.md, abridged</p>
+      <pre class="m-0 text-[11.5px] leading-relaxed overflow-x-auto text-ink-2"><code>&lt;!-- START generated-commands, please keep … --&gt;
+…
+&lt;!-- END generated-commands, please keep … --&gt;</code></pre>
+      <p class="mt-4 text-[0.95rem]">A marker, a body the tool owns, and a hook. What is missing is the record of what the body was computed from — so the only way to ask whether it is still right is to install Python, install the project, and run the generator again.</p>
+    </div>
+  </section>
+
   <!-- ─────────────────────────── how ─────────────────────────── -->
   <section class="mt-24">
     <h2 class="text-2xl mb-3">Three steps, two commands</h2>
+    <p class="max-w-[42rem]">Every transcript below is copied from a real terminal, unedited.</p>
     <div class="mt-8 grid gap-6 md:grid-cols-3" style="counter-reset: step">
       <div class="step rounded-lg border border-line bg-ground-2 p-5">
         <h3 class="text-lg font-medium mb-2">Mark a region</h3>
@@ -193,33 +281,87 @@
       </div>
       <div class="step rounded-lg border border-line bg-ground-2 p-5">
         <h3 class="text-lg font-medium mb-2">Run fills it</h3>
-        <pre class="m-0 mb-3 text-[12.5px] leading-relaxed overflow-x-auto text-ink-2"><code>$ computed run
-CLAUDE.md:7  tree unrendered written</code></pre>
-        <p class="text-[0.95rem]"><code>run</code> writes the body and the two hashes into the closing comment. Commit the result. There is no cache and no build directory to lose.</p>
+        <div class="term m-0 mb-3"><span class="p">$</span> computed run
+CLAUDE.md:7  tree unrendered written
+<span class="p">$</span> computed run
+<span class="p">$</span> echo $?
+<span class="ok">0</span></div>
+        <p class="text-[0.95rem]"><code>run</code> writes the body and the two hashes into the closer. The second run prints nothing and exits 0, because the bytes would be identical and nothing is written. That silence is the whole guarantee, and it is worth watching it happen once.</p>
       </div>
       <div class="step rounded-lg border border-line bg-ground-2 p-5">
         <h3 class="text-lg font-medium mb-2">Check reads it</h3>
-        <pre class="m-0 mb-3 text-[12.5px] leading-relaxed overflow-x-auto text-ink-2"><code>$ computed check
-CLAUDE.md:7  tree stale
-$ echo $?
-1</code></pre>
-        <p class="text-[0.95rem]"><code>check</code> hashes the inputs again and compares. Exit 1 on drift. It runs no command from the repository, so it needs no trust and no runtime.</p>
+        <div class="term m-0 mb-3"><span class="p">$</span> touch src/watcher.rs
+<span class="p">$</span> computed check
+CLAUDE.md:7  tree <span class="bad">stale</span>
+<span class="p">$</span> echo $?
+1</div>
+        <p class="text-[0.95rem]"><code>check</code> hashes the inputs again and compares. Nothing from the repository is executed, so it needs no trust and no runtime — a checkout you have not read is safe to check.</p>
       </div>
     </div>
-    <p class="mt-6 text-ink-2">What counts as an input, what happens when a command fails, and how a hand edit is told apart from drift are on <a href="how-it-works.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a>.</p>
+
+    <div class="mt-6 grid gap-6 md:grid-cols-2">
+      <div class="rounded-lg border border-warn bg-warn-soft p-5">
+        <h3 class="text-lg font-medium mb-2">What a refusal looks like</h3>
+        <div class="term m-0 mb-3"><span class="p">$</span> computed run
+CLAUDE.md:7  tree <span class="bad">edited</span> refused; run with --force
+<span class="p">$</span> echo $?
+1</div>
+        <p class="text-[0.95rem]">Someone typed inside the body. The file is left untouched in full, not silently overwritten, because on <code>CLAUDE.md</code> the editor is usually an agent and a failed hook is the one signal that reaches it.</p>
+      </div>
+      <div class="rounded-lg border border-line bg-ground-2 p-5">
+        <h3 class="text-lg font-medium mb-2">What a broken generator looks like</h3>
+        <div class="term m-0 mb-3"><span class="p">$</span> computed run
+NOTES.md:3 env exec <span class="bad">stale</span> failed; body kept
+    exit status 3
+<span class="p">$</span> echo $?
+1</div>
+        <p class="text-[0.95rem]">The command exited non-zero, so the last good body and both hashes stay exactly where they were and its stderr is printed under the region's line. A broken script never blanks a region.</p>
+      </div>
+    </div>
+    <p class="mt-6 text-ink-2">What counts as an input, how a hand edit is told apart from drift, and who is allowed to run a command are on <a href="how-it-works.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a>.</p>
+  </section>
+
+  <!-- ─────────────────────────── catalogue teaser ─────────────────────────── -->
+  <section class="mt-24">
+    <h2 class="text-2xl mb-3">Forty things you decided not to document</h2>
+    <p class="text-[1.15rem] leading-[1.6] max-w-[46rem]">Every repository has a list of facts that would obviously help — every error the binary can emit, which test covers which module, what a fresh clone assumes is installed — and that nobody writes down, because a hand-maintained inventory costs forever and a wrong one is worse than nothing. That arithmetic is what changes. The marginal cost of the thirty-first region is one line and a script, and the cost of keeping it is a hash comparison.</p>
+    <div class="mt-10 grid gap-4 sm:grid-cols-2">
+      <div class="rounded-lg border border-line bg-ground-2 p-5">
+        <div class="flex items-baseline gap-2 mb-2"><h3 class="text-base font-medium m-0">Every error the binary can emit</h3><span class="who who-agent">agent</span></div>
+        <pre class="card-mark"><code>&lt;!-- computed exec cmd=scripts/error-index.sh inputs=src/*.rs,scripts/error-index.sh name=errors as=fence --&gt;</code></pre>
+        <p class="mt-3 text-[0.93rem]">rustc generates its error index this way. curl's exit-code table is hand-maintained and admits its own drift. This repo has 28 distinct error sites in one module, listed nowhere.</p>
+      </div>
+      <div class="rounded-lg border border-line bg-ground-2 p-5">
+        <div class="flex items-baseline gap-2 mb-2"><h3 class="text-base font-medium m-0">Environment variables the code reads</h3><span class="who who-agent">agent</span></div>
+        <pre class="card-mark"><code>&lt;!-- computed exec cmd=scripts/env-vars.sh inputs=src/*.rs,scripts/env-vars.sh name=env as=fence --&gt;</code></pre>
+        <p class="mt-3 text-[0.93rem]">Cargo's own environment reference is hand-written with no check that enumerates the <code>env::var</code> calls. A cargo issue puts it plainly: “There's an env var for it already sitting in the code.”</p>
+      </div>
+      <div class="rounded-lg border border-line bg-ground-2 p-5">
+        <div class="flex items-baseline gap-2 mb-2"><h3 class="text-base font-medium m-0">Which test covers which module</h3><span class="who who-agent">agent</span></div>
+        <pre class="card-mark"><code>&lt;!-- computed exec cmd="cargo test -q -- --list" inputs=src/*.rs,tests/*.rs name=tests as=fence --&gt;</code></pre>
+        <p class="mt-3 text-[0.93rem]">Tells an agent which test to run for a change, instead of running everything or nothing. This repo has 56 tests and no such list.</p>
+      </div>
+      <div class="rounded-lg border border-line bg-ground-2 p-5">
+        <div class="flex items-baseline gap-2 mb-2"><h3 class="text-base font-medium m-0">The version dropdown in an issue template</h3><span class="who">both</span></div>
+        <pre class="card-mark"><code>&lt;!-- computed exec cmd=scripts/versions-yml.sh inputs=Cargo.toml,scripts/versions-yml.sh name=versions as=raw --&gt;</code></pre>
+        <p class="mt-3 text-[0.93rem]">Not a documentation file at all. A whole GitHub Action exists just to keep this one dropdown current; a region does it in the file, with a check.</p>
+      </div>
+    </div>
+    <p class="mt-8"><a href="catalogue.html" class="font-mono text-sm px-3 py-1.5 rounded border border-sum bg-sum-soft text-sum hover:bg-sum hover:text-ground">All forty, with the marker line for each</a></p>
   </section>
 
   <!-- ─────────────────────────── the others ─────────────────────────── -->
   <section class="mt-24" id="others">
     <h2 class="text-2xl mb-3">Why not cog, or mdsh, or markdown-magic?</h2>
-    <p class="text-[1.15rem] leading-[1.6]">They rewrite the span between two comments, and they do it well. None of them write down what the span was computed from. So the only way to ask "is this still right" is to run everything again.</p>
+    <p class="text-[1.15rem] leading-[1.6] max-w-[46rem]">They rewrite the span between two comments, and they do it well. None of them write down what the span was computed from. So the only way to ask “is this still right” is to run everything again.</p>
+    <p class="mt-4 max-w-[46rem]">There are three ways to keep a generated block honest, and only two of them are taken. You can regenerate on every build, which means the generator has to be present everywhere the docs are. You can commit the block, then in CI regenerate it and diff — which is what cog's <code>--check</code>, terraform-docs' <code>--output-check</code>, mdsh's <code>--frozen</code>, embedme's <code>--verify</code> and Kubernetes' seventy-six <code>verify-*.sh</code> scripts all do. Or you can store a fingerprint of the inputs in the file and compare it, which needs no generator, no runtime and no permission to execute anything. Nobody was doing the third one.</p>
     <div class="mt-10 overflow-x-auto">
       <table class="cmp w-full min-w-[34rem]">
         <thead>
           <tr>
             <th class="text-left"></th>
             <th>Knows what<br>it read</th>
-            <th>Checks without<br>a rerun</th>
+            <th>Checks without<br>running anything</th>
             <th>Refuses a<br>hand edit</th>
           </tr>
         </thead>
@@ -248,10 +390,16 @@ $ echo $?
             <td><span class="no">no</span><span class="note"><code>--verify</code> reruns</span></td>
             <td><span class="no">no</span></td>
           </tr>
+          <tr>
+            <th scope="row">terraform-docs <span class="sub">Go, one module</span></th>
+            <td><span class="no">no</span></td>
+            <td><span class="no">no</span><span class="note"><code>--output-check</code> reruns</span></td>
+            <td><span class="no">no</span></td>
+          </tr>
           <tr class="us">
             <th scope="row">computed <span class="sub">Rust, one binary</span></th>
             <td><span class="yes">yes</span><span class="note"><span class="text-sum">in=</span> in every closer</span></td>
-            <td><span class="yes">yes</span><span class="note"><code>check</code> runs nothing</span></td>
+            <td><span class="yes">yes</span><span class="note">3.5 ms, no subprocess</span></td>
             <td><span class="yes">yes</span><span class="note">until <code>--force</code></span></td>
           </tr>
         </tbody>
@@ -265,8 +413,9 @@ $ echo $?
   <section class="mt-24 grid gap-10 md:grid-cols-2" id="start">
     <div>
       <h2 class="text-2xl mb-3">Get started</h2>
-      <p class="font-mono text-xs text-ink-2 m-0 mb-2">the tool</p>
-      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install computed</code></pre>
+      <p class="font-mono text-xs text-ink-2 m-0 mb-2">the tool, then the command that makes the artifact</p>
+      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install computed   <span class="text-ink-2"># v0.1.0</span>
+computed run</code></pre>
       <p class="mt-2 text-sm text-ink-2">Without a Rust toolchain, take a prebuilt macOS or Linux binary from the <a href="https://github.com/mitchellvanw/computed-files/releases/latest" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">latest release</a>, checked against its published SHA-256.</p>
 
       <p class="font-mono text-xs text-ink-2 m-0 mt-5 mb-2">the Claude Code plugin</p>
@@ -296,17 +445,91 @@ computed check   <span class="text-ink-2"># exit 1 on drift, runs nothing</span>
         pass_filenames: false</code></pre>
       <p class="font-mono text-xs text-ink-2 m-0 mt-4 mb-2">.github/workflows/ci.yml</p>
       <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>- run: cargo install computed
-- run: computed check</code></pre>
+- run: computed check . docs/index.html</code></pre>
       <p class="mt-4 text-ink-2">The hook runs on every commit, not only when a Markdown file is staged. A new file under <code>src/</code> makes the tree stale without touching <code>CLAUDE.md</code>. When the hook rewrites a file the commit stops and you stage again, the same as rustfmt.</p>
+      <p class="mt-4 text-ink-2">That second path is not an illustration. Discovery walks <code>.md</code>, and a file you name is read whatever its extension — so the install block at the top of this page is a region, and the same CI job that checks <code>CLAUDE.md</code> checks it. If the crate's version moves and this page does not, the build fails.</p>
     </div>
   </section>
 
   <footer class="mt-24 pt-6 border-t border-line text-sm text-ink-2 flex flex-wrap gap-x-6 gap-y-1">
     <span>computed, a prototype</span>
+    <a href="catalogue.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">What to compute</a>
     <a href="how-it-works.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a>
     <span>The vocabulary is in <a href="https://github.com/mitchellvanw/computed-files/blob/main/CONTEXT.md" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">CONTEXT.md</a>; the decisions in <a href="https://github.com/mitchellvanw/computed-files/tree/main/docs/adr" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/adr</a></span>
     <a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Source on GitHub</a>
   </footer>
 </main>
+
+<script src="regions.js"></script>
+<script>
+// The hero shows one region from the catalogue, picked at random on each load.
+// The data is docs/regions.js, the same file the catalogue page reads, so the
+// two cannot drift apart.
+const MAX_BODY_LINES = 10;
+const doc = document.getElementById("hero-doc");
+const fileEl = document.getElementById("hero-file");
+const kindEl = document.getElementById("hero-kind");
+const noteEl = document.getElementById("hero-note");
+
+const NOTE = {
+  live: 'A region running in this repository right now. The body below is its own, copied out.',
+  real: 'The marker is real grammar; the body is what that command prints for this repository.',
+  shape: 'Illustrative. The marker is real grammar, the body is the shape of the output rather than this repository\'s data.',
+};
+
+function line(text, cls, badge) {
+  const el = document.createElement("span");
+  el.className = "ln" + (cls ? " " + cls : "");
+  el.textContent = text;
+  if (badge) {
+    const k = document.createElement("span");
+    k.className = "k";
+    k.textContent = badge;
+    el.append(k);
+  }
+  return el;
+}
+
+function fenced(e) {
+  if (e.m.includes("as=fence")) return true;
+  if (e.m.includes("as=raw")) return false;
+  return e.l === "tree";
+}
+
+function show(e) {
+  fileEl.textContent = e.f;
+  kindEl.textContent = e.xk === "live" ? "running here" : e.xk === "real" ? "from this repo" : "illustrative";
+  kindEl.className = e.xk === "live" ? "text-sum" : "";
+  noteEl.textContent = NOTE[e.xk];
+
+  doc.textContent = "";
+  doc.append(line("\u2026"), line(""));
+
+  const region = document.createElement("div");
+  region.className = "region";
+  region.append(line(e.m, "marker", "1"));
+
+  const fence = fenced(e);
+  if (fence) region.append(line("```"));
+  let body = e.x.split("\n");
+  if (body.length > MAX_BODY_LINES) body = body.slice(0, MAX_BODY_LINES).concat(["\u2026"]);
+  body.forEach((t, i) => region.append(line(t, null, i === 0 ? "2" : null)));
+  if (fence) region.append(line("```"));
+
+  region.append(line("\x3C!-- /computed in=\u2026 out=\u2026 --\x3E", "marker", "3"));
+  doc.append(region, line(""), line("\u2026"));
+}
+
+let last = -1;
+function pick() {
+  const all = window.COMPUTED_REGIONS;
+  let i = last;
+  while (i === last && all.length > 1) i = Math.floor(Math.random() * all.length);
+  last = i;
+  show(all[i]);
+}
+document.getElementById("hero-next").addEventListener("click", pick);
+pick();
+</script>
 </body>
 </html>
