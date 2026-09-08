@@ -118,7 +118,7 @@
 
   <header class="pt-14 sm:pt-20 grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-start">
     <div class="max-w-[30rem]">
-      <p class="font-mono text-sm text-ink-2 m-0 flex flex-wrap items-center gap-x-3 gap-y-1 whitespace-nowrap"><a href="index.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">computed</a><span aria-hidden="true">·</span><span>how it works</span><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">GitHub</a></p>
+      <p class="font-mono text-sm text-ink-2 m-0 flex flex-wrap items-center gap-x-3 gap-y-1"><a href="index.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">computed</a><span aria-hidden="true">·</span><a href="catalogue.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">What to compute</a><span aria-hidden="true">·</span><span>how it works</span><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">GitHub</a></p>
       <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">The rules, in the order the tool applies them.</h1>
       <p class="text-ink-2 text-[1.05rem]">What a marker may say, what goes into each hash, what a region can be, and what <code>run</code> and <code>check</code> do about it. Everything here is decided from the file and its inputs. The full spec is <a href="https://github.com/mitchellvanw/computed-files/blob/main/docs/spec/computed-v0.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">computed-v0.md</a>.</p>
     </div>
@@ -132,6 +132,7 @@
         <li><a href="#trust">6 · Who may run a command</a></li>
         <li><a href="#commands">7 · Commands and exit codes</a></li>
         <li><a href="#writes">8 · How files are written</a></li>
+        <li><a href="#elsewhere">9 · Files that are not Markdown</a></li>
       </ol>
     </nav>
   </header>
@@ -160,6 +161,8 @@
       </table>
     </div>
     <p class="mt-6 text-ink-2">A closing comment with no hashes means the region has never been rendered. A closing comment with one hash, an unknown word, a duplicate name, or a region inside another region is a parse error. The file is left alone and the exit code is 2. Markers inside a fenced code block are ignored, which is how this page's examples survive.</p>
+    <p class="mt-3 text-ink-2"><strong class="font-medium text-ink">A marker is one line.</strong> Wrapping a long opener across two lines is an error — <code>unterminated marker: the line does not end with --&gt;</code>, exit 2 — and that is deliberate rather than laziness. In CommonMark a line beginning <code>&lt;!--</code> opens an HTML block that runs until a line containing <code>--&gt;</code>, so a marker that opened on one line and closed on another would swallow every line in between and hand it to the HTML parser. Keeping both markers to a single line makes each one a self-contained block, and leaves the body between them to parse as ordinary Markdown.</p>
+    <p class="mt-3 text-ink-2">The old advice that an HTML comment may not contain <code>--</code> no longer holds: the HTML Standard forbids the text starting with <code>&gt;</code> or <code>-&gt;</code>, containing <code>&lt;!--</code>, <code>--&gt;</code> or <code>--!&gt;</code>, or ending with <code>&lt;!-</code>. So <code>cmd="cargo tree --depth 1"</code> is a conforming comment, and only <code>--&gt;</code> is a real hazard — which the parser rejects inside a quoted value. XML is the stricter one, where any <code>--</code> is illegal; that matters only if a region is ever asked to live in an <code>.svg</code> or an <code>.xhtml</code> file.</p>
   </section>
 
   <!-- ─────────────────────────── hashes ─────────────────────────── -->
@@ -409,9 +412,30 @@ CLAUDE.md:58        exec untrusted  skipped; run `computed trust`</code></pre>
     <p class="mt-3 text-ink-2">There is no watch command. Pre-commit runs <code>run</code> and CI runs <code>check</code>, and that has been enough so far. A watcher would sit on top of <code>run</code> and gets built when dogfooding shows agents reading stale regions between commits.</p>
   </section>
 
+  <!-- ─────────────────────────── elsewhere ─────────────────────────── -->
+  <section class="mt-24" id="elsewhere">
+    <h2 class="text-2xl mb-3">Files that are not Markdown</h2>
+    <p class="max-w-[46rem]">Discovery walks <code>.md</code> files, but a path you name is read whatever its extension. So a region works today in an HTML page, a YAML issue template, a Rust source file, or anything else where a whole-line HTML comment is legal and harmless. What changes is which sink you can use.</p>
+    <div class="mt-8 grid gap-6 md:grid-cols-2">
+      <div class="rounded-lg border border-line bg-ground-2 p-5">
+        <h3 class="text-lg font-medium mb-2">What ports</h3>
+        <p class="text-[0.95rem]">The markers, unchanged — they are already whole-line HTML comments. The two hashes, unchanged. And <code>as=raw</code>, which pastes the loader's text as it stands.</p>
+        <pre class="m-0 mt-3 text-[12px] leading-relaxed overflow-x-auto text-ink-2"><code>computed run docs/index.html
+computed check CLAUDE.md docs/index.html</code></pre>
+      </div>
+      <div class="rounded-lg border border-warn bg-warn-soft p-5">
+        <h3 class="text-lg font-medium mb-2">What does not</h3>
+        <p class="text-[0.95rem]">The <code>fence</code> sink. In an HTML file three backticks are three backticks, and a <code>&lt;</code> or <code>&amp;</code> in the loader's output is read as markup. The result is a valid file with wrong content, which is worse than a refusal. Use <code>as=raw</code> and let the generator emit the markup, until an escaping sink exists.</p>
+      </div>
+    </div>
+    <p class="mt-6 text-ink-2 max-w-[46rem]"><strong class="font-medium text-ink">A formatter will fight a region.</strong> Prettier or markdownlint running over <code>CLAUDE.md</code> will reformat a body and turn it <code>edited</code>, and the two tools will then undo each other forever. Until <code>computed</code> emits the range-ignore comments itself, wrap the region the way all-contributors does — inside <code>prettier-ignore-start</code> and <code>markdownlint-disable</code> fences.</p>
+    <p class="mt-3 text-ink-2 max-w-[46rem]">There is no file-level <code>DO NOT EDIT</code> banner and no <code>linguist-generated</code> attribute, because both are the wrong granularity. A file with three regions and two hundred lines of prose is not machine output, and marking it as such would hide hand-written changes from diffs. The warning belongs in the marker, which is where the opener's <code>| do not edit; run computed</code> suffix puts it. <a href="https://github.com/mitchellvanw/computed-files/blob/main/docs/adr/0003-in-place-layout.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">ADR 0003</a>.</p>
+  </section>
+
   <footer class="mt-24 pt-6 border-t border-line text-sm text-ink-2 flex flex-wrap gap-x-6 gap-y-1">
     <span>computed, a prototype</span>
     <a href="index.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Home</a>
+    <a href="catalogue.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">What to compute</a>
     <span>The vocabulary is in <a href="https://github.com/mitchellvanw/computed-files/blob/main/CONTEXT.md" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">CONTEXT.md</a>; the decisions in <a href="https://github.com/mitchellvanw/computed-files/tree/main/docs/adr" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/adr</a></span>
     <a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Source on GitHub</a>
   </footer>
