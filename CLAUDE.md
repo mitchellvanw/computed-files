@@ -25,8 +25,10 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   └── skills
 ├── docs
 │   ├── adr
+│   ├── catalogue.html
 │   ├── how-it-works.html
 │   ├── index.html
+│   ├── regions.js
 │   ├── research
 │   └── spec
 ├── prototypes
@@ -34,7 +36,8 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   └── hand-edit.prototype.html
 ├── scripts
 │   ├── adr-index.sh
-│   └── cli-commands.sh
+│   ├── cli-commands.sh
+│   └── site-install.sh
 ├── src
 │   ├── cli.rs
 │   ├── fs.rs
@@ -51,7 +54,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── fixtures
     └── render.rs
 ```
-<!-- /computed in=85a55790250fef962dbd557e2f6453a919b4b7f01bc4b4f60f3d23f7ddf62b85 out=15cdd181ee1751ef46af8b5e41ff71d7c13e5bccc00d77c8820f65d83bbf9321 -->
+<!-- /computed in=78aaac611c004a503bdd9b79b7ca352f8deef8b6dbc7b64285c2328a03fbdf4a out=4a04076276ffdfc5c22d7758125ddec3abb18caf6c3ea1df4c4bcc964d6198d1 -->
 
 ## Decisions
 

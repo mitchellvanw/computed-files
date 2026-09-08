@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>computed: what to compute</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style type="text/tailwindcss">
+  :root {
+    color-scheme: light;
+    --ground: #f6f7f5;
+    --ground-2: #eceeea;
+    --ink: #1c221e;
+    --ink-2: #5d665f;
+    --ink-3: #98a19a;
+    --line: #d5dad5;
+    --wash: #e3eee7;
+    --wash-2: #cfe3d7;
+    --sum: #0e6b54;
+    --sum-soft: #d7ebe1;
+    --warn: #b4531f;
+    --warn-soft: #f3e0d3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground: #141816;
+      --ground-2: #1b201d;
+      --ink: #e4e9e5;
+      --ink-2: #a3ada6;
+      --ink-3: #66706a;
+      --line: #2c332f;
+      --wash: #1a2a22;
+      --wash-2: #244235;
+      --sum: #58bf9a;
+      --sum-soft: #1c3a2f;
+      --warn: #e58b57;
+      --warn-soft: #3d2517;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #141816;
+    --ground-2: #1b201d;
+    --ink: #e4e9e5;
+    --ink-2: #a3ada6;
+    --ink-3: #66706a;
+    --line: #2c332f;
+    --wash: #1a2a22;
+    --wash-2: #244235;
+    --sum: #58bf9a;
+    --sum-soft: #1c3a2f;
+    --warn: #e58b57;
+    --warn-soft: #3d2517;
+  }
+
+  @theme inline {
+    --color-ground: var(--ground);
+    --color-ground-2: var(--ground-2);
+    --color-ink: var(--ink);
+    --color-ink-2: var(--ink-2);
+    --color-ink-3: var(--ink-3);
+    --color-line: var(--line);
+    --color-wash: var(--wash);
+    --color-wash-2: var(--wash-2);
+    --color-sum: var(--sum);
+    --color-sum-soft: var(--sum-soft);
+    --color-warn: var(--warn);
+    --color-warn-soft: var(--warn-soft);
+    --font-sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+
+  @layer base {
+    html { background: var(--ground); }
+    body { background: var(--ground); color: var(--ink); font-family: var(--font-sans); font-size: 17px; line-height: 1.55; margin: 0; -webkit-font-smoothing: antialiased; }
+    h1, h2, h3 { text-wrap: balance; font-weight: 600; letter-spacing: -0.01em; }
+    p { max-width: 66ch; }
+    code, pre, kbd { font-family: var(--font-mono); }
+    :focus-visible { outline: 2px solid var(--sum); outline-offset: 3px; }
+    figure { margin: 0; }
+    figcaption { color: var(--ink-2); font-size: 0.92rem; max-width: 66ch; }
+    svg text { font-family: var(--font-mono); }
+    table { border-collapse: collapse; }
+  }
+
+  /* catalogue */
+  .chip { font-family: var(--font-mono); font-size: 12px; padding: .3rem .7rem; border-radius: 999px; border: 1px solid var(--line); background: var(--ground-2); color: var(--ink-2); cursor: pointer; }
+  .chip:hover { border-color: var(--sum); color: var(--sum); }
+  .chip[aria-pressed="true"] { background: var(--sum-soft); border-color: var(--sum); color: var(--sum); }
+  .row { display: grid; grid-template-columns: 2.2rem minmax(0,1fr); gap: 1rem; padding: 1.4rem 0; border-top: 1px solid var(--line); }
+  .row .n { font-family: var(--font-mono); font-size: 12px; color: var(--ink-3); padding-top: .28rem; }
+  .row h3 { font-size: 1.02rem; font-weight: 500; margin: 0; }
+  .row .note { font-size: 0.95rem; color: var(--ink-2); margin: .6rem 0 0; max-width: 62ch; }
+  .row .note code { font-size: 0.88em; }
+  .mk { font-family: var(--font-mono); font-size: 11.5px; line-height: 1.65; color: var(--ink-2); background: var(--ground-2); border: 1px solid var(--line); border-radius: 5px; padding: .6rem .75rem; margin: .7rem 0 0; overflow-x: auto; white-space: pre; }
+  .who { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; padding: .12rem .45rem; border-radius: 3px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; }
+  .who-agent { background: var(--wash); border-color: var(--wash-2); color: var(--sum); }
+  .who-human { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+  .shipped { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .04em; text-transform: uppercase; padding: .12rem .45rem; border-radius: 3px; background: var(--sum); color: var(--ground); white-space: nowrap; }
+  .ex { margin-top: .75rem; }
+  .ex summary { cursor: pointer; list-style: none; display: inline-block; font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-3); }
+  .ex summary::-webkit-details-marker { display: none; }
+  .ex summary::before { content: "\25B8  "; }
+  .ex[open] summary::before { content: "\25BE  "; }
+  .ex summary:hover { color: var(--sum); }
+  .exb { font-family: var(--font-mono); font-size: 11.5px; line-height: 1.65; color: var(--ink); background: var(--ground); border: 1px solid var(--line); border-left: 3px solid var(--wash-2); border-radius: 4px; padding: .65rem .8rem; margin: .6rem 0 0; overflow-x: auto; white-space: pre; }
+  .exn { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-3); margin: .45rem 0 0; }
+  .exn-live { color: var(--sum); }
+  .caveat { font-size: 0.9rem; color: var(--warn); margin: .55rem 0 0; max-width: 62ch; }
+  .caveat::before { content: "caveat · "; font-family: var(--font-mono); font-size: 0.85em; text-transform: uppercase; letter-spacing: .04em; }
+  h2 { scroll-margin-top: 2rem; }
+</style>
+</head>
+<body>
+
+<main class="mx-auto max-w-[1040px] px-5 sm:px-8 pb-24">
+
+  <header class="pt-14 sm:pt-20">
+    <p class="font-mono text-sm text-ink-2 m-0 flex flex-wrap items-center gap-x-3 gap-y-1"><a href="index.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">computed</a><span aria-hidden="true">·</span><span>what to compute</span><span aria-hidden="true">·</span><a href="how-it-works.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">GitHub</a></p>
+    <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5 max-w-[24ch]">Forty things you decided not to document.</h1>
+    <p class="text-ink-2 text-[1.05rem] max-w-[46rem]">Not a feature list. Every entry below is a fact about a repository that would obviously help somebody, that almost no project writes down, and that rots the moment it is written. The reason is never that nobody wants it. It is that a hand-maintained inventory costs forever, and a wrong one is worse than nothing.</p>
+    <p class="text-ink-2 text-[1.05rem] mt-4 max-w-[46rem]">A region changes the arithmetic. The marginal cost of the thirty-first is one line and a script; the cost of keeping it is a hash comparison. Each marker below is real grammar — paste it, write the script it names, run <code>computed run</code>. Every entry carries a collapsed example of what it renders, marked according to whether that output is live in this repository, produced from it, or only illustrative.</p>
+  </header>
+
+  <section class="mt-16 rounded-lg border border-line bg-ground-2 p-6 max-w-[46rem]">
+    <h2 class="text-lg font-medium mt-0 mb-3">Two rules that shape every entry</h2>
+    <p class="text-[0.97rem] m-0"><strong class="font-medium"><code>inputs=</code> reads the full bytes of every matched file.</strong> <code>inputs=src/**</code> on a large repository makes <code>check</code> cost the size of the repository. Point it at the smallest set of files that determines the output.</p>
+    <p class="text-[0.97rem] mt-3 m-0"><strong class="font-medium"><code>run</code> skips a fresh region's loader entirely.</strong> So a command whose output is not byte-stable between runs — a timing, a size, a coverage percentage — does not churn, because it is only re-run when its declared inputs move. That makes a whole class of region viable that a rerun-to-check tool cannot hold still. The cache is the feature, not the optimisation.</p>
+    <p class="text-[0.97rem] mt-3 m-0 text-ink-2">A command long enough to need quoting belongs in a script under <code>scripts/</code>, named in <code>cmd=</code> and listed in <code>inputs=</code> beside what it reads — so editing the script makes the region stale too.</p>
+  </section>
+
+  <section class="mt-14">
+    <div class="flex flex-wrap items-center gap-2" role="group" aria-label="Filter by who benefits">
+      <span class="font-mono text-xs text-ink-3 mr-1">who it helps</span>
+      <button class="chip" data-filter="who" data-value="all" aria-pressed="true">all 40</button>
+      <button class="chip" data-filter="who" data-value="agent" aria-pressed="false">an agent</button>
+      <button class="chip" data-filter="who" data-value="human" aria-pressed="false">a person</button>
+      <button class="chip" data-filter="who" data-value="both" aria-pressed="false">both</button>
+      <span class="font-mono text-xs text-ink-3 ml-4 mr-1">loader</span>
+      <button class="chip" data-filter="loader" data-value="all" aria-pressed="true">either</button>
+      <button class="chip" data-filter="loader" data-value="tree" aria-pressed="false">tree</button>
+      <button class="chip" data-filter="loader" data-value="exec" aria-pressed="false">exec</button>
+    </div>
+    <p class="mt-4 font-mono text-xs text-ink-3" id="count"></p>
+    <div id="rows" class="mt-2"></div>
+    <p class="mt-8 text-ink-2 text-[0.95rem]">Every entry is grounded in <a href="https://github.com/mitchellvanw/computed-files/blob/main/docs/research/landing-page-and-site-craft.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/research/landing-page-and-site-craft.md</a>, which names the project, issue or document behind each claim.</p>
+  </section>
+
+  <section class="mt-24 max-w-[46rem]" id="honest">
+    <h2 class="text-2xl mb-3">What does not work, so nobody re-derives it</h2>
+    <ul class="list-none p-0 m-0 grid gap-3 text-[0.98rem]">
+      <li class="grid grid-cols-[auto_1fr] gap-3"><span class="who">git</span><span><strong class="font-medium">Anything derived from git history has no honest <code>inputs=</code>.</strong> The truth lives in <code>.git/refs</code> and the commit objects, which a glob cannot snapshot cheaply. Every such region must be <code>volatile</code>, and <code>volatile</code> means <code>check</code> always passes it. That is a real gap and the strongest argument for a future <code>git</code> loader.</span></li>
+      <li class="grid grid-cols-[auto_1fr] gap-3"><span class="who">volatile</span><span><strong class="font-medium"><code>volatile</code> is a convenience, not a guarantee.</strong> It re-renders on every <code>run</code> and is never checked. Wherever an entry below is marked volatile, that is the trade being made.</span></li>
+      <li class="grid grid-cols-[auto_1fr] gap-3"><span class="who">timings</span><span><strong class="font-medium"><code>cargo build --timings</code> emits HTML only.</strong> There is no text mode, so a build-timing region needs scraping rather than one line. <code>size(1)</code>'s column spacing is not identical across platforms either; <code>du</code> is the portable option.</span></li>
+      <li class="grid grid-cols-[auto_1fr] gap-3"><span class="who">stability</span><span><strong class="font-medium">Some generators have no documented output stability.</strong> <code>cargo public-api</code>'s ordering is not documented as stable and needs a nightly toolchain present; <code>cargo license</code>'s column layout is undocumented — prefer <code>cargo deny list</code>. A region over an unstable generator churns for no reason.</span></li>
+      <li class="grid grid-cols-[auto_1fr] gap-3"><span class="who">formatters</span><span><strong class="font-medium">A formatter and a region will fight.</strong> Prettier or markdownlint running over <code>CLAUDE.md</code> will reformat a region body and turn it <code>edited</code>. all-contributors solves this by nesting its region inside <code>prettier-ignore-start</code> and <code>markdownlint-disable</code> fences. Do the same until <code>computed</code> emits them itself.</span></li>
+    </ul>
+  </section>
+
+  <section class="mt-24 max-w-[46rem]">
+    <h2 class="text-2xl mb-3">What not to compute</h2>
+    <p>Anything a person decided. The reason a module is structured the way it is, what a convention is for, which of two approaches was rejected and why. Computing those takes the decision away from the person making it, and a decision has no input to hash. The rule that separates the two: if you could write a script that produces it, it belongs in a region; if you would have to think, it belongs in prose.</p>
+    <p class="mt-3">Roughly a fifth of a real context file is mechanically derivable, and it clusters at the top. That fifth is the part that rots. The rest is what you are actually paid for.</p>
+  </section>
+
+  <footer class="mt-24 pt-6 border-t border-line text-sm text-ink-2 flex flex-wrap gap-x-6 gap-y-1">
+    <span>computed, a prototype</span>
+    <a href="index.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Home</a>
+    <a href="how-it-works.html" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a>
+    <span>The vocabulary is in <a href="https://github.com/mitchellvanw/computed-files/blob/main/CONTEXT.md" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">CONTEXT.md</a>; the decisions in <a href="https://github.com/mitchellvanw/computed-files/tree/main/docs/adr" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">docs/adr</a></span>
+    <a href="https://github.com/mitchellvanw/computed-files" class="text-ink-2 underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">Source on GitHub</a>
+  </footer>
+</main>
+
+<script src="regions.js"></script>
+<script>
+const ENTRIES = window.COMPUTED_REGIONS;
+
+const state = { who: "all", loader: "all" };
+const rows = document.getElementById("rows");
+const count = document.getElementById("count");
+
+function render() {
+  const shown = ENTRIES.filter(e =>
+    (state.who === "all" || e.who === state.who) &&
+    (state.loader === "all" || e.l === state.loader));
+  rows.textContent = "";
+  let group = null;
+  for (const e of shown) {
+    if (e.g !== group) {
+      group = e.g;
+      const h = document.createElement("h2");
+      h.className = "text-xl mt-12 mb-1 pt-6 border-t border-line";
+      h.textContent = group;
+      rows.append(h);
+    }
+    const row = document.createElement("article");
+    row.className = "row";
+    const n = document.createElement("div");
+    n.className = "n";
+    n.textContent = String(e.n).padStart(2, "0");
+    const body = document.createElement("div");
+
+    const head = document.createElement("div");
+    head.className = "flex flex-wrap items-baseline gap-x-3 gap-y-1";
+    const h3 = document.createElement("h3");
+    h3.textContent = e.t;
+    head.append(h3);
+    const who = document.createElement("span");
+    who.className = "who" + (e.who === "agent" ? " who-agent" : e.who === "human" ? " who-human" : "");
+    who.textContent = e.who === "both" ? "agent + person" : e.who === "agent" ? "agent" : "person";
+    head.append(who);
+    if (e.shipped) {
+      const s = document.createElement("span");
+      s.className = "shipped";
+      s.textContent = "running here";
+      head.append(s);
+    }
+    body.append(head);
+
+    const pre = document.createElement("pre");
+    pre.className = "mk";
+    const code = document.createElement("code");
+    code.textContent = e.m;
+    pre.append(code);
+    body.append(pre);
+
+    const note = document.createElement("p");
+    note.className = "note";
+    note.innerHTML = e.d;
+    body.append(note);
+
+    if (e.c) {
+      const cav = document.createElement("p");
+      cav.className = "caveat";
+      cav.innerHTML = e.c;
+      body.append(cav);
+    }
+
+    const det = document.createElement("details");
+    det.className = "ex";
+    const sum = document.createElement("summary");
+    sum.textContent = e.xk === "live" ? "what it renders, in this repository" : "what it renders";
+    const exb = document.createElement("pre");
+    exb.className = "exb";
+    const exc = document.createElement("code");
+    exc.textContent = e.x;
+    exb.append(exc);
+    const exn = document.createElement("p");
+    exn.className = "exn" + (e.xk === "live" ? " exn-live" : "");
+    exn.textContent =
+      e.xk === "live" ? "The live region body, copied from this repository."
+      : e.xk === "real" ? "Produced from this repository by the command the marker names."
+      : "Illustrative. The shape of the output, not this repository's data.";
+    det.append(sum, exb, exn);
+    body.append(det);
+
+    row.append(n, body);
+    rows.append(row);
+  }
+  count.textContent = shown.length + (shown.length === 1 ? " region" : " regions");
+}
+
+for (const chip of document.querySelectorAll(".chip")) {
+  chip.addEventListener("click", () => {
+    const k = chip.dataset.filter;
+    state[k] = chip.dataset.value;
+    for (const other of document.querySelectorAll('.chip[data-filter="' + k + '"]')) {
+      other.setAttribute("aria-pressed", String(other === chip));
+    }
+    render();
+  });
+}
+render();
+</script>
+</body>
+</html>
