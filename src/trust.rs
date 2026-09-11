@@ -1,5 +1,7 @@
 //! The per-clone trust store: `trust.toml` under `XDG_CONFIG_HOME`, one
 //! entry per canonical repository root, never anything inside a working tree.
+//! A grant covers the root it names and everything under it, so a worktree
+//! laid down inside a trusted clone is trusted without a grant of its own.
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -90,12 +92,17 @@ impl Store {
         Ok(true)
     }
 
+    /// Whether `root` is covered by a grant: a stored root that is `root`
+    /// itself, or one that contains it, so that a worktree laid down inside a
+    /// trusted clone is covered by the clone's grant. The comparison is by
+    /// path component, never by string prefix: a grant on `/a/b` covers
+    /// `/a/b/c` and not `/a/bc`.
     pub fn is_trusted(&self, root: &Path) -> Result<bool, Error> {
         let root = match root.canonicalize() {
             Ok(r) => r,
             Err(_) => return Ok(false),
         };
-        Ok(self.read()?.roots.contains(&root))
+        Ok(self.read()?.roots.iter().any(|r| root.starts_with(r)))
     }
 }
 
@@ -166,7 +173,32 @@ mod tests {
         assert!(store
             .is_trusted(&repo.path().canonicalize().unwrap())
             .unwrap());
-        assert!(!store.is_trusted(&repo.path().join("sub")).unwrap());
+        let other = tempfile::tempdir().unwrap();
+        assert!(!store.is_trusted(other.path()).unwrap());
+    }
+
+    #[test]
+    fn a_grant_covers_a_worktree_under_the_clone_it_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::at(dir.path().join("trust.toml"));
+        let clone = dir.path().join("clone");
+        fs::create_dir_all(clone.join(".git")).unwrap();
+        let worktree = clone.join(".computed/worktrees/ticket-82");
+        fs::create_dir_all(&worktree).unwrap();
+        // A worktree's `.git` is a file, so `root_for` answers the worktree
+        // itself and not the clone that holds it.
+        fs::write(worktree.join(".git"), "gitdir: /elsewhere\n").unwrap();
+        assert_eq!(
+            root_for(&worktree).unwrap(),
+            worktree.canonicalize().unwrap()
+        );
+        assert!(!store.is_trusted(&worktree).unwrap());
+        store.grant(&clone).unwrap();
+        assert!(store.is_trusted(&worktree).unwrap());
+        // By component, never by string prefix.
+        let sibling = dir.path().join("clone-of-another");
+        fs::create_dir_all(&sibling).unwrap();
+        assert!(!store.is_trusted(&sibling).unwrap());
     }
 
     #[test]

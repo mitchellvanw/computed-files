@@ -16,11 +16,12 @@ The model is direnv's and git's `safe.directory`, and it defends against one thi
 - **A per-region command allowlist.** Rejected: it re-prompts on every edit and nobody reads the commands anyway.
 - **Hashing the exec commands into the grant** (direnv re-allows on `.envrc` change). Rejected: it turns every `git pull` into a re-trust ceremony while only appearing to defend against the pull-request case.
 - **The grant in `.git/config`.** Rejected: leaves a file outside a repository with no way to be trusted, and needs git config parsing.
-- **A grant per canonical repository root in the user's config directory.** Chosen. Cost: a moved or re-cloned repository is untrusted again, and a submodule is its own repository with its own grant.
+- **A grant per canonical repository root in the user's config directory.** Chosen. Cost: a moved or re-cloned repository is untrusted again.
 
 ## Consequences
 
 - Trust is looked up per template file against its own repository root (the `COMPUTED_ROOT` already computed for exec's environment), or its region root outside a repository. Symlinks are resolved on write and on lookup.
 - An untrusted exec region reuses the loader-failure rule: body kept, nothing written into it, run exits non-zero. A pre-commit hook therefore cannot pass with silently stale content.
 - A `check`-only CI pipeline never touches the trust model. A pipeline that runs `run` or `run --dry-run` passes `--trust`.
+- A grant covers the root it names and every path under it, by path component and never by string prefix. A linked worktree and a submodule each answer with a root of their own, since their `.git` is a file and a directory inside the clone; without this rule each would ask for a grant the person granting the clone believed they had already given. What it widens is what ADR 0007 already accepts: content inside a trusted clone that nobody read, which a submodule is as much as a pulled branch is.
 - The tree loader's `src=` and exec's `inputs=` must resolve inside the repository root (or region root outside one); escaping is a hard error. This is a reproducibility rule, not a security fence: exec itself is unfenced because it is trusted.

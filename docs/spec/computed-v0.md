@@ -173,11 +173,11 @@ An exec region runs only when the repository it sits in has been trusted on this
 
 **What it defends against.** One thing: cloning a repository and having `computed run` execute its commands before anyone read them. A malicious branch pulled into a trusted clone, or a dependency writing markers into a file, runs on the next `run` exactly as a Makefile or a pre-commit hook would. We state this as accepted rather than imply a guarantee the model cannot keep.
 
-**Grant.** `computed trust [path]` records a grant for the repository root containing `path` (default: the current directory), found by walking up for `.git`; outside a repository, the directory itself. It prints the root it recorded. `computed untrust [path]` removes it. The store is `$XDG_CONFIG_HOME/computed/trust.toml`, default `~/.config/computed/trust.toml`, on every platform, one entry per canonical root with symlinks resolved. Nothing inside the working tree can grant trust.
+**Grant.** `computed trust [path]` records a grant for the repository root containing `path` (default: the current directory), found by walking up for `.git`; outside a repository, the directory itself. It prints the root it recorded. `computed untrust [path]` removes it. The store is `$XDG_CONFIG_HOME/computed/trust.toml`, default `~/.config/computed/trust.toml`, on every platform, one entry per canonical root with symlinks resolved. Nothing inside the working tree can grant trust. A grant covers the root it names and every path under it, compared by path component and never by string prefix, so `/a/b` covers `/a/b/c` and not `/a/bc`.
 
 **One shot.** `run --trust` and `run --dry-run --trust` treat every file in the invocation as trusted without writing the store. This is how CI expresses trust. There is no environment variable. A `check`-only pipeline needs no trust at all.
 
-**Lookup.** Per template file, against that file's own repository root (the same value as `COMPUTED_ROOT`), or its region root outside a repository. A submodule is a separate repository with its own grant.
+**Lookup.** Per template file, against that file's own repository root (the same value as `COMPUTED_ROOT`), or its region root outside a repository. That root is its own: a linked worktree's `.git` is a file, so a worktree laid down inside a clone answers with itself, and so does a submodule. Neither asks for a grant of its own, since a grant on the clone that holds it covers it.
 
 **Untrusted.** `run` skips every exec region: body kept, nothing written into it, the region reported as `untrusted` with file, line and name, and the run exits 1. Tree regions in the same file still render and the file is still written. `check` never runs a loader, so trust never enters it.
 
