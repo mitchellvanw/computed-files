@@ -185,6 +185,9 @@ enum Cmd {
         /// Treat every file as trusted for this invocation without writing the store.
         #[arg(long)]
         trust: bool,
+        /// Allow fetching under this url prefix for this invocation without writing the allowlist; repeat for more.
+        #[arg(long, value_name = "PREFIX")]
+        allow: Vec<String>,
         /// Only the regions with this name; repeat for more.
         #[arg(long, value_name = "NAME")]
         only: Vec<String>,
@@ -406,11 +409,17 @@ fn dispatch(cli: Cli) -> Result<u8> {
             crate::dupes::main(paths, *min_lines, cli.format == Format::Json)
                 .map_err(anyhow::Error::msg)
         }
-        Cmd::Doctor { paths, trust, only } => crate::doctor::main(
+        Cmd::Doctor {
+            paths,
+            trust,
+            allow,
+            only,
+        } => crate::doctor::main(
             paths,
             &crate::doctor::Job {
                 trust: *trust,
                 only,
+                allowed: &allow::Store::at(allow::Store::default_path()?).allowed(allow)?,
                 verbose: cli.verbose,
                 json: cli.format == Format::Json,
             },
@@ -714,12 +723,16 @@ pub(crate) enum Opened {
         /// The file itself, a symlink resolved to its target.
         file: PathBuf,
         text: String,
+        /// The parse, `use` regions expanded to their recipes' openers.
         parsed: marker::File,
+        /// What expanding them came to, for [`Production::with_recipes`].
+        recipes: crate::config::Expansion,
     },
 }
 
-/// Reads and parses one template. A symlinked template is its target:
-/// paths resolve against the target's directory and a write lands in it.
+/// Reads and parses one template and expands its recipes. A symlinked
+/// template is its target: paths resolve against the target's directory
+/// and a write lands in it.
 pub(crate) fn open(path: &Path) -> Result<Opened> {
     let file = if is_link(path) {
         path.canonicalize().context("unreadable")?
@@ -738,7 +751,7 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
     if !text.contains("<!--") {
         return Ok(Opened::Skip);
     }
-    let parsed = match marker::parse(&text) {
+    let mut parsed = match marker::parse(&text) {
         Ok(p) => p,
         Err(e) => return Ok(Opened::Error(Some(e.line), e.message)),
     };
@@ -749,7 +762,14 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
     {
         return Ok(Opened::Skip);
     }
-    Ok(Opened::Template { file, text, parsed })
+    let ctx = Ctx::for_template(&file);
+    let recipes = crate::config::expand(&mut parsed, &ctx.region_root, ctx.repo_root.as_deref());
+    Ok(Opened::Template {
+        file,
+        text,
+        parsed,
+        recipes,
+    })
 }
 
 /// Whether the store trusts the template's repository root, or its region
@@ -771,10 +791,15 @@ fn process_file(path: &Path, job: &Job<'_>, store: &Store) -> Outcome {
 }
 
 fn try_process_file(path: &Path, job: &Job<'_>, store: &Store) -> Result<Outcome> {
-    let (file, text, mut parsed) = match open(path)? {
+    let (file, text, parsed, recipes) = match open(path)? {
         Opened::Skip => return Ok(Outcome::default()),
         Opened::Error(line, message) => return Ok(Outcome::error(line, message)),
-        Opened::Template { file, text, parsed } => (file, text, parsed),
+        Opened::Template {
+            file,
+            text,
+            parsed,
+            recipes,
+        } => (file, text, parsed, recipes),
     };
     let names: Vec<String> = parsed
         .segments
@@ -791,8 +816,9 @@ fn try_process_file(path: &Path, job: &Job<'_>, store: &Store) -> Result<Outcome
     let select = |r: &Region| {
         job.only.is_empty() || r.opener.name.as_ref().is_some_and(|n| job.only.contains(n))
     };
-    let mut loaders = Production::new(ctx).allowing(job.allowed.cloned().unwrap_or_default());
-    loaders.expand_recipes(&mut parsed);
+    let mut loaders = Production::new(ctx)
+        .allowing(job.allowed.cloned().unwrap_or_default())
+        .with_recipes(&recipes);
     let rendered = render::file_where(&parsed, job.mode, trusted, &select, &mut loaders);
     let mut outcome = Outcome {
         tier: rendered.tier(),

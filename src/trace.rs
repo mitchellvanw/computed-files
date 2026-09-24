@@ -21,9 +21,10 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 
 use crate::cli::{self, Opened};
-use crate::launch;
+use crate::launch::{self, Wrap};
 use crate::loader::{self, Ctx, ExecArgs, LoadError, Loader};
 use crate::marker::{self, File, Region, Segment};
+use crate::transcript::{self, TranscriptArgs, Workdir};
 use crate::trust::Store;
 use crate::{fs, report};
 
@@ -34,10 +35,36 @@ pub struct Traced {
     pub reads: BTreeSet<PathBuf>,
 }
 
-/// Runs an exec region's command and records what it read.
+/// What trace runs: an exec region's command or a transcript's steps,
+/// always unsandboxed, since the reads trace looks for are the ones a
+/// sandbox refuses.
+#[derive(Debug, Clone)]
+pub enum Traceable {
+    Exec(ExecArgs),
+    Transcript(TranscriptArgs),
+}
+
+impl Traceable {
+    /// Runs it with `wrap` around its shell.
+    pub fn run(&self, ctx: &Ctx, region: &str, wrap: &Wrap) -> Result<String, LoadError> {
+        match self {
+            Traceable::Exec(args) => loader::exec(ctx, args, region, Some(wrap)),
+            Traceable::Transcript(args) => transcript::run(ctx, args, region, Some(wrap)),
+        }
+    }
+
+    fn inputs(&self) -> Option<&Vec<String>> {
+        match self {
+            Traceable::Exec(args) => args.inputs.as_ref(),
+            Traceable::Transcript(args) => args.inputs.as_ref(),
+        }
+    }
+}
+
+/// Runs a region's shell and records what it read.
 pub trait Tracer {
     /// `Err` when the tracer itself failed: the tool cannot answer.
-    fn trace(&mut self, ctx: &Ctx, args: &ExecArgs, region: &str) -> Result<Traced, String>;
+    fn trace(&mut self, ctx: &Ctx, job: &Traceable, region: &str) -> Result<Traced, String>;
 }
 
 /// The tracer this platform has, or why there is none.
@@ -83,12 +110,13 @@ impl fmt::Display for Verdict {
     }
 }
 
-/// One exec region's trace. Paths are relative to the region root, as
-/// `inputs=` spells them.
+/// One exec or transcript region's trace. Paths are relative to the
+/// region root, as `inputs=` spells them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
     pub line: usize,
     pub name: Option<String>,
+    pub loader: String,
     pub verdict: Verdict,
     /// Every repository file the command read.
     pub reads: Vec<String>,
@@ -127,6 +155,7 @@ pub fn examine(
     let mut finding = Finding {
         line: region.line,
         name: region.opener.name.clone(),
+        loader: region.opener.loader.clone(),
         verdict: Verdict::Complete,
         reads: Vec::new(),
         undeclared: Vec::new(),
@@ -140,9 +169,24 @@ pub fn examine(
         f.message = Some(message);
         Ok(f)
     };
-    let args = match Loader::from_opener(&region.opener) {
-        Ok(Loader::Exec(args)) => args,
-        Ok(_) => unreachable!("only exec regions are traced"),
+    // Unsandboxed: the reads trace looks for are the ones a sandbox refuses.
+    let job = match Loader::from_opener(&region.opener) {
+        Ok(Loader::Exec(args)) => Traceable::Exec(ExecArgs {
+            sandbox: false,
+            ..args
+        }),
+        Ok(Loader::Transcript(args)) if args.workdir == Workdir::Copy => {
+            return error(
+                finding,
+                Verdict::Error,
+                "workdir=copy: the steps read a copy of the repository, which trace cannot map back to its files".to_string(),
+            );
+        }
+        Ok(Loader::Transcript(args)) => Traceable::Transcript(TranscriptArgs {
+            sandbox: false,
+            ..args
+        }),
+        Ok(_) => unreachable!("only exec and transcript regions are traced"),
         Err(LoadError::Hard(m) | LoadError::Failed { stderr: m } | LoadError::NotAllowed(m)) => {
             return error(finding, Verdict::Error, m);
         }
@@ -151,7 +195,7 @@ pub fn examine(
         finding.verdict = Verdict::Untrusted;
         return Ok(finding);
     }
-    let declared = match &args.inputs {
+    let declared = match job.inputs() {
         None => None,
         Some(globs) => match loader::input_files(ctx, globs) {
             Ok(files) => Some(files),
@@ -166,13 +210,8 @@ pub fn examine(
         .opener
         .name
         .clone()
-        .unwrap_or_else(|| format!("exec@{}", region.line));
-    // Unsandboxed: the reads trace looks for are the ones a sandbox refuses.
-    let args = ExecArgs {
-        sandbox: false,
-        ..args
-    };
-    let traced = tracer.trace(ctx, &args, &name)?;
+        .unwrap_or_else(|| format!("{}@{}", region.opener.loader, region.line));
+    let traced = tracer.trace(ctx, &job, &name)?;
     match traced.text {
         Ok(_) => {}
         Err(LoadError::Failed { stderr }) => return error(finding, Verdict::Failed, stderr),
@@ -189,6 +228,24 @@ pub fn examine(
         finding.verdict = Verdict::Volatile;
         return Ok(finding);
     };
+    // A projected entry the command read stays as written: the projection
+    // is the author's choice of what part matters, which a read cannot say.
+    let projected: BTreeMap<&PathBuf, String> = declared
+        .iter()
+        .filter(|(key, file)| key.contains(&b'#') && reads.contains(*file))
+        .map(|(key, file)| (file, String::from_utf8_lossy(key).into_owned()))
+        .collect();
+    if !projected.is_empty() {
+        let rest: BTreeSet<PathBuf> = reads
+            .iter()
+            .filter(|p| !projected.contains_key(p))
+            .cloned()
+            .collect();
+        let mut entries: Vec<String> = projected.values().cloned().collect();
+        entries.extend(suggest(ctx, &rest));
+        entries.sort();
+        finding.suggestion = Some(entries.join(","));
+    }
     let wanted: BTreeSet<&PathBuf> = declared.values().collect();
     finding.undeclared = reads
         .iter()
@@ -363,7 +420,7 @@ impl Strace {
 }
 
 impl Tracer for Strace {
-    fn trace(&mut self, ctx: &Ctx, args: &ExecArgs, region: &str) -> Result<Traced, String> {
+    fn trace(&mut self, ctx: &Ctx, job: &Traceable, region: &str) -> Result<Traced, String> {
         let dir = tempfile::tempdir().map_err(|e| format!("trace directory: {e}"))?;
         let out = dir.path().join("trace");
         let program = self.program.clone();
@@ -386,7 +443,7 @@ impl Tracer for Strace {
             prefix.push("--".into());
             Ok(launch::prefixed(&command, prefix))
         };
-        let text = loader::exec(ctx, args, region, Some(&wrap));
+        let text = job.run(ctx, region, &wrap);
         let cwd = ctx.region_root.canonicalize().map_err(|e| e.to_string())?;
         let mut reads = BTreeSet::new();
         let mut traced = false;
@@ -542,7 +599,7 @@ impl Seatbelt {
 const LOG_WAIT: Duration = Duration::from_secs(30);
 
 impl Tracer for Seatbelt {
-    fn trace(&mut self, ctx: &Ctx, args: &ExecArgs, region: &str) -> Result<Traced, String> {
+    fn trace(&mut self, ctx: &Ctx, job: &Traceable, region: &str) -> Result<Traced, String> {
         let root = ctx.bound().map_err(|e| match e {
             LoadError::Hard(m) | LoadError::Failed { stderr: m } | LoadError::NotAllowed(m) => m,
         })?;
@@ -551,7 +608,7 @@ impl Tracer for Seatbelt {
         let first = Sentinel::read()?;
         let wrap =
             move |command: Command| Ok(launch::prefixed(&command, [SANDBOX_EXEC, "-p", &profile]));
-        let text = loader::exec(ctx, args, region, Some(&wrap));
+        let text = job.run(ctx, region, &wrap);
         let last = Sentinel::read()?;
         let predicate = format!(
             "subsystem == \"com.apple.sandbox.reporting\" AND (eventMessage CONTAINS {} OR eventMessage CONTAINS {} OR eventMessage CONTAINS {})",
@@ -750,7 +807,9 @@ fn examine_file(
     let (file, text, parsed) = match cli::open(path)? {
         Opened::Skip => return Ok(Examined::new(path)),
         Opened::Error(line, message) => return Ok(Examined::error(path, line, message)),
-        Opened::Template { file, text, parsed } => (file, text, parsed),
+        Opened::Template {
+            file, text, parsed, ..
+        } => (file, text, parsed),
     };
     let regions: Vec<&Region> = parsed
         .segments
@@ -763,6 +822,11 @@ fn examine_file(
     names.extend(regions.iter().filter_map(|r| r.opener.name.clone()));
     let ctx = Ctx::for_template(&file);
     let trusted = job.trust || cli::is_trusted(&ctx, store)?;
+    // A `use` region's inputs= is its recipe's, in computed.toml.
+    let recipes: BTreeMap<usize, String> = regions
+        .iter()
+        .filter_map(|r| Some((r.line, r.opener.recipe()?.to_string())))
+        .collect();
     let mut examined = Examined::new(path);
     for region in regions {
         let selected = job.only.is_empty()
@@ -771,7 +835,7 @@ fn examine_file(
                 .name
                 .as_ref()
                 .is_some_and(|n| job.only.contains(n));
-        if !selected || region.opener.loader != "exec" {
+        if !selected || !matches!(region.opener.loader.as_str(), "exec" | "transcript") {
             continue;
         }
         match examine(&ctx, region, trusted, tracer) {
@@ -780,6 +844,7 @@ fn examine_file(
                 examined.findings.push(Finding {
                     line: region.line,
                     name: region.opener.name.clone(),
+                    loader: region.opener.loader.clone(),
                     verdict: Verdict::Error,
                     reads: Vec::new(),
                     undeclared: Vec::new(),
@@ -792,15 +857,23 @@ fn examine_file(
         }
     }
     if job.write {
+        let wrong = |f: &Finding| {
+            matches!(
+                f.verdict,
+                Verdict::Undeclared | Verdict::Unused | Verdict::UndeclaredUnused
+            )
+        };
+        for f in examined.findings.iter_mut().filter(|f| wrong(f)) {
+            if let Some(recipe) = recipes.get(&f.line) {
+                f.message = Some(format!(
+                    "not rewritten: inputs= comes from [recipe.{recipe}] in computed.toml; set it there"
+                ));
+            }
+        }
         let inputs: BTreeMap<usize, String> = examined
             .findings
             .iter()
-            .filter(|f| {
-                matches!(
-                    f.verdict,
-                    Verdict::Undeclared | Verdict::Unused | Verdict::UndeclaredUnused
-                )
-            })
+            .filter(|f| wrong(f) && !recipes.contains_key(&f.line))
             .filter_map(|f| Some((f.line, f.suggestion.clone()?)))
             .collect();
         if !inputs.is_empty() {
@@ -840,9 +913,10 @@ fn print_text(examined: &Examined, verbose: bool) {
     for f in shown {
         let name = f.name.as_deref().unwrap_or("");
         let mut line = format!(
-            "{}:{} {name:name_width$} exec {}",
+            "{}:{} {name:name_width$} {} {}",
             path.display(),
             f.line,
+            f.loader,
             f.verdict
         );
         if f.rewritten {
@@ -921,9 +995,10 @@ fn json(report: &[Examined], exit: u8) -> String {
             }
             write!(
                 out,
-                "{{\"line\":{},\"name\":{},\"verdict\":{},\"reads\":{},\"undeclared\":{},\"unused\":{},\"suggestion\":{},\"rewritten\":{},\"message\":{}}}",
+                "{{\"line\":{},\"name\":{},\"loader\":{},\"verdict\":{},\"reads\":{},\"undeclared\":{},\"unused\":{},\"suggestion\":{},\"rewritten\":{},\"message\":{}}}",
                 f.line,
                 report::optional(f.name.as_deref()),
+                report::string(&f.loader),
                 report::string(&f.verdict.to_string()),
                 list(&f.reads),
                 list(&f.undeclared),
@@ -954,9 +1029,13 @@ mod tests {
     }
 
     impl Tracer for Fake {
-        fn trace(&mut self, _: &Ctx, args: &ExecArgs, _: &str) -> Result<Traced, String> {
+        fn trace(&mut self, _: &Ctx, job: &Traceable, _: &str) -> Result<Traced, String> {
             self.calls += 1;
-            if args.cmd == "fails" {
+            let cmd = match job {
+                Traceable::Exec(args) => args.cmd.clone(),
+                Traceable::Transcript(args) => args.steps.join(" ;; "),
+            };
+            if cmd == "fails" {
                 return Ok(Traced {
                     text: Err(LoadError::Failed {
                         stderr: "exit status 1".into(),
@@ -966,7 +1045,7 @@ mod tests {
             }
             Ok(Traced {
                 text: Ok(String::new()),
-                reads: self.reads[args.cmd.as_str()]
+                reads: self.reads[cmd.as_str()]
                     .iter()
                     .map(|p| {
                         if p.starts_with('/') {
@@ -1039,6 +1118,26 @@ mod tests {
         assert_eq!(f.verdict, Verdict::Complete);
         assert_eq!(f.tier(), 0);
         assert_eq!(f.suggestion.as_deref(), Some("docs/adr/*.md"));
+    }
+
+    #[test]
+    fn a_projected_input_that_was_read_stays_projected_in_the_suggestion() {
+        let (_d, r) = repo();
+        let ctx = Ctx::for_template(&r.join("DOC.md"));
+        let mut t = fake(&r, &[("x", vec!["Cargo.toml", "src/main.rs"])]);
+        let f = examine(
+            &ctx,
+            &region("<!-- computed exec cmd=x inputs=Cargo.toml#lines=1 -->"),
+            true,
+            &mut t,
+        )
+        .unwrap();
+        assert_eq!(f.verdict, Verdict::Undeclared);
+        assert_eq!(f.undeclared, ["src/main.rs"]);
+        assert_eq!(
+            f.suggestion.as_deref(),
+            Some("Cargo.toml#lines=1-1,src/main.rs")
+        );
     }
 
     #[test]

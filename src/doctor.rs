@@ -15,6 +15,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 
+use crate::allow::Allowed;
 use crate::cli::{self, Opened};
 use crate::launch::{self, Wrap};
 use crate::loader::{Ctx, Production};
@@ -34,6 +35,8 @@ pub enum Verdict {
     Failed,
     /// An exec region in a repository without a grant.
     Untrusted,
+    /// A remote region whose url the allowlist does not cover.
+    Disallowed,
     /// The tool could not answer for the region.
     Error,
 }
@@ -45,6 +48,7 @@ impl fmt::Display for Verdict {
             Verdict::Nondeterministic => "nondeterministic",
             Verdict::Failed => "failed",
             Verdict::Untrusted => "untrusted",
+            Verdict::Disallowed => "disallowed",
             Verdict::Error => "error",
         })
     }
@@ -133,6 +137,10 @@ pub fn compare(
                 finding.message = a.stderr;
             }
             (Some(Action::Untrusted), _) => finding.verdict = Verdict::Untrusted,
+            (Some(Action::Disallowed), _) => {
+                finding.verdict = Verdict::Disallowed;
+                finding.message = a.stderr;
+            }
             (Some(Action::Failed), _) => {
                 finding.verdict = Verdict::Failed;
                 finding.message = a.stderr;
@@ -260,6 +268,8 @@ fn elsewhere<T>(cwd: &Path, f: impl FnOnce() -> T) -> Result<T> {
 pub struct Job<'a> {
     pub trust: bool,
     pub only: &'a [String],
+    /// The url prefixes `remote` regions may fetch under, as for `run`.
+    pub allowed: &'a Allowed,
     pub verbose: bool,
     pub json: bool,
 }
@@ -330,13 +340,18 @@ fn examine(
         error: None,
         findings: Vec::new(),
     };
-    let (file, parsed) = match cli::open(path)? {
+    let (file, parsed, recipes) = match cli::open(path)? {
         Opened::Skip => return Ok(examined),
         Opened::Error(line, message) => {
             examined.error = Some((line, message));
             return Ok(examined);
         }
-        Opened::Template { file, parsed, .. } => (file, parsed),
+        Opened::Template {
+            file,
+            parsed,
+            recipes,
+            ..
+        } => (file, parsed, recipes),
     };
     names.extend(regions(&parsed).filter_map(|r| r.opener.name.clone()));
     let ctx = Ctx::for_template(&file);
@@ -345,10 +360,15 @@ fn examine(
         job.only.is_empty() || r.opener.name.as_ref().is_some_and(|n| job.only.contains(n))
     };
     let mode = Mode::Run { force: true };
-    let first = render::file_where(&parsed, mode, trusted, &select, &mut Production::new(ctx));
+    let loaders = |ctx| {
+        Production::new(ctx)
+            .allowing(job.allowed.clone())
+            .with_recipes(&recipes)
+    };
+    let first = render::file_where(&parsed, mode, trusted, &select, &mut loaders(ctx));
     // Absolute paths, so the template is found from the other directory.
     let far = Ctx::for_template(&file.canonicalize().context("unreadable")?);
-    let mut loaders = Production::new(far).with_wrap(perturbation.wrap());
+    let mut loaders = loaders(far).with_wrap(perturbation.wrap());
     let second = elsewhere(&perturbation.cwd(), || {
         render::file_where(&parsed, mode, trusted, &select, &mut loaders)
     })?;

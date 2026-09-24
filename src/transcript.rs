@@ -11,8 +11,10 @@ use std::time::Duration;
 use tempfile::TempDir;
 
 use crate::fs::{WalkOpts, walk};
+use crate::launch::Wrap;
 use crate::loader::{self, Ctx, LoadError, Place};
 use crate::marker::Opener;
+use crate::sandbox::Sandbox;
 
 /// What separates the steps in `steps=`.
 const SEPARATOR: &str = " ;; ";
@@ -36,6 +38,9 @@ pub struct TranscriptArgs {
     pub inputs: Option<Vec<String>>,
     pub timeout: Duration,
     pub workdir: Workdir,
+    /// Run in exec's sandbox: read only the inputs, write only the
+    /// temporary directories, no network.
+    pub sandbox: bool,
 }
 
 impl TranscriptArgs {
@@ -56,6 +61,7 @@ impl TranscriptArgs {
                 Some("tmp") => Workdir::Tmp,
                 Some(_) => Workdir::Copy,
             },
+            sandbox: opener.flag("sandbox"),
         })
     }
 }
@@ -94,6 +100,25 @@ pub fn validate(opener: &Opener) -> Result<(), String> {
         }
         _ => {}
     }
+    if let Some(inputs) = opener.attr("inputs") {
+        for entry in inputs.split(',') {
+            crate::project::split_input(entry.trim()).map_err(|e| format!("inputs={e}"))?;
+        }
+    }
+    if opener.flag("sandbox") {
+        if opener.flag("volatile") {
+            return Err(
+                "sandbox needs inputs=: the sandbox allows reading only the declared inputs"
+                    .to_string(),
+            );
+        }
+        if opener.attr("workdir") == Some("copy") {
+            return Err(
+                "sandbox and workdir=copy: the copy holds every file of the repository, so the sandbox could not keep reads to inputs=; use workdir=tmp, or leave the sandbox out"
+                    .to_string(),
+            );
+        }
+    }
     if let Some(t) = opener.attr("timeout")
         && t.parse::<u64>().map_or(true, |t| t == 0)
     {
@@ -111,7 +136,16 @@ pub fn validate(opener: &Opener) -> Result<(), String> {
 /// before its stderr, each captured on its own, so the text does not
 /// depend on how the two interleaved. The loader fails when the shell ends
 /// before the last step has, on a timeout, or on output that is not UTF-8.
-pub fn run(ctx: &Ctx, args: &TranscriptArgs, region_name: &str) -> Result<String, LoadError> {
+///
+/// `wrap` goes around the shell as for exec (doctor, trace). With
+/// `sandbox`, the steps run in exec's sandbox, which also lets them write
+/// the capture files and a `workdir=tmp`.
+pub fn run(
+    ctx: &Ctx,
+    args: &TranscriptArgs,
+    region_name: &str,
+    wrap: Option<&Wrap>,
+) -> Result<String, LoadError> {
     let hard = |what: &str, e: std::io::Error| LoadError::Hard(format!("{what}: {e}"));
     let capture = tempfile::tempdir().map_err(|e| hard("temporary directory", e))?;
     let (place, workdir) = match args.workdir {
@@ -134,7 +168,22 @@ pub fn run(ctx: &Ctx, args: &TranscriptArgs, region_name: &str) -> Result<String
         None => None,
     };
     let script = script(&args.steps, &canonical(capture.path())?, ceiling.as_deref());
-    let shell = loader::shell(&script, &place, args.timeout, region_name, None, None)?;
+    let sandbox = match (&args.inputs, args.sandbox) {
+        (Some(globs), true) => {
+            let mut dirs = vec![capture.path()];
+            dirs.extend(workdir.as_ref().map(TempDir::path));
+            Some(Sandbox::new(ctx, &loader::input_files(ctx, globs)?)?.writing(&dirs)?)
+        }
+        _ => None,
+    };
+    let shell = loader::shell(
+        &script,
+        &place,
+        args.timeout,
+        region_name,
+        wrap,
+        sandbox.as_ref(),
+    )?;
     let mut text = String::new();
     for (i, step) in args.steps.iter().enumerate() {
         let n = i + 1;
@@ -289,7 +338,7 @@ mod tests {
 
     fn transcript(root: &Path, template: &str, attrs: &str) -> Result<String, LoadError> {
         let ctx = Ctx::for_template(&root.join(template));
-        run(&ctx, &args(attrs).unwrap(), "transcript@1")
+        run(&ctx, &args(attrs).unwrap(), "transcript@1", None)
     }
 
     #[test]

@@ -32,8 +32,11 @@ struct Allowance {
     files: Vec<PathBuf>,
     /// The tree whose directories it may list: the repository root.
     listing: PathBuf,
-    /// The only directory it may write to.
+    /// The directory it may write to, its `TMPDIR`.
     tmp: PathBuf,
+    /// Other directories it may read, write and run from: a transcript's
+    /// capture files and its `workdir=tmp`.
+    writable: Vec<PathBuf>,
 }
 
 /// System trees a program needs to start and run.
@@ -89,6 +92,7 @@ impl Allowance {
             files: files.values().cloned().collect(),
             listing,
             tmp: tmp.to_path_buf(),
+            writable: Vec::new(),
         })
     }
 }
@@ -119,6 +123,18 @@ impl Sandbox {
         })
     }
 
+    /// The sandbox also letting the command read, write and run from each
+    /// of `dirs`, which must exist; they are taken canonical.
+    pub fn writing(mut self, dirs: &[&Path]) -> Result<Sandbox, LoadError> {
+        for dir in dirs {
+            let dir = dir
+                .canonicalize()
+                .map_err(|e| hard(format!("sandbox: {}: {e}", dir.display())))?;
+            self.allowance.writable.push(dir);
+        }
+        Ok(self)
+    }
+
     /// The command, run inside the sandbox with `TMPDIR` set to its
     /// temporary directory.
     pub fn apply(&self, command: Command) -> Result<Command, LoadError> {
@@ -147,12 +163,16 @@ fn profile(a: &Allowance) -> String {
     };
     let system = filters("subpath", &a.system);
     let files = filters("literal", &a.files);
-    let tmp = sbpl(&a.tmp);
+    let tmp = format!(
+        "(subpath {}){}",
+        sbpl(&a.tmp),
+        filters("subpath", &a.writable)
+    );
     format!(
         "(version 1)\n\
          (deny default)\n\
          (allow process-fork)\n\
-         (allow process-exec (literal \"/\"){system}{files} (subpath {tmp}))\n\
+         (allow process-exec (literal \"/\"){system}{files} {tmp})\n\
          (allow signal (target same-sandbox))\n\
          (allow process-info* (target same-sandbox))\n\
          (allow sysctl-read)\n\
@@ -160,7 +180,7 @@ fn profile(a: &Allowance) -> String {
          (allow file-read* (literal \"/\"){system})\n\
          (allow file-read-data (require-all (subpath {listing}) (vnode-type DIRECTORY)))\n\
          (allow file-read*{files})\n\
-         (allow file-read* file-write* (subpath {tmp}))\n\
+         (allow file-read* file-write* {tmp})\n\
          (allow file-read* file-write-data file-ioctl (literal \"/dev/null\") (literal \"/dev/dtracehelper\"))\n\
          (allow file-read* (literal \"/dev/random\") (literal \"/dev/urandom\") (literal \"/dev/zero\"))\n",
         listing = sbpl(&a.listing),
@@ -264,6 +284,11 @@ mod platform {
             .map_err(|e| e.to_string())?
             .add_rule(rule(&a.tmp, AccessFs::from_all(ABI::V9))?)
             .map_err(|e| e.to_string())?;
+        for dir in &a.writable {
+            created = created
+                .add_rule(rule(dir, AccessFs::from_all(ABI::V9))?)
+                .map_err(|e| e.to_string())?;
+        }
         let devices = [
             ("/dev/null", AccessFs::ReadFile | AccessFs::WriteFile),
             ("/dev/zero", AccessFs::ReadFile.into()),
@@ -367,6 +392,7 @@ mod tests {
             files: vec![PathBuf::from("/repo/docs/a.md")],
             listing: PathBuf::from("/repo"),
             tmp: PathBuf::from("/tmp/sb"),
+            writable: Vec::new(),
         }
     }
 

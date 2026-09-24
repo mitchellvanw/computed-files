@@ -157,7 +157,7 @@ fn trace_needs_trust_and_speaks_json() {
     assert_eq!(stderr(&out), "");
     assert_eq!(
         String::from_utf8(out.stdout).unwrap(),
-        "{\"exit\":0,\"files\":[{\"path\":\"DOC.md\",\"error\":null,\"regions\":[{\"line\":6,\"name\":\"ok\",\"verdict\":\"complete\",\"reads\":[\"docs/adr/0001.md\"],\"undeclared\":[],\"unused\":[],\"suggestion\":\"docs/adr/0001.md\",\"rewritten\":false,\"message\":null}]}]}\n"
+        "{\"exit\":0,\"files\":[{\"path\":\"DOC.md\",\"error\":null,\"regions\":[{\"line\":6,\"name\":\"ok\",\"loader\":\"exec\",\"verdict\":\"complete\",\"reads\":[\"docs/adr/0001.md\"],\"undeclared\":[],\"unused\":[],\"suggestion\":\"docs/adr/0001.md\",\"rewritten\":false,\"message\":null}]}]}\n"
     );
 }
 
@@ -172,4 +172,45 @@ fn without_strace_trace_is_exit_2_and_says_what_to_install() {
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
     assert!(stderr(&out).contains("install it"), "{}", stderr(&out));
+}
+
+#[test]
+fn a_transcript_is_traced_and_a_recipe_is_not_rewritten() {
+    if !tracer() {
+        return;
+    }
+    let repo = Repo::new();
+    fs::write(
+        repo.path().join("computed.toml"),
+        "[recipe.one]\nloader = \"exec\"\ncmd = \"cat docs/adr/0001.md src/main.rs\"\ninputs = \"docs/adr/0001.md\"\n",
+    )
+    .unwrap();
+    fs::write(
+        repo.path().join("DOC.md"),
+        "<!-- computed transcript steps=\"cat docs/adr/0001.md ;; cat Cargo.toml\" inputs=docs/adr/0001.md name=t -->\n<!-- /computed -->\n\n<!-- computed use recipe=one name=r -->\n<!-- /computed -->\n",
+    )
+    .unwrap();
+    let before = repo.doc();
+    let out = repo
+        .cmd(&["trace", "--trust", "--write", "--only", "r"])
+        .output()
+        .unwrap();
+    let err = stderr(&out);
+    assert!(err.contains("DOC.md:4 r exec undeclared"), "{err}");
+    assert!(
+        err.contains("not rewritten: inputs= comes from [recipe.one] in computed.toml"),
+        "{err}"
+    );
+    assert_eq!(repo.doc(), before, "the use opener is left alone");
+
+    let out = repo
+        .cmd(&["trace", "--trust", "--only", "t"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(
+        err.contains("DOC.md:1 t transcript undeclared\n    undeclared: Cargo.toml\n"),
+        "{err}"
+    );
 }

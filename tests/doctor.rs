@@ -157,3 +157,59 @@ fn only_and_json() {
     assert_eq!(out.status.code(), Some(2));
     assert!(stderr(&out).contains("no region is named \"nobody\""));
 }
+
+#[test]
+fn a_transcript_is_perturbed_as_exec_is() {
+    let repo = Repo::new(
+        "<!-- computed transcript steps=\"echo $HOME\" volatile name=home -->\n<!-- /computed -->\n\n<!-- computed transcript steps=\"cat data.txt\" inputs=data.txt name=cat -->\n<!-- /computed -->\n",
+    );
+    let out = repo.cmd(&["doctor", "--trust"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    let err = stderr(&out);
+    assert!(
+        err.contains("DOC.md:1 home transcript nondeterministic"),
+        "{err}"
+    );
+    assert!(!err.contains(" cat "), "{err}");
+}
+
+#[test]
+fn doctor_expands_recipes_and_takes_allow() {
+    let repo = Repo::new("<!-- computed use recipe=cat name=cat -->\n<!-- /computed -->\n");
+    fs::write(
+        repo.path().join("computed.toml"),
+        "[recipe.cat]\nloader = \"exec\"\ncmd = \"cat data.txt\"\ninputs = \"data.txt\"\n",
+    )
+    .unwrap();
+    let out = repo.cmd(&["-v", "doctor", "--trust"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("DOC.md:1 cat exec deterministic"),
+        "{}",
+        stderr(&out)
+    );
+
+    let base = sandbox::serve("fetched\n");
+    fs::write(
+        repo.path().join("DOC.md"),
+        format!(
+            "<!-- computed remote url={base}/a.md sha256={} name=far -->\n<!-- /computed -->\n",
+            sandbox::pin("fetched\n")
+        ),
+    )
+    .unwrap();
+    let out = repo.cmd(&["doctor"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    let out = repo
+        .cmd(&["-v", "doctor", "--allow", &format!("{base}/")])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("DOC.md:1 far remote deterministic"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+mod sandbox;

@@ -206,3 +206,85 @@ fn doctor_runs_a_sandboxed_region_inside_the_sandbox() {
     let out = repo.cmd(&["doctor", "--trust"]).output().unwrap();
     assert!(stderr(&out).contains("r exec failed"), "{}", stderr(&out));
 }
+
+#[test]
+fn an_exec_recipe_with_sandbox_true_runs_sandboxed() {
+    if !sandboxable() {
+        return;
+    }
+    let repo = Repo::new(
+        "<!-- computed use recipe=a name=a -->\n<!-- /computed -->\n\n<!-- computed use recipe=secret name=s -->\n<!-- /computed -->\n",
+    );
+    fs::write(
+        repo.path().join("computed.toml"),
+        "[recipe.a]\nloader = \"exec\"\ncmd = \"cat docs/a.txt\"\ninputs = \"docs/a.txt\"\nsandbox = true\n\n\
+         [recipe.secret]\nloader = \"exec\"\ncmd = \"cat secret.txt\"\ninputs = \"docs/a.txt\"\nsandbox = true\n",
+    )
+    .unwrap();
+    let out = repo.run();
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(repo.doc().contains("\ndeclared\n"), "{}", repo.doc());
+    assert!(!repo.doc().contains("undeclared"), "{}", repo.doc());
+    assert!(
+        stderr(&out).contains("DOC.md:4 s exec unrendered failed; body kept"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+fn transcript(attrs: &str) -> String {
+    format!("<!-- computed transcript {attrs} name=t -->\n<!-- /computed -->\n")
+}
+
+#[test]
+fn a_sandboxed_transcript_reads_its_inputs_and_writes_only_its_temporary_places() {
+    if !sandboxable() {
+        return;
+    }
+    let repo = Repo::new(&transcript(
+        "steps=\"cat docs/a.txt ;; cat secret.txt ;; echo $? ;; touch here.txt ;; echo x > $TMPDIR/t ;; cat $TMPDIR/t\" inputs=docs/a.txt sandbox",
+    ));
+    let out = repo.run();
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    let doc = repo.doc();
+    assert!(doc.contains("$ cat docs/a.txt\ndeclared\n"), "{doc}");
+    assert!(!doc.contains("\nundeclared\n"), "{doc}");
+    assert!(
+        doc.contains("$ echo $?\n1\n"),
+        "the undeclared read fails: {doc}"
+    );
+    assert!(
+        !repo.path().join("here.txt").exists(),
+        "no write into the repository"
+    );
+    assert!(doc.contains("$ cat $TMPDIR/t\nx\n"), "{doc}");
+
+    // workdir=tmp is the steps' own to write in.
+    let repo = Repo::new(&transcript(
+        "steps=\"touch made.txt ;; ls ;; cat $COMPUTED_ROOT/docs/a.txt\" inputs=docs/a.txt workdir=tmp sandbox",
+    ));
+    let out = repo.run();
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(
+        repo.doc()
+            .contains("$ ls\nmade.txt\n$ cat $COMPUTED_ROOT/docs/a.txt\ndeclared\n"),
+        "{}",
+        repo.doc()
+    );
+}
+
+#[test]
+fn a_sandboxed_transcript_needs_inputs_and_no_copy() {
+    for (attrs, needle) in [
+        ("steps=ls volatile sandbox", "sandbox needs inputs="),
+        (
+            "steps=ls inputs=docs/a.txt workdir=copy sandbox",
+            "sandbox and workdir=copy",
+        ),
+    ] {
+        let repo = Repo::new(&transcript(attrs));
+        let out = repo.run();
+        assert_eq!(out.status.code(), Some(2), "{attrs}");
+        assert!(stderr(&out).contains(needle), "{}", stderr(&out));
+    }
+}

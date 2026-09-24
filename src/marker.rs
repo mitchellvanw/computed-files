@@ -322,7 +322,7 @@ const GRAMMAR: &[LoaderGrammar] = &[
     LoaderGrammar {
         name: "transcript",
         attrs: &["steps", "inputs", "timeout", "workdir"],
-        flags: &["volatile"],
+        flags: &["volatile", "sandbox"],
         sink: Sink::Fence,
     },
 ];

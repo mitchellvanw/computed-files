@@ -566,7 +566,12 @@ impl Loaders for Production {
                     None => Vec::new(),
                     Some(globs) => inputs_snapshot(&self.ctx, globs, &mut self.read)?,
                 };
-                let text = crate::transcript::run(&self.ctx, &args, &self.region_name(region))?;
+                let text = crate::transcript::run(
+                    &self.ctx,
+                    &args,
+                    &self.region_name(region),
+                    self.wrap.as_deref(),
+                )?;
                 Ok(Loaded { text, snapshot })
             }
         }
@@ -1006,10 +1011,7 @@ fn expand(
 /// template's closers are not content: they change when that file renders,
 /// not when what it says does, and two templates that read each other would
 /// otherwise never settle.
-fn content_snapshot(
-    matched: Selected,
-    read: &mut BTreeSet<PathBuf>,
-) -> Result<Vec<u8>, LoadError> {
+fn content_snapshot(matched: Selected, read: &mut BTreeSet<PathBuf>) -> Result<Vec<u8>, LoadError> {
     let mut out = Vec::new();
     for (key, (file, projection)) in matched {
         let Some(content) = present(std::fs::read(&file))
