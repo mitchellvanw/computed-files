@@ -32,7 +32,7 @@ use crate::guard;
 use crate::loader::{Ctx, Production};
 use crate::marker::{self, Region, Segment, Syntax};
 use crate::render::{self, Action, Loaders, Mode, RegionReport, Rendered, State};
-use crate::trust::{self, Store};
+use crate::trust::Store;
 
 /// The command a code lens runs.
 pub const RUN: &str = "computed.run";
@@ -210,16 +210,9 @@ impl Server<'_> {
         self.notify("window/showMessage", ShowMessageParams { typ, message });
     }
 
+    /// Whether the store trusts the template at `path`, as `run` asks it.
     fn trusted(&self, path: &Path) -> bool {
-        let ctx = Ctx::for_template(path);
-        let root = match ctx.repo_root {
-            Some(r) => r,
-            None => match trust::root_for(&ctx.region_root) {
-                Ok(r) => r,
-                Err(_) => return false,
-            },
-        };
-        self.store.is_trusted(&root).unwrap_or(false)
+        crate::cli::is_trusted(&Ctx::for_template(path), &self.store).unwrap_or(false)
     }
 
     fn notification(&mut self, n: Notification) {
