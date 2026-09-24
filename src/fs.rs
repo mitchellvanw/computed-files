@@ -23,6 +23,8 @@ pub struct Entry {
     /// Relative to the walk root.
     pub path: PathBuf,
     pub is_dir: bool,
+    /// A symlink, which the walk lists and never follows.
+    pub is_link: bool,
     /// 1 for the root's children.
     pub depth: usize,
 }
@@ -53,7 +55,8 @@ pub fn walk(root: &Path, opts: WalkOpts) -> impl Iterator<Item = Entry> + use<> 
         if entry.depth() == 0 {
             return None;
         }
-        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        let is_dir = entry.file_type().is_some_and(|t| t.is_dir());
+        let is_link = entry.path_is_symlink();
         if opts.dirs && !is_dir {
             return None;
         }
@@ -61,6 +64,7 @@ pub fn walk(root: &Path, opts: WalkOpts) -> impl Iterator<Item = Entry> + use<> 
         Some(Entry {
             path,
             is_dir,
+            is_link,
             depth: entry.depth(),
         })
     })
@@ -147,15 +151,45 @@ pub fn repo_root(path: &Path) -> Option<PathBuf> {
 }
 
 /// Writes `text` to `path` through a temp file in the same directory and
-/// `rename(2)`, copying the original's mode bits. Returns `false`, touching
-/// nothing, when the file already holds `text`.
+/// `rename(2)`, copying the original's mode bits. A symlink is written
+/// through, so the link survives. Returns `false`, touching nothing, when
+/// the file already holds `text`.
 pub fn write(path: &Path, text: &str) -> io::Result<bool> {
+    let path = &target(path)?;
     if std::fs::read(path)
         .map(|current| current == text.as_bytes())
         .unwrap_or(false)
     {
         return Ok(false);
     }
+    persist(path, text)
+}
+
+/// [`write`], only when the file still holds `old`: an edit made while the
+/// new text was being computed is not overwritten, and the write fails.
+pub fn replace(path: &Path, old: &str, new: &str) -> io::Result<bool> {
+    let path = &target(path)?;
+    let current = std::fs::read(path)?;
+    if current == new.as_bytes() {
+        return Ok(false);
+    }
+    if current != old.as_bytes() {
+        return Err(io::Error::other(
+            "changed on disk while computed ran; not written, run again",
+        ));
+    }
+    persist(path, new)
+}
+
+/// The file a write lands in: `path`, or the file a symlink at `path` names.
+fn target(path: &Path) -> io::Result<PathBuf> {
+    match std::fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => path.canonicalize(),
+        _ => Ok(path.to_path_buf()),
+    }
+}
+
+fn persist(path: &Path, text: &str) -> io::Result<bool> {
     let dir = path
         .parent()
         .filter(|p| !p.as_os_str().is_empty())
@@ -301,6 +335,34 @@ mod tests {
         assert_eq!(repo_root(&nested.join("deep/x.rs")), Some(expected));
         let plain = tempfile::tempdir().unwrap();
         assert_eq!(repo_root(plain.path()), None);
+    }
+
+    #[test]
+    fn write_goes_through_a_symlink_and_keeps_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("CLAUDE.md");
+        let link = dir.path().join("AGENTS.md");
+        fs::write(&real, "old").unwrap();
+        std::os::unix::fs::symlink("CLAUDE.md", &link).unwrap();
+        assert!(write(&link, "new").unwrap());
+        assert!(
+            fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(fs::read_to_string(&real).unwrap(), "new");
+    }
+
+    #[test]
+    fn replace_refuses_a_file_that_changed_underneath() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("f.md");
+        fs::write(&path, "edited meanwhile").unwrap();
+        assert!(replace(&path, "old", "new").is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "edited meanwhile");
+        assert!(replace(&path, "edited meanwhile", "new").unwrap());
+        assert!(!replace(&path, "whatever", "new").unwrap());
     }
 
     #[test]

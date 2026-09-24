@@ -5,9 +5,11 @@ Prose stays as typed.
   <!-- computed tree src=. depth=2 name=layout | do not edit; run computed -->
   ```
   .
-  └── moved
+  ├── docs
+  └── src
+      └── main.rs
   ```
-  <!-- /computed in=c7ed3cf0dc892bafcf3da1a0702c008caa6a703d77848b5d2ca27158be7f7a6c out=9a377227822ca54842d69a043a0ee7c5efd6af0cb85ba0450a9fa39e8279044e -->
+  <!-- /computed in=3c0e29364d55fb726e86d0f889fca9ec45223983e0814ff3abcc8e127df6c77e out=1fa51bb164e87d1bf1c0cac5aa761212657488b8944493363c23b2161464a724 -->
 
 ## Decisions
 
@@ -20,8 +22,9 @@ Prose stays as typed.
 <!-- computed exec cmd="cat Cargo.toml" inputs=Cargo.toml name=deps | do not edit; run computed -->
 
 [package]
+name = "moved without its inputs"
 
-<!-- /computed in=4caf708a6a15c6a34fe8a87c8dd180a5e6ead811db307cfdfaf37f53eb39cf4a out=6f8ae269b5e3bd8b6117c5d1b4556a006cfaba5f306a45a1869b744e932ca3ad -->
+<!-- /computed in=4caf708a6a15c6a34fe8a87c8dd180a5e6ead811db307cfdfaf37f53eb39cf4a out=66d595ee53e666f1b1dfa8beffab14e0d986a74b424747281fecd8b5e1b1dd42 -->
 
 <!-- computed exec cmd=date volatile name=now as=fence lang=text | do not edit; run computed -->
 ```text

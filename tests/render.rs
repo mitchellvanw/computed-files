@@ -376,7 +376,7 @@ fn a_changed_file_leaves_an_unchanged_volatile_region_silent() {
 }
 
 #[test]
-fn a_hard_error_from_load_is_the_files_error() {
+fn a_hard_error_from_load_skips_its_region_and_the_file_is_tier_2() {
     struct HardLoad;
     impl Loaders for HardLoad {
         fn snapshot(&mut self, _: &Region) -> Result<Option<Vec<u8>>, LoadError> {
@@ -388,17 +388,23 @@ fn a_hard_error_from_load_is_the_files_error() {
     }
     let file = marker::parse(&read("unrendered.in.txt")).unwrap();
     let r = render::file(&file, Mode::Run { force: false }, true, &mut HardLoad);
-    assert!(matches!(r, Rendered::Error { line: 5, .. }), "{r:?}");
+    assert!(matches!(r, Rendered::Unchanged { .. }), "{r:?}");
+    assert!(
+        r.regions()
+            .iter()
+            .all(|x| x.action == Some(render::Action::Error)
+                && x.stderr.as_deref() == Some("/bin/sh: not found"))
+    );
     assert_eq!(r.tier(), 2);
 }
 
 #[test]
-fn a_hard_loader_error_skips_the_file() {
+fn a_hard_snapshot_error_skips_its_region_and_the_others_render() {
     let mut fake = Fake::with(&[
         ("layout", Entry::Hard("src= escapes the repository root")),
-        ("adrs", Entry::Volatile("")),
-        ("deps", Entry::Volatile("")),
-        ("now", Entry::Volatile("")),
+        ("adrs", Entry::Volatile("a")),
+        ("deps", Entry::Volatile("d")),
+        ("now", Entry::Volatile("n")),
     ]);
     let r = run_case(
         "unrendered.in.txt",
@@ -407,8 +413,101 @@ fn a_hard_loader_error_skips_the_file() {
         true,
         &mut fake,
     );
-    assert!(matches!(r, Rendered::Error { line: 5, .. }));
+    assert!(matches!(r, Rendered::Written { .. }));
+    assert_eq!(fake.loads, ["adrs", "deps", "now"]);
     assert_eq!(r.tier(), 2);
+    let mut fake = Fake::with(&[
+        ("layout", Entry::Hard("src= escapes the repository root")),
+        ("adrs", Entry::Volatile("")),
+        ("deps", Entry::Volatile("")),
+        ("now", Entry::Volatile("")),
+    ]);
+    let r = run_case(
+        "unrendered.in.txt",
+        "unrendered.hard.check",
+        Mode::Check,
+        true,
+        &mut fake,
+    );
+    assert_eq!(r.tier(), 2);
+    assert_eq!(r.regions()[0].state, render::State::Error);
+}
+
+#[test]
+fn force_renders_a_fresh_region_again() {
+    let mut fake = standard();
+    fake.table.insert(
+        "deps",
+        Entry::Inputs {
+            snapshot: "Cargo.toml\x0010\x00[package]\n\n\0",
+            text: "[package]\nname = \"moved without its inputs\"\n",
+        },
+    );
+    let r = run_case(
+        "fresh.in.txt",
+        "fresh.force",
+        Mode::Run { force: true },
+        true,
+        &mut fake,
+    );
+    assert!(matches!(r, Rendered::Written { .. }));
+    assert_eq!(fake.loads, ["layout", "adrs", "deps", "now"]);
+    let actions: Vec<_> = r.regions().iter().map(|x| x.action.unwrap()).collect();
+    use render::Action::{Fresh, Written};
+    assert_eq!(actions, [Fresh, Fresh, Written, Fresh]);
+}
+
+#[test]
+fn only_the_selected_regions_are_rendered_or_reported() {
+    let mut fake = standard();
+    let file = marker::parse(&read("states.in.txt")).unwrap();
+    let r = render::file_where(
+        &file,
+        Mode::Run { force: false },
+        true,
+        &|r| r.opener.name.as_deref() == Some("layout"),
+        &mut fake,
+    );
+    let Rendered::Written { text, regions } = r else {
+        panic!("the stale layout renders though other regions are edited");
+    };
+    assert_eq!(regions.len(), 1);
+    assert_eq!(fake.loads, ["layout"]);
+    assert!(text.contains("# One (edited by hand)"));
+}
+
+#[test]
+fn a_fence_left_open_in_the_prose_stops_the_write() {
+    let mut fake = standard();
+    let text = "intro\n```\nstray\n\n<!-- computed tree name=layout -->\n<!-- /computed -->\n";
+    let file = marker::parse(text).unwrap();
+    let r = render::file(&file, Mode::Run { force: false }, true, &mut fake);
+    match r {
+        Rendered::Error { line, message } => {
+            assert_eq!(line, 2);
+            assert!(message.contains("never closed"), "{message}");
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_crlf_file_stays_crlf() {
+    let mut fake = standard();
+    let text =
+        "a\r\n<!-- computed exec cmd=x inputs=y name=adrs -->\r\n<!-- /computed -->\r\nb\r\n";
+    let file = marker::parse(text).unwrap();
+    let Rendered::Written { text, .. } =
+        render::file(&file, Mode::Run { force: false }, true, &mut fake)
+    else {
+        panic!("renders");
+    };
+    assert!(!text.replace("\r\n", "").contains('\n'), "{text:?}");
+    let file = marker::parse(&text).unwrap();
+    assert!(matches!(
+        render::file(&file, Mode::Check, true, &mut fake),
+        Rendered::Unchanged { regions } if regions[0].state == render::State::Fresh
+    ));
 }
 
 #[test]

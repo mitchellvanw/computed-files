@@ -3,13 +3,13 @@
 Prose stays as typed.
 
   <!-- computed tree src=. depth=2 name=layout | do not edit; run computed -->
-```
-.
-├── docs
-└── src
-    └── main.rs
-```
-  <!-- /computed in=4b0267a37bd1187b38918aa56d344242263571578d5b300fb415b2fb4260d898 out=45ca178e8d4046c3d6663949c214424beef2e9912da4931b45621e1e5ecbf559 -->
+  ```
+  .
+  ├── docs
+  └── src
+      └── main.rs
+  ```
+  <!-- /computed in=3c0e29364d55fb726e86d0f889fca9ec45223983e0814ff3abcc8e127df6c77e out=1fa51bb164e87d1bf1c0cac5aa761212657488b8944493363c23b2161464a724 -->
 
 ## Decisions
 

@@ -1,2 +1,7 @@
-error line 5: src= escapes the repository root
+written
+5 layout tree error skipped; body kept
+  stderr: src= escapes the repository root
+10 adrs exec unrendered written
+13 deps exec unrendered written
+16 now exec unrendered written
 tier 2

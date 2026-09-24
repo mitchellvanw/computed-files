@@ -3,9 +3,9 @@
 
 use crate::marker::{self, Sink};
 
-/// Normalises loader output before a sink shapes it: invalid UTF-8, a C0
-/// control other than tab, LF and CR, or a line that would parse as a marker
-/// is a failure; CRLF and lone CR become LF; trailing newlines are stripped.
+/// Normalises loader output before a sink shapes it: invalid UTF-8 or a C0
+/// control other than tab, LF and CR is a failure; CRLF and lone CR become
+/// LF; trailing newlines are stripped.
 pub fn normalise(bytes: &[u8]) -> Result<String, String> {
     let text = std::str::from_utf8(bytes).map_err(|e| format!("output is not UTF-8: {e}"))?;
     if let Some(c) = text
@@ -18,13 +18,7 @@ pub fn normalise(bytes: &[u8]) -> Result<String, String> {
         ));
     }
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
-    let text = text.trim_end_matches('\n');
-    if let Some(line) = text.lines().find(|l| marker::is_marker(l)) {
-        return Err(format!(
-            "output contains a line that would parse as a marker: {line}"
-        ));
-    }
-    Ok(text.to_string())
+    Ok(text.trim_end_matches('\n').to_string())
 }
 
 /// A blank line, the text, a blank line.
@@ -63,11 +57,18 @@ pub fn fence(text: &str, lang: &str) -> String {
 }
 
 /// Normalises, shapes with the sink, and checks the body parses back to
-/// itself between markers. An error is a loader failure.
+/// itself between markers. An error is a loader failure. A line that would
+/// parse as a marker fails a `raw` body unless a fence in the text holds it;
+/// `fence` holds every line, so marker examples can be shown that way.
 pub fn body(sink: Sink, lang: &str, bytes: &[u8]) -> Result<String, String> {
     let text = normalise(bytes)?;
     let body = match sink {
         Sink::Raw => {
+            if let Some(line) = marker::unfenced_marker_line(&text) {
+                return Err(format!(
+                    "output contains a line that would parse as a marker: {line}"
+                ));
+            }
             if marker::has_unclosed_fence(&text) {
                 return Err(
                     "output has an unbalanced fence that would swallow the closer".to_string(),
@@ -107,8 +108,6 @@ mod tests {
             (b"a\x00b", Err("control")),
             (b"a\x1bb", Err("control")),
             (b"\xff\xfe", Err("UTF-8")),
-            (b"x\n<!-- computed tree -->\n", Err("marker")),
-            (b"x\n  <!-- /computed -->\n", Err("marker")),
         ];
         for (input, expected) in cases {
             let got = normalise(input);
@@ -157,6 +156,28 @@ mod tests {
         assert_eq!(
             body(Sink::Raw, "", b"```\ncode\n```\n").unwrap(),
             "\n```\ncode\n```\n\n"
+        );
+    }
+
+    #[test]
+    fn a_marker_line_fails_raw_unless_a_fence_holds_it() {
+        for text in [
+            &b"x\n<!-- computed tree -->\n"[..],
+            b"x\n  <!-- /computed -->\n",
+        ] {
+            let e = body(Sink::Raw, "", text).unwrap_err();
+            assert!(e.contains("marker"), "{e}");
+        }
+        let example = b"```\n<!-- computed tree -->\n<!-- /computed -->\n```\n";
+        assert!(body(Sink::Raw, "", example).is_ok());
+        assert_eq!(
+            body(
+                Sink::Fence,
+                "markdown",
+                b"<!-- computed tree -->\n<!-- /computed -->\n"
+            )
+            .unwrap(),
+            "```markdown\n<!-- computed tree -->\n<!-- /computed -->\n```\n"
         );
     }
 

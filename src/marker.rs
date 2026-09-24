@@ -195,6 +195,12 @@ const GRAMMAR: &[LoaderGrammar] = &[
         flags: &["volatile"],
         sink: Sink::Raw,
     },
+    LoaderGrammar {
+        name: "file",
+        attrs: &["src"],
+        flags: &[],
+        sink: Sink::Raw,
+    },
 ];
 
 const COMMON_ATTRS: &[&str] = &["name", "as", "lang"];
@@ -246,6 +252,7 @@ enum Kind<'a> {
         content: &'a str,
     },
     Closer {
+        indent: &'a str,
         content: &'a str,
     },
 }
@@ -262,7 +269,9 @@ fn classify<'a>(line: &Line<'a>) -> Result<Kind<'a>, ParseError> {
     }
     let inner = after.trim_start_matches([' ', '\t']);
     let word_end = inner.find([' ', '\t']).unwrap_or(inner.len());
+    // `<!-- /computed-->` closes as surely as `<!-- /computed -->`.
     let word = &inner[..word_end];
+    let word = word.strip_suffix("-->").unwrap_or(word);
     if word != "computed" && word != "/computed" {
         return Ok(Kind::Prose);
     }
@@ -281,7 +290,7 @@ fn classify<'a>(line: &Line<'a>) -> Result<Kind<'a>, ParseError> {
     if word == "computed" {
         Ok(Kind::Opener { indent, content })
     } else {
-        Ok(Kind::Closer { content })
+        Ok(Kind::Closer { indent, content })
     }
 }
 
@@ -345,6 +354,73 @@ pub fn is_marker(text: &str) -> bool {
     !matches!(classify(&line), Ok(Kind::Prose))
 }
 
+/// The first line of `text` outside a fenced code block that would parse
+/// as a marker. Such a line in a `raw` body would open or close a region.
+pub fn unfenced_marker_line(text: &str) -> Option<&str> {
+    let lines = lines(text);
+    let fenced = fenced_lines(&lines);
+    lines
+        .iter()
+        .zip(&fenced)
+        .find(|(l, f)| !**f && is_marker(l.text))
+        .map(|(l, _)| l.text)
+}
+
+/// The 1-based lines of fences in `text` that open a block no later fence
+/// closes. The parser reads them as prose; a fence written below one can
+/// close it and swallow what lies between.
+pub fn unclosed_fences(text: &str) -> Vec<usize> {
+    let lines = lines(text);
+    let fenced = fenced_lines(&lines);
+    lines
+        .iter()
+        .zip(&fenced)
+        .filter(|(l, f)| {
+            !**f && matches!(fence_run(l.text), Some((c, _, info)) if !(c == '`' && info.contains('`')))
+        })
+        .map(|(l, _)| l.number)
+        .collect()
+}
+
+/// Whether any line of `text` would parse as a marker, fenced or not.
+pub fn has_marker(text: &str) -> bool {
+    lines(text).iter().any(|l| is_marker(l.text))
+}
+
+/// `bytes` with the sums taken out of every closer line, so a snapshot of
+/// another template moves with its prose and bodies and not with the sums
+/// the tool writes into it. Lines that are not UTF-8 are kept as they are.
+pub fn strip_sums(bytes: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+    const NEEDLE: &[u8] = b"/computed";
+    if !bytes.windows(NEEDLE.len()).any(|w| w == NEEDLE) {
+        return std::borrow::Cow::Borrowed(bytes);
+    }
+    let mut out = Vec::with_capacity(bytes.len());
+    for raw in bytes.split_inclusive(|&b| b == b'\n') {
+        let (body, term) = match raw.strip_suffix(b"\r\n") {
+            Some(b) => (b, &b"\r\n"[..]),
+            None => match raw.strip_suffix(b"\n") {
+                Some(b) => (b, &b"\n"[..]),
+                None => (raw, &b""[..]),
+            },
+        };
+        let line = Line {
+            number: 1,
+            raw: "",
+            text: std::str::from_utf8(body).unwrap_or(""),
+        };
+        match classify(&line) {
+            Ok(Kind::Closer { indent, content }) if !content.is_empty() => {
+                out.extend_from_slice(indent.as_bytes());
+                out.extend_from_slice(rendered_closer(None).as_bytes());
+                out.extend_from_slice(term);
+            }
+            _ => out.extend_from_slice(raw),
+        }
+    }
+    std::borrow::Cow::Owned(out)
+}
+
 /// Parses a file into prose and regions. Every grammar error is tier 2.
 pub fn parse(text: &str) -> Result<File, ParseError> {
     let lines = lines(text);
@@ -396,7 +472,9 @@ pub fn parse(text: &str) -> Result<File, ParseError> {
                                 "opener inside a body: nesting is not supported",
                             ));
                         }
-                        Kind::Closer { content } => break (l, parse_closer(l.number, content)?),
+                        Kind::Closer { content, .. } => {
+                            break (l, parse_closer(l.number, content)?);
+                        }
                     }
                     j += 1;
                 };
@@ -594,8 +672,26 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
                 }
                 _ => {}
             }
-            whole_number("timeout")
+            if let Some(inputs) = opener.attr("inputs")
+                && inputs
+                    .split(',')
+                    .any(|g| g.trim().trim_end_matches('/').is_empty())
+            {
+                return Err(error(
+                    line,
+                    format!("inputs={inputs}: an entry is empty; remove the stray comma"),
+                ));
+            }
+            whole_number("timeout")?;
+            if opener.attr("timeout").and_then(|t| t.parse::<u64>().ok()) == Some(0) {
+                return Err(error(line, "timeout=0: expected at least 1 second"));
+            }
+            Ok(())
         }
+        "file" => match opener.attr("src") {
+            None => Err(error(line, "file needs src=")),
+            Some(_) => Ok(()),
+        },
         _ => Ok(()),
     }
 }
@@ -941,6 +1037,31 @@ mod tests {
                 1,
                 "timeout=1s",
             ),
+            (
+                "<!-- computed exec cmd=x volatile timeout=0 -->\n<!-- /computed -->\n",
+                1,
+                "at least 1 second",
+            ),
+            (
+                "<!-- computed exec cmd=x inputs=docs/*.md, -->\n<!-- /computed -->\n",
+                1,
+                "entry is empty",
+            ),
+            (
+                "<!-- computed exec cmd=x inputs=a,,b -->\n<!-- /computed -->\n",
+                1,
+                "entry is empty",
+            ),
+            (
+                "<!-- computed file -->\n<!-- /computed -->\n",
+                1,
+                "file needs src=",
+            ),
+            (
+                "<!-- computed file src=a volatile -->\n<!-- /computed -->\n",
+                1,
+                "unknown flag",
+            ),
         ];
         for (text, line, needle) in cases {
             let e = err(text);
@@ -951,6 +1072,45 @@ mod tests {
                 e.message
             );
         }
+    }
+
+    #[test]
+    fn a_closer_may_touch_its_comment_end() {
+        let text = "<!-- computed tree-->\nbody\n<!-- /computed-->\n";
+        let file = parse(text).unwrap();
+        assert_eq!(region(&file, 0).body, "body\n");
+        assert_eq!(serialise(&file), text);
+    }
+
+    #[test]
+    fn unclosed_fences_are_found_and_closed_ones_are_not() {
+        assert_eq!(unclosed_fences("a\n```\nb\n~~~\nc\n~~~\n"), [2]);
+        assert!(unclosed_fences("```\nx\n```\n").is_empty());
+    }
+
+    #[test]
+    fn a_fenced_marker_is_not_an_unfenced_one() {
+        assert_eq!(unfenced_marker_line("```\n<!-- /computed -->\n```\n"), None);
+        assert_eq!(
+            unfenced_marker_line("x\n  <!-- /computed -->\n"),
+            Some("  <!-- /computed -->")
+        );
+    }
+
+    #[test]
+    fn strip_sums_blanks_closers_and_nothing_else() {
+        let sums = "in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715";
+        let text = format!("a /computed b\r\n  <!-- /computed {sums} -->\r\n<!-- /computed -->\n");
+        let mut bytes = text.into_bytes();
+        bytes.push(0xff);
+        assert_eq!(
+            &*strip_sums(&bytes),
+            b"a /computed b\r\n  <!-- /computed -->\r\n<!-- /computed -->\n\xff"
+        );
+        assert!(matches!(
+            strip_sums(b"no markers"),
+            std::borrow::Cow::Borrowed(_)
+        ));
     }
 
     #[test]

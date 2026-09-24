@@ -1,0 +1,28 @@
+# Project
+
+Prose stays as typed.
+
+  <!-- computed tree src=. depth=2 name=layout -->
+  <!-- /computed -->
+
+## Decisions
+
+<!-- computed exec cmd="grep -h '^# ' docs/adr/*.md" inputs=docs/adr/*.md name=adrs | do not edit; run computed -->
+
+a
+
+<!-- /computed in=affe7e28d4dfc3526e3327594d4f89ce0e3ea388e56cc63c127403520c4542d0 out=cf08e27bcbeffd07f6da3ad6a982000632ce9a988f95909ba598d54caf3a0ff0 -->
+
+<!-- computed exec cmd="cat Cargo.toml" inputs=Cargo.toml name=deps | do not edit; run computed -->
+
+d
+
+<!-- /computed in=2c5ae87643ba3c460532a35d6211493234bac93bb1bbbf73c3f366f21a905c1d out=2426cabf469c374d40631d5675d2ae2708cd923c99008be17771df90ae74dfcd -->
+
+<!-- computed exec cmd=date volatile name=now as=fence lang=text | do not edit; run computed -->
+```text
+n
+```
+<!-- /computed in=98db2efa61f8c4dd2169c8090a5409a80150b4a398bc9579e8cb23a545069b1a out=9fd524a5c84e3c09ee0f02df5cb2c9a30ac91411de8a79911d298166c182e9cd -->
+
+The end.

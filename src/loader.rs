@@ -1,4 +1,5 @@
-//! The two loaders, `tree` and `exec`, and the production `Loaders` adapter.
+//! The three loaders, `tree`, `exec` and `file`, and the production
+//! `Loaders` adapter.
 
 /// What every loader produces: the text a sink shapes, and the snapshot of
 /// the inputs it read, which the input sum is taken over.
@@ -24,21 +25,23 @@ pub fn format_constant(loader: &str) -> u32 {
     match loader {
         "tree" => 1,
         "exec" => 1,
+        "file" => 1,
         other => panic!("unknown loader {other:?} reached the format table"),
     }
 }
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ffi::{OsStr, OsString};
 use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::Duration;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use globset::GlobMatcher;
 
 use crate::fs::{self, Ignores, WalkOpts};
-use crate::marker::{Opener, Region};
+use crate::marker::{self, Opener, Region};
 use crate::render::Loaders;
 
 /// Per-file context every marker path is resolved against.
@@ -110,6 +113,11 @@ pub struct TreeArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileArgs {
+    pub src: PathBuf,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecArgs {
     pub cmd: String,
     /// Comma-separated globs, or `None` when volatile.
@@ -122,6 +130,7 @@ pub struct ExecArgs {
 pub enum Loader {
     Tree(TreeArgs),
     Exec(ExecArgs),
+    File(FileArgs),
 }
 
 impl Loader {
@@ -169,6 +178,9 @@ impl Loader {
                     timeout: Duration::from_secs(timeout),
                 }))
             }
+            "file" => Ok(Loader::File(FileArgs {
+                src: PathBuf::from(opener.attr("src").ok_or_else(|| hard("file needs src="))?),
+            })),
             other => Err(hard(format!("unknown loader {other:?}"))),
         }
     }
@@ -177,15 +189,18 @@ impl Loader {
         match self {
             Loader::Tree(_) => format_constant("tree"),
             Loader::Exec(_) => format_constant("exec"),
+            Loader::File(_) => format_constant("file"),
         }
     }
 }
 
-/// The production `Loaders` adapter: resolves paths through a `Ctx` and
-/// keeps each tree walk so `snapshot` and `load` cost one walk.
+/// The production `Loaders` adapter: resolves paths through a `Ctx`, keeps
+/// each tree walk so `snapshot` and `load` cost one walk, and records every
+/// file whose content went into a snapshot.
 pub struct Production {
     ctx: Ctx,
     walks: HashMap<String, Loaded>,
+    read: BTreeSet<PathBuf>,
 }
 
 impl Production {
@@ -193,7 +208,14 @@ impl Production {
         Production {
             ctx,
             walks: HashMap::new(),
+            read: BTreeSet::new(),
         }
+    }
+
+    /// The canonical paths of every file a snapshot read, so a caller can
+    /// tell which templates a write to another file makes stale.
+    pub fn read(&self) -> &BTreeSet<PathBuf> {
+        &self.read
     }
 
     fn tree(&mut self, region: &Region, args: &TreeArgs) -> Result<Loaded, LoadError> {
@@ -202,6 +224,12 @@ impl Production {
             return Ok(l.clone());
         }
         let src = self.ctx.resolve("src=", &args.src)?;
+        if !src.is_dir() {
+            return Err(hard(format!(
+                "src=: {} is not a directory",
+                args.src.display()
+            )));
+        }
         let loaded = tree(
             &src,
             WalkOpts {
@@ -212,6 +240,32 @@ impl Production {
         );
         self.walks.insert(key, loaded.clone());
         Ok(loaded)
+    }
+
+    /// The `file` loader: the named file's text, closer sums taken out, and
+    /// the same one-entry snapshot `inputs=` would take of it.
+    fn file(&mut self, args: &FileArgs) -> Result<Loaded, LoadError> {
+        let path = self.ctx.resolve("src=", &args.src)?;
+        if !path.is_file() {
+            return Err(hard(format!("src=: {} is not a file", args.src.display())));
+        }
+        if self.ctx.template.canonicalize().ok().as_ref() == Some(&path) {
+            return Err(hard(format!(
+                "src=: {} is this file; a region cannot include its own file",
+                args.src.display()
+            )));
+        }
+        let rel = lexical(&args.src);
+        let content =
+            std::fs::read(&path).map_err(|e| hard(format!("src=: {}: {e}", args.src.display())))?;
+        let content = marker::strip_sums(&content).into_owned();
+        self.read.insert(path);
+        let mut snapshot = Vec::new();
+        push_entry(&mut snapshot, rel.to_string_lossy().as_bytes(), &content);
+        let text = String::from_utf8(content).map_err(|_| LoadError::Failed {
+            stderr: format!("src=: {} is not UTF-8", args.src.display()),
+        })?;
+        Ok(Loaded { text, snapshot })
     }
 
     fn region_name(&self, region: &Region) -> String {
@@ -231,7 +285,8 @@ impl Loaders for Production {
             Loader::Exec(ExecArgs {
                 inputs: Some(globs),
                 ..
-            }) => Ok(Some(inputs_snapshot(&self.ctx, &globs)?)),
+            }) => Ok(Some(inputs_snapshot(&self.ctx, &globs, &mut self.read)?)),
+            Loader::File(args) => Ok(Some(self.file(&args)?.snapshot)),
         }
     }
 
@@ -241,11 +296,12 @@ impl Loaders for Production {
             Loader::Exec(args) => {
                 let snapshot = match &args.inputs {
                     None => Vec::new(),
-                    Some(globs) => inputs_snapshot(&self.ctx, globs)?,
+                    Some(globs) => inputs_snapshot(&self.ctx, globs, &mut self.read)?,
                 };
                 let text = exec(&self.ctx, &args, &self.region_name(region))?;
                 Ok(Loaded { text, snapshot })
             }
+            Loader::File(args) => self.file(&args),
         }
     }
 }
@@ -411,27 +467,35 @@ enum Below {
 /// The files one glob expands to.
 struct Expansion<'g> {
     glob: &'g InputGlob,
-    /// `(relative, path)` per file taken.
+    /// What a symlink's target must stay inside, canonical.
+    bound: &'g Path,
+    repo_root: Option<&'g Path>,
+    /// `(relative, path)` per file taken, the path canonical.
     files: Vec<(PathBuf, PathBuf)>,
     /// A wildcard reached an ignored path it would have taken or entered.
     ignored: bool,
 }
 
 impl<'g> Expansion<'g> {
-    fn new(glob: &'g InputGlob) -> Expansion<'g> {
+    fn new(glob: &'g InputGlob, bound: &'g Path, repo_root: Option<&'g Path>) -> Expansion<'g> {
         Expansion {
             glob,
+            bound,
+            repo_root,
             files: Vec::new(),
             ignored: false,
         }
     }
 
     /// Takes what `below` selects from `dir`, whose path from the region
-    /// root is `rel`, without following symlinks. An entry a wildcard
-    /// reached is skipped when `.gitignore` ignores it or it is `.git`; an
-    /// entry a literal part named is taken regardless ([ADR 0012]). A
-    /// directory or file that vanishes while it is listed, as build output
-    /// does, is skipped: it is not there to snapshot.
+    /// root is `rel`. An entry a wildcard reached is skipped when
+    /// `.gitignore` ignores it or it is `.git`; an entry a literal part named
+    /// is taken regardless ([ADR 0012]). A symlink to a file is read through
+    /// when its target stays inside the bound; a symlink to a directory is
+    /// entered only when a literal part named it, so a wildcard never loops.
+    /// A target outside the bound is an error when named and skipped when a
+    /// wildcard reached it. A directory or file that vanishes while it is
+    /// listed, as build output does, is skipped: it is not there to snapshot.
     ///
     /// [ADR 0012]: ../docs/adr/0012-wildcards-in-inputs-do-not-reach-ignored-paths.md
     fn walk(&mut self, dir: &Path, rel: &Path, below: &Below, ignores: &Ignores) -> io::Result<()> {
@@ -445,6 +509,15 @@ impl<'g> Expansion<'g> {
             };
             let Some(kind) = present(entry.file_type()).map_err(at)? else {
                 continue;
+            };
+            let link = kind.is_symlink();
+            let kind = if link {
+                match present(std::fs::metadata(entry.path())).map_err(at)? {
+                    Some(m) => m.file_type(),
+                    None => continue,
+                }
+            } else {
+                kind
             };
             let is_dir = kind.is_dir();
             if !is_dir && !kind.is_file() {
@@ -465,13 +538,37 @@ impl<'g> Expansion<'g> {
                     }
                 }
             };
-            let path = entry.path();
+            let mut path = entry.path();
             if !named && (name == ".git" || ignores.ignores(&path, is_dir)) {
                 self.ignored = true;
                 continue;
             }
+            if link {
+                if is_dir && !named {
+                    continue;
+                }
+                let Some(target) = present(path.canonicalize()).map_err(at)? else {
+                    continue;
+                };
+                if !target.starts_with(self.bound) {
+                    if named {
+                        return Err(io::Error::other(format!(
+                            "{} escapes {}",
+                            rel.display(),
+                            self.bound.display()
+                        )));
+                    }
+                    continue;
+                }
+                path = target;
+            }
             if is_dir {
-                self.walk(&path, &rel, &next, &ignores.enter(&path))?;
+                let inner = if link {
+                    Ignores::at(self.repo_root, &path)
+                } else {
+                    ignores.enter(&path)
+                };
+                self.walk(&path, &rel, &next, &inner)?;
             } else if matches!(next, Below::Everything) {
                 self.files.push((rel, path));
             }
@@ -509,25 +606,36 @@ fn glob_prefix(glob: &str) -> PathBuf {
     }
 }
 
+/// A marker path as the glob spells it, `.` components dropped, so a
+/// symlinked directory keeps the name the glob matches against.
+fn lexical(path: &Path) -> PathBuf {
+    path.components()
+        .filter(|c| !matches!(c, Component::CurDir))
+        .collect()
+}
+
 /// The `inputs=` snapshot: for every matched file in byte-order relative
-/// path, `path NUL length NUL content NUL`. A matched directory means every
-/// file under it; the template itself is excluded.
-fn inputs_snapshot(ctx: &Ctx, globs: &[String]) -> Result<Vec<u8>, LoadError> {
+/// path, `path NUL length NUL content NUL`, closer sums taken out of the
+/// content. A matched directory means every file under it; the template
+/// itself is excluded. Every file read is added to `read`.
+fn inputs_snapshot(
+    ctx: &Ctx,
+    globs: &[String],
+    read: &mut BTreeSet<PathBuf>,
+) -> Result<Vec<u8>, LoadError> {
     let template = ctx.template.canonicalize().ok();
-    let region_root = ctx
-        .region_root
-        .canonicalize()
-        .map_err(|e| hard(format!("region root: {e}")))?;
+    let bound = ctx.bound()?;
     let mut matched: BTreeMap<Vec<u8>, PathBuf> = BTreeMap::new();
     for glob in globs {
-        let glob = glob.trim();
+        // `docs/` names the directory `docs` names.
+        let glob = glob.trim().trim_end_matches('/');
         let input = InputGlob::new(glob).map_err(|e| hard(format!("inputs={glob}: {e}")))?;
         let prefix = glob_prefix(glob);
         if !ctx.region_root.join(&prefix).exists() {
             return Err(hard(format!("inputs={glob} matches nothing")));
         }
         let dir = ctx.resolve("inputs=", &prefix)?;
-        let rel = relative(&region_root, &dir);
+        let rel = lexical(&prefix);
         let below = if input.matches(&rel) {
             Below::Everything
         } else {
@@ -536,7 +644,7 @@ fn inputs_snapshot(ctx: &Ctx, globs: &[String]) -> Result<Vec<u8>, LoadError> {
             }))
         };
         let ignores = Ignores::at(ctx.repo_root.as_deref(), &dir);
-        let mut expansion = Expansion::new(&input);
+        let mut expansion = Expansion::new(&input, &bound, ctx.repo_root.as_deref());
         expansion
             .walk(&dir, &rel, &below, &ignores)
             .map_err(|e| hard(format!("inputs={glob}: {e}")))?;
@@ -554,12 +662,18 @@ fn inputs_snapshot(ctx: &Ctx, globs: &[String]) -> Result<Vec<u8>, LoadError> {
             }
         }
     }
-    content_snapshot(matched)
+    content_snapshot(matched, read)
 }
 
 /// The snapshot bytes over the matched files. A file deleted since
-/// expansion listed it is left out, as if the listing had missed it.
-fn content_snapshot(matched: BTreeMap<Vec<u8>, PathBuf>) -> Result<Vec<u8>, LoadError> {
+/// expansion listed it is left out, as if the listing had missed it. The
+/// sums in another template's closers are not content: they change when
+/// that file renders, not when what it says does, and two templates that
+/// read each other would otherwise never settle.
+fn content_snapshot(
+    matched: BTreeMap<Vec<u8>, PathBuf>,
+    read: &mut BTreeSet<PathBuf>,
+) -> Result<Vec<u8>, LoadError> {
     let mut out = Vec::new();
     for (rel, file) in matched {
         let Some(content) = present(std::fs::read(&file))
@@ -567,39 +681,33 @@ fn content_snapshot(matched: BTreeMap<Vec<u8>, PathBuf>) -> Result<Vec<u8>, Load
         else {
             continue;
         };
-        out.extend_from_slice(&rel);
-        out.push(0);
-        out.extend_from_slice(content.len().to_string().as_bytes());
-        out.push(0);
-        out.extend_from_slice(&content);
-        out.push(0);
+        push_entry(&mut out, &rel, &marker::strip_sums(&content));
+        read.insert(file);
     }
     Ok(out)
 }
 
-/// `path` relative to `base`, using `..` where it lies outside.
-fn relative(base: &Path, path: &Path) -> PathBuf {
-    if let Ok(r) = path.strip_prefix(base) {
-        return r.to_path_buf();
-    }
-    let mut up = PathBuf::new();
-    let mut ancestor = base;
-    loop {
-        up.push("..");
-        ancestor = ancestor.parent().unwrap_or(Path::new("/"));
-        if let Ok(r) = path.strip_prefix(ancestor) {
-            return up.join(r);
-        }
-        if ancestor == Path::new("/") {
-            return path.to_path_buf();
-        }
-    }
+/// One snapshot entry: `path NUL length NUL content NUL`.
+fn push_entry(out: &mut Vec<u8>, rel: &[u8], content: &[u8]) {
+    out.extend_from_slice(rel);
+    out.push(0);
+    out.extend_from_slice(content.len().to_string().as_bytes());
+    out.push(0);
+    out.extend_from_slice(content);
+    out.push(0);
 }
 
 /// Runs `cmd` under `/bin/sh -c` in the region root with the pinned
-/// environment, stdin closed, in its own process group so a timeout kills
-/// everything it started.
+/// environment, stdin closed, in its own process group. When the shell
+/// exits or the timeout expires, the group is killed: the output is what
+/// the command printed before its shell was done, and a background job it
+/// left behind cannot hold the pipes open. A process that left the group
+/// and still holds them is a failure once the timeout has passed.
 fn exec(ctx: &Ctx, args: &ExecArgs, region_name: &str) -> Result<String, LoadError> {
+    let template = ctx
+        .template
+        .canonicalize()
+        .unwrap_or_else(|_| ctx.template.clone());
     let mut command = Command::new("/bin/sh");
     command
         .arg("-c")
@@ -611,38 +719,52 @@ fn exec(ctx: &Ctx, args: &ExecArgs, region_name: &str) -> Result<String, LoadErr
         .env("LC_ALL", "C")
         .env("LANGUAGE", "")
         .env("TZ", "UTC")
-        .env("COMPUTED_FILE", &ctx.template)
+        .env("COMPUTED_FILE", &template)
         .env("COMPUTED_REGION", region_name);
     match &ctx.repo_root {
         Some(root) => command.env("COMPUTED_ROOT", root),
         None => command.env_remove("COMPUTED_ROOT"),
     };
     std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    let deadline = Instant::now() + args.timeout;
     let mut child = command.spawn().map_err(|e| hard(format!("/bin/sh: {e}")))?;
-    let mut stdout = child.stdout.take().expect("piped");
-    let mut stderr = child.stderr.take().expect("piped");
-    let out_thread = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let _ = stdout.read_to_end(&mut buf);
-        buf
-    });
-    let err_thread = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let _ = stderr.read_to_end(&mut buf);
-        buf
-    });
+    let (tx, rx) = mpsc::channel();
+    let pipes: [Box<dyn Read + Send>; 2] = [
+        Box::new(child.stdout.take().expect("piped")),
+        Box::new(child.stderr.take().expect("piped")),
+    ];
+    for (i, mut pipe) in pipes.into_iter().enumerate() {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = pipe.read_to_end(&mut buf);
+            let _ = tx.send((i, buf));
+        });
+    }
     let status = wait_timeout::ChildExt::wait_timeout(&mut child, args.timeout)
         .map_err(|e| hard(format!("wait: {e}")))?;
+    // SAFETY: kill(2) on the process group we created; the id is our child's.
+    unsafe {
+        libc::kill(-(child.id() as i32), libc::SIGKILL);
+    }
     let timed_out = status.is_none();
     if timed_out {
-        // SAFETY: kill(2) on a process group we created; the id is our child's.
-        unsafe {
-            libc::kill(-(child.id() as i32), libc::SIGKILL);
-        }
         let _ = child.wait();
     }
-    let stdout = out_thread.join().unwrap_or_default();
-    let stderr = String::from_utf8_lossy(&err_thread.join().unwrap_or_default()).into_owned();
+    let grace = deadline
+        .saturating_duration_since(Instant::now())
+        .max(Duration::from_secs(1));
+    let until = Instant::now() + grace;
+    let mut bufs: [Option<Vec<u8>>; 2] = [None, None];
+    while bufs.iter().any(Option::is_none) {
+        match rx.recv_timeout(until.saturating_duration_since(Instant::now())) {
+            Ok((i, buf)) => bufs[i] = Some(buf),
+            Err(_) => break,
+        }
+    }
+    let held = bufs.iter().any(Option::is_none);
+    let [stdout, stderr] = bufs.map(Option::unwrap_or_default);
+    let stderr = String::from_utf8_lossy(&stderr).into_owned();
     let failed = |reason: String| {
         let mut s = reason;
         if !stderr.is_empty() {
@@ -654,6 +776,12 @@ fn exec(ctx: &Ctx, args: &ExecArgs, region_name: &str) -> Result<String, LoadErr
     if timed_out {
         return Err(failed(format!(
             "timed out after {}s",
+            args.timeout.as_secs()
+        )));
+    }
+    if held {
+        return Err(failed(format!(
+            "a process outside the command's process group kept its output open past {}s",
             args.timeout.as_secs()
         )));
     }
@@ -952,7 +1080,8 @@ mod tests {
     fn a_path_that_vanishes_during_expansion_is_skipped() {
         let dir = repo();
         let glob = InputGlob::new("**").unwrap();
-        let mut expansion = Expansion::new(&glob);
+        let bound = dir.path().canonicalize().unwrap();
+        let mut expansion = Expansion::new(&glob, &bound, None);
         expansion
             .walk(
                 &dir.path().join("gone"),
@@ -967,7 +1096,7 @@ mod tests {
             (b"gone.md".to_vec(), dir.path().join("gone.md")),
         ]);
         assert_eq!(
-            content_snapshot(matched).unwrap(),
+            content_snapshot(matched, &mut BTreeSet::new()).unwrap(),
             b"CLAUDE.md\x000\x00\x00"
         );
     }
@@ -1013,6 +1142,131 @@ mod tests {
         assert!(
             matches!(p.load(&r), Err(LoadError::Failed { stderr }) if stderr.contains("UTF-8"))
         );
+    }
+
+    #[test]
+    fn a_trailing_slash_names_the_directory() {
+        let dir = repo();
+        let mut p = Production::new(ctx(dir.path(), "CLAUDE.md"));
+        assert_eq!(
+            inputs(&mut p, "docs/adr/").unwrap(),
+            ["docs/adr/0001.md", "docs/adr/0002.md"]
+        );
+    }
+
+    #[test]
+    fn symlinks_inside_the_repository_are_read_through() {
+        use std::os::unix::fs::symlink;
+        let dir = repo();
+        let r = dir.path();
+        symlink("docs/adr", r.join("decisions")).unwrap();
+        symlink("docs/adr/0001.md", r.join("first.md")).unwrap();
+        symlink("adr/0001.md", r.join("docs/one.md")).unwrap();
+        let mut p = Production::new(ctx(r, "CLAUDE.md"));
+        assert_eq!(
+            inputs(&mut p, "decisions/*.md").unwrap(),
+            ["decisions/0001.md", "decisions/0002.md"]
+        );
+        assert_eq!(
+            inputs(&mut p, "decisions").unwrap(),
+            ["decisions/0001.md", "decisions/0002.md"]
+        );
+        assert_eq!(inputs(&mut p, "first.md").unwrap(), ["first.md"]);
+        assert_eq!(
+            inputs(&mut p, "docs/*.md").unwrap(),
+            ["docs/guide.md", "docs/one.md"]
+        );
+        assert!(
+            !inputs(&mut p, "*")
+                .unwrap()
+                .contains(&"decisions/0001.md".to_string()),
+            "a wildcard does not enter a directory link"
+        );
+    }
+
+    #[test]
+    fn a_symlink_out_of_the_repository_is_an_error_when_named_and_skipped_otherwise() {
+        use std::os::unix::fs::symlink;
+        let dir = repo();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(outside.path().join("secret.md"), "x").unwrap();
+        symlink(
+            outside.path().join("secret.md"),
+            dir.path().join("docs/out.md"),
+        )
+        .unwrap();
+        let mut p = Production::new(ctx(dir.path(), "CLAUDE.md"));
+        assert_eq!(inputs(&mut p, "docs/*.md").unwrap(), ["docs/guide.md"]);
+        assert!(
+            matches!(inputs(&mut p, "docs/out.md"), Err(LoadError::Hard(m)) if m.contains("escapes")),
+        );
+    }
+
+    #[test]
+    fn snapshots_ignore_the_sums_in_other_templates() {
+        let dir = repo();
+        let sums = "in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715";
+        let other = dir.path().join("docs/guide.md");
+        fs::write(
+            &other,
+            format!("<!-- computed tree -->\n<!-- /computed {sums} -->\n"),
+        )
+        .unwrap();
+        let mut p = Production::new(ctx(dir.path(), "CLAUDE.md"));
+        let r = region("<!-- computed exec cmd=true inputs=docs/guide.md -->");
+        let with_sums = p.snapshot(&r).unwrap();
+        fs::write(&other, "<!-- computed tree -->\n<!-- /computed -->\n").unwrap();
+        assert_eq!(p.snapshot(&r).unwrap(), with_sums);
+        assert!(p.read().contains(&other.canonicalize().unwrap()));
+    }
+
+    #[test]
+    fn file_includes_a_file_without_its_sums() {
+        let dir = repo();
+        let r = dir.path();
+        fs::write(
+            r.join("docs/shared.md"),
+            "Shared.\n<!-- /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->\n",
+        )
+        .unwrap();
+        let mut p = Production::new(ctx(r, "CLAUDE.md"));
+        let region_ = region("<!-- computed file src=./docs/shared.md -->");
+        let loaded = p.load(&region_).unwrap();
+        assert_eq!(loaded.text, "Shared.\n<!-- /computed -->\n");
+        assert_eq!(
+            loaded.snapshot,
+            b"docs/shared.md\x0027\x00Shared.\n<!-- /computed -->\n\x00"
+        );
+        assert_eq!(p.snapshot(&region_).unwrap(), Some(loaded.snapshot));
+        for (opener, needle) in [
+            ("<!-- computed file src=docs -->", "not a file"),
+            ("<!-- computed file src=CLAUDE.md -->", "this file"),
+            ("<!-- computed file src=missing.md -->", "missing.md"),
+            ("<!-- computed file src=../x.md -->", ""),
+        ] {
+            assert!(
+                matches!(p.snapshot(&region(opener)), Err(LoadError::Hard(m)) if m.contains(needle)),
+                "{opener}"
+            );
+        }
+    }
+
+    #[test]
+    fn tree_src_must_be_a_directory() {
+        let dir = repo();
+        let mut p = Production::new(ctx(dir.path(), "CLAUDE.md"));
+        let r = region("<!-- computed tree src=src/main.rs -->");
+        assert!(matches!(p.snapshot(&r), Err(LoadError::Hard(m)) if m.contains("not a directory")));
+    }
+
+    #[test]
+    fn a_background_job_does_not_hold_the_region() {
+        let dir = repo();
+        let mut p = Production::new(ctx(dir.path(), "CLAUDE.md"));
+        let r = region("<!-- computed exec cmd=\"(sleep 20 &); echo hi\" volatile timeout=10 -->");
+        let start = std::time::Instant::now();
+        assert_eq!(p.load(&r).unwrap().text, "hi\n");
+        assert!(start.elapsed().as_secs() < 5, "{:?}", start.elapsed());
     }
 
     #[test]
