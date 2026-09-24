@@ -102,6 +102,12 @@ fn file(path: &Path, dry_run: bool, only: &[String], allowed: &Allowed) -> Outco
         error: Some((line, message)),
         ..Outcome::default()
     };
+    // A symlinked template is its target, as `run` reads it.
+    let given = path;
+    let path = &match crate::survey::target(path) {
+        Ok(file) => file,
+        Err(e) => return error(None, format!("unreadable: {e}")),
+    };
     let syntax = marker::Syntax::for_path(path);
     let text = match std::fs::read(path) {
         Ok(bytes) => match String::from_utf8(bytes) {
@@ -137,13 +143,24 @@ fn file(path: &Path, dry_run: bool, only: &[String], allowed: &Allowed) -> Outco
                 .name
                 .as_ref()
                 .is_some_and(|n| only.contains(n));
+        let unexpanded = recipes.errors.get(&region.at());
         let recipe = region.opener.loader == "use"
-            && expansion.opener.loader == "remote"
-            && !recipes.errors.contains_key(&region.at());
+            && (expansion.opener.loader == "remote" || unexpanded.is_some());
         if !(region.opener.loader == "remote" || recipe) || !selected {
             continue;
         }
-        let report = if recipe {
+        let report = if let Some(message) = unexpanded {
+            // Its recipe could be a remote; update cannot tell.
+            RegionReport {
+                line: region.line,
+                column: region.column,
+                name: region.opener.name.clone(),
+                loader: region.opener.loader.clone(),
+                state: State::Error,
+                action: Some(Action::Error),
+                stderr: Some(message.clone()),
+            }
+        } else if recipe {
             recipe_pin(expansion, allowed)
         } else {
             pin_region(region, dry_run, allowed)
@@ -160,7 +177,7 @@ fn file(path: &Path, dry_run: bool, only: &[String], allowed: &Allowed) -> Outco
         return outcome;
     }
     if dry_run {
-        outcome.diff = Some(report::diff(path, &text, &new, None));
+        outcome.diff = Some(report::diff(given, &text, &new, None));
     } else if let Err(e) = fs::replace(path, &text, &new) {
         return error(None, format!("writing: {e}"));
     }

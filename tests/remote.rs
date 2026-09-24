@@ -354,3 +354,57 @@ fn a_remote_recipe_runs_and_update_names_the_pin_it_cannot_write() {
         "nothing written"
     );
 }
+
+#[test]
+fn update_reads_a_symlinked_template_as_its_target_and_names_a_recipe_it_cannot_expand() {
+    let server = Server::start();
+    server.put("/spec.md", "One.\n");
+    let dir = tempfile::tempdir().unwrap();
+    let r = dir.path();
+    fs::create_dir_all(r.join(".git")).unwrap();
+    fs::create_dir_all(r.join("sub")).unwrap();
+    let url = format!("{}/spec.md", server.base);
+    fs::write(
+        r.join("sub/computed.toml"),
+        format!(
+            "[recipe.spec]\nloader = \"remote\"\nurl = \"{url}\"\nsha256 = \"{}\"\n",
+            "0".repeat(64)
+        ),
+    )
+    .unwrap();
+    fs::write(
+        r.join("sub/real.md"),
+        "<!-- computed use recipe=spec name=spec -->\n<!-- /computed -->\n",
+    )
+    .unwrap();
+    std::os::unix::fs::symlink(r.join("sub/real.md"), r.join("LINK.md")).unwrap();
+    let allow = format!("{}/", server.base);
+
+    // The recipe is the one beside the target, as `run` finds it.
+    let out = computed(r, &["update", "--allow", &allow, "LINK.md"]);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains(&format!("set it to {}", digest("One.\n"))),
+        "{}",
+        stderr(&out)
+    );
+
+    // A recipe that does not expand could be a remote: update says so.
+    fs::write(
+        r.join("sub/computed.toml"),
+        "[recipe.other]\nloader = \"tree\"\n",
+    )
+    .unwrap();
+    let out = computed(r, &["update", "--allow", &allow, "LINK.md"]);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("LINK.md:1 spec use error"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(
+        stderr(&out).contains("has no [recipe.spec]"),
+        "{}",
+        stderr(&out)
+    );
+}
