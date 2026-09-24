@@ -150,11 +150,11 @@
       <p class="text-ink-2 text-[1.05rem] mt-4">Built for <code>CLAUDE.md</code> and <code>AGENTS.md</code>. One binary, no runtime, no cache directory.</p>
 <!-- computed exec cmd=../scripts/site-install.sh inputs=../Cargo.toml,../scripts/site-install.sh name=install as=raw | do not edit; run computed -->
 
-<pre class="mt-6 rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install computed   <span class="text-ink-2"># v0.1.0</span>
+<pre class="mt-6 rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install computed   <span class="text-ink-2"># v0.2.0</span>
 computed run             <span class="text-ink-2"># fill what moved</span>
 computed check           <span class="text-ink-2"># exit 1 on drift</span></code></pre>
 
-<!-- /computed in=3054831b33bb3ae25e92b26371751214403fc29e10f91b9dc048f836e5e80c5a out=0768613205b8abff34f260bec13edc76489fec1dd761e03b830af5303ed73d0e -->
+<!-- /computed in=49f7c606189acc3c33fb0af16e9745a67cb1d6b27b7d705f7c85ebbbb02597e9 out=845909316b5412cf2d7f0494e01f9ee430f166bdef7b5d99f0f27bf22ded5629 -->
       <p class="mt-2 text-ink-3 text-[0.85rem] font-mono">↑ a computed region of this page, rendered from Cargo.toml and checked in CI</p>
       <div class="mt-5 flex flex-wrap gap-3">
         <a href="catalogue.html" class="font-mono text-sm px-3 py-1.5 rounded border border-sum bg-sum-soft text-sum hover:bg-sum hover:text-ground">40 things to compute</a>
@@ -414,8 +414,12 @@ NOTES.md:3 env exec <span class="bad">stale</span> failed; body kept
     <div>
       <h2 class="text-2xl mb-3">Get started</h2>
       <p class="font-mono text-xs text-ink-2 m-0 mb-2">the tool, then the command that makes the artifact</p>
-      <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install computed   <span class="text-ink-2"># v0.1.0</span>
+<!-- computed exec cmd="../scripts/site-install.sh start" inputs=../Cargo.toml,../scripts/site-install.sh name=start as=raw | do not edit; run computed -->
+
+<pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install computed   <span class="text-ink-2"># v0.2.0</span>
 computed run</code></pre>
+
+<!-- /computed in=0fb02cbd103591cce0298b1fa9a04288c4cb259e6843566aaed0a999ab48c46d out=7c4ec74d370a1c45699e366f8f47005e0d8a01fc9f65a8f37f1ac4c1b26d5b8c -->
       <p class="mt-2 text-sm text-ink-2">Without a Rust toolchain, take a prebuilt macOS or Linux binary from the <a href="https://github.com/mitchellvanw/computed-files/releases/latest" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">latest release</a>, checked against its published SHA-256.</p>
 
       <p class="font-mono text-xs text-ink-2 m-0 mt-5 mb-2">the Claude Code plugin</p>
