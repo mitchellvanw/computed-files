@@ -427,14 +427,19 @@ impl Server<'_> {
         if let Some(written) = region.opener.written() {
             writeln!(md, "\nExpanded from `{written}` by its recipe.").unwrap();
         }
-        // The files this region's snapshot reads, from a snapshot of its own.
+        // The files this region's snapshot reads, from a snapshot of its
+        // own; one expanded from a recipe also reads computed.toml.
+        let recipes = loaders.take_read();
         let snapshot = loaders.snapshot(region);
+        let mut read = loaders.take_read();
+        if region.opener.written().is_some() {
+            read.extend(recipes);
+        }
         let root = Ctx::for_template(&doc.path)
             .region_root
             .canonicalize()
             .unwrap_or_default();
-        let inputs: Vec<String> = loaders
-            .read()
+        let inputs: Vec<String> = read
             .iter()
             .map(|p| {
                 p.strip_prefix(&root)

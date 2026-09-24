@@ -383,6 +383,41 @@ fn a_use_region_is_checked_hovered_and_run_as_its_recipe() {
     c.stop();
 }
 
+#[test]
+fn hover_lists_computed_toml_only_for_a_region_from_a_recipe() {
+    let (_dir, notes) = repo();
+    let root = notes.parent().unwrap();
+    fs::write(root.join("src/lib.rs"), "").unwrap();
+    fs::write(
+        root.join("computed.toml"),
+        "[recipe.main]\nloader = \"file\"\nsrc = \"src/main.rs\"\n",
+    )
+    .unwrap();
+    let template = "<!-- computed use recipe=main name=main -->\n<!-- /computed -->\n\n<!-- computed file src=src/lib.rs name=lib -->\n<!-- /computed -->\n";
+    fs::write(&notes, template).unwrap();
+    let mut c = Client::start();
+    open(&c, &notes, template);
+    let mut inputs = |line: u32| {
+        let hover = c.request(
+            "textDocument/hover",
+            json!({"textDocument": {"uri": uri(&notes)}, "position": {"line": line, "character": 2}}),
+        );
+        let value = hover["contents"]["value"].as_str().unwrap().to_string();
+        value[value.find("**Inputs:**").unwrap()..].to_string()
+    };
+    let main = inputs(0);
+    assert!(
+        main.contains("src/main.rs") && main.contains("computed.toml"),
+        "{main}"
+    );
+    let lib = inputs(3);
+    assert!(
+        lib.contains("src/lib.rs") && !lib.contains("computed.toml"),
+        "{lib}"
+    );
+    c.stop();
+}
+
 mod sandbox;
 
 /// `computed.run` on `path`: the message shown and the text the editor is
