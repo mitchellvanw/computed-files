@@ -146,7 +146,7 @@
     <div class="max-w-[30rem]">
       <p class="font-mono text-sm text-ink-2 m-0 flex flex-wrap items-center gap-x-3 gap-y-1"><span>computed</span><span aria-hidden="true">·</span><a href="catalogue.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">What to compute</a><span aria-hidden="true">·</span><a href="how-it-works.html" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">How it works</a><span aria-hidden="true">·</span><a href="https://github.com/mitchellvanw/computed-files" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">GitHub</a></p>
       <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">Markdown sections that know when they are stale.</h1>
-      <p class="text-ink-2 text-[1.05rem]"><code>computed</code> fills a marked region of a Markdown file from a directory tree or a command, and writes down what it read and what it wrote. When the code moves on, <code>computed check</code> says so. It never runs the command to find out.</p>
+      <p class="text-ink-2 text-[1.05rem]"><code>computed</code> fills a marked region of a Markdown file from a directory tree, another file, the git history or a command, and writes down what it read and what it wrote. When the code moves on, <code>computed check</code> says so. It never runs the command to find out.</p>
       <p class="text-ink-2 text-[1.05rem] mt-4">Built for <code>CLAUDE.md</code> and <code>AGENTS.md</code>. One binary, no runtime, no cache directory.</p>
 <!-- computed exec cmd=../scripts/site-install.sh inputs=../Cargo.toml,../scripts/site-install.sh name=install as=raw | do not edit; run computed -->
 
@@ -177,7 +177,7 @@ computed check           <span class="text-ink-2"># exit 1 on drift</span></code
       <ol class="list-none p-0 m-0 mt-5 grid gap-3 text-[0.95rem]">
         <li class="flex gap-3"><span class="k">1</span><span>The opener says what fills the region and what that reads, on one line. Paths resolve against the file holding the marker, so the region travels with the file. Touch anything it names and the region is stale.</span></li>
         <li class="flex gap-3"><span class="k">2</span><span>The body. <code>computed run</code> wrote it, and it belongs to the tool. If a person or an agent edits it, the next run refuses to overwrite the edit and exits 1.</span></li>
-        <li class="flex gap-3"><span class="k">3</span><span>Two hashes in the closer, elided here because each is 64 characters. <code>in=</code> is what the tool read: the opener plus the bytes of every input. <code>out=</code> is what it wrote. Both live in the file, so a fresh clone can check them without running anything. The four regions running in this repository carry theirs in the open — <a href="https://github.com/mitchellvanw/computed-files/blob/main/CLAUDE.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">read CLAUDE.md</a>.</span></li>
+        <li class="flex gap-3"><span class="k">3</span><span>Two hashes in the closer, elided here because each is 64 characters. <code>in=</code> is what the tool read: the opener plus the bytes of every input. <code>out=</code> is what it wrote. Both live in the file, so a fresh clone can check them without running anything. The regions running in this repository carry theirs in the open — <a href="https://github.com/mitchellvanw/computed-files/blob/main/CLAUDE.md" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">read CLAUDE.md</a>.</span></li>
       </ol>
     </div>
   </header>
@@ -277,7 +277,7 @@ hyperfine --warmup 3 -N \
         <h3 class="text-lg font-medium mb-2">Mark a region</h3>
         <pre class="m-0 mb-3 text-[12.5px] leading-relaxed overflow-x-auto text-ink-2"><code>&lt;!-- computed tree src=. depth=2 --&gt;
 &lt;!-- /computed --&gt;</code></pre>
-        <p class="text-[0.95rem]">Two comments, anywhere in the file. The first names what fills the gap. <code>tree</code> lists a directory. <code>exec</code> runs a command and pastes its output.</p>
+        <p class="text-[0.95rem]">Two comments, anywhere in the file. The first names what fills the gap. <code>tree</code> lists a directory. <code>exec</code> runs a command and pastes its output. Seven more read a slice of a file, a version, an index, the headings, a function's signature, the history or a pinned document, and run nothing.</p>
       </div>
       <div class="step rounded-lg border border-line bg-ground-2 p-5">
         <h3 class="text-lg font-medium mb-2">Run fills it</h3>
@@ -427,7 +427,7 @@ computed run</code></pre>
 /plugin install computed@computed
 <span class="text-ink-2">/reload-plugins</span>
 /computed-setup</code></pre>
-      <p class="mt-2 text-sm text-ink-2"><code>/reload-plugins</code> makes the skills live in this session. <code>/computed-setup</code> installs and wires the tool, then offers <code>/discover-regions</code>, which turns hand-written blocks into regions.</p>
+      <p class="mt-2 text-sm text-ink-2"><code>/reload-plugins</code> makes the skills live in this session. <code>/computed-setup</code> installs and wires the tool, then offers <code>/discover-regions</code>, which turns hand-written blocks into regions. The plugin also refuses an agent's edit to a region before it lands, and names the source to edit instead.</p>
 
       <p class="font-mono text-xs text-ink-2 m-0 mt-5 mb-2">then, in a repository</p>
       <pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>computed trust   <span class="text-ink-2"># once per clone, only for exec regions</span>

@@ -140,8 +140,8 @@
       <button class="chip" data-filter="who" data-value="human" aria-pressed="false">a person</button>
       <button class="chip" data-filter="who" data-value="both" aria-pressed="false">both</button>
       <span class="font-mono text-xs text-ink-3 ml-4 mr-1">loader</span>
-      <button class="chip" data-filter="loader" data-value="all" aria-pressed="true">either</button>
-      <button class="chip" data-filter="loader" data-value="tree" aria-pressed="false">tree</button>
+      <button class="chip" data-filter="loader" data-value="all" aria-pressed="true">any</button>
+      <button class="chip" data-filter="loader" data-value="native" aria-pressed="false">runs nothing</button>
       <button class="chip" data-filter="loader" data-value="exec" aria-pressed="false">exec</button>
     </div>
     <p class="mt-4 font-mono text-xs text-ink-3" id="count"></p>
@@ -152,7 +152,7 @@
   <section class="mt-24 max-w-[46rem]" id="honest">
     <h2 class="text-2xl mb-3">What does not work, so nobody re-derives it</h2>
     <ul class="list-none p-0 m-0 grid gap-3 text-[0.98rem]">
-      <li class="grid grid-cols-[auto_1fr] gap-3"><span class="who">git</span><span><strong class="font-medium">Anything derived from git history has no honest <code>inputs=</code>.</strong> The truth lives in <code>.git/refs</code> and the commit objects, which a glob cannot snapshot cheaply. Every such region must be <code>volatile</code>, and <code>volatile</code> means <code>check</code> always passes it. That is a real gap and the strongest argument for a future <code>git</code> loader.</span></li>
+      <li class="grid grid-cols-[auto_1fr] gap-3"><span class="who">git</span><span><strong class="font-medium">History beyond commits, tags and authors has no honest <code>inputs=</code>.</strong> The <code>git</code> loader covers the three it names: <code>git log</code>, <code>git tags</code> and <code>git contributors</code> snapshot the history itself, so <code>check</code> sees a new commit. Anything else from history, such as a changelog built by <code>git cliff</code>, lives in <code>.git</code>, which a glob cannot snapshot, and must be <code>volatile</code>, which <code>check</code> always passes.</span></li>
       <li class="grid grid-cols-[auto_1fr] gap-3"><span class="who">volatile</span><span><strong class="font-medium"><code>volatile</code> is a convenience, not a guarantee.</strong> It re-renders on every <code>run</code> and is never checked. Wherever an entry below is marked volatile, that is the trade being made.</span></li>
       <li class="grid grid-cols-[auto_1fr] gap-3"><span class="who">timings</span><span><strong class="font-medium"><code>cargo build --timings</code> emits HTML only.</strong> There is no text mode, so a build-timing region needs scraping rather than one line. <code>size(1)</code>'s column spacing is not identical across platforms either; <code>du</code> is the portable option.</span></li>
       <li class="grid grid-cols-[auto_1fr] gap-3"><span class="who">stability</span><span><strong class="font-medium">Some generators have no documented output stability.</strong> <code>cargo public-api</code>'s ordering is not documented as stable and needs a nightly toolchain present; <code>cargo license</code>'s column layout is undocumented — prefer <code>cargo deny list</code>. A region over an unstable generator churns for no reason.</span></li>
@@ -186,7 +186,7 @@ const count = document.getElementById("count");
 function render() {
   const shown = ENTRIES.filter(e =>
     (state.who === "all" || e.who === state.who) &&
-    (state.loader === "all" || e.l === state.loader));
+    (state.loader === "all" || (state.loader === "native" ? e.l !== "exec" : e.l === state.loader)));
   rows.textContent = "";
   let group = null;
   for (const e of shown) {
