@@ -22,6 +22,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 ├── LICENSE-MIT
 ├── README.md
 ├── claude-code-plugin
+│   ├── hooks
 │   └── skills
 ├── docs
 │   ├── adr
@@ -41,6 +42,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 ├── src
 │   ├── cli.rs
 │   ├── fs.rs
+│   ├── guard.rs
 │   ├── lib.rs
 │   ├── loader.rs
 │   ├── main.rs
@@ -52,9 +54,10 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 └── tests
     ├── cli.rs
     ├── fixtures
+    ├── guard.rs
     └── render.rs
 ```
-<!-- /computed in=78aaac611c004a503bdd9b79b7ca352f8deef8b6dbc7b64285c2328a03fbdf4a out=4a04076276ffdfc5c22d7758125ddec3abb18caf6c3ea1df4c4bcc964d6198d1 -->
+<!-- /computed in=5e3ee17d60f4f6174085d1c82ee1cb5c74ac776131c3f62da701f7e974e44f5b out=8fd4603e5f2e58f0994369a4711ae651078f84c81631e3089d3a7a21c632899d -->
 
 ## Decisions
 

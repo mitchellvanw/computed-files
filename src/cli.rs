@@ -79,6 +79,18 @@ enum Cmd {
     Trust { path: Option<PathBuf> },
     /// Remove the grant for the repository containing PATH.
     Untrust { path: Option<PathBuf> },
+    /// Whether an edit changes a region's body or closer: the proposed text
+    /// against FILE, or the Claude Code hook whose JSON is on stdin.
+    Guard {
+        #[arg(required_unless_present = "hook")]
+        file: Option<PathBuf>,
+        /// The file's text after the edit.
+        #[arg(long, value_name = "PATH", required_unless_present = "hook")]
+        proposed: Option<PathBuf>,
+        /// Answer a Claude Code PreToolUse (`pre`) or PostToolUse (`post`) hook.
+        #[arg(long, value_enum, conflicts_with_all = ["file", "proposed"])]
+        hook: Option<crate::guard::Hook>,
+    },
 }
 
 /// Runs the command line and returns the exit code.
@@ -160,6 +172,16 @@ fn dispatch(cli: Cli) -> Result<u8> {
             }
             Ok(0)
         }
+        Cmd::Guard {
+            file,
+            proposed,
+            hook,
+        } => Ok(crate::guard::command(
+            file.as_deref(),
+            proposed.as_deref(),
+            *hook,
+            cli.format == Format::Json,
+        )?),
     }
 }
 
