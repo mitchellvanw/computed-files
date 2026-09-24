@@ -284,6 +284,15 @@ impl Production {
         }
     }
 
+    /// The loaders for the template at `path` whose text parsed as `file`,
+    /// with `file`'s recipes expanded: how anything that renders a template
+    /// outside `run` and `check` begins, so its `use` regions are not errors.
+    pub fn for_file(path: &Path, file: &mut File) -> Production {
+        let mut loaders = Production::new(Ctx::for_template(path));
+        loaders.expand_recipes(file);
+        loaders
+    }
+
     /// Expands every `use` region of `file` into the opener its recipe
     /// names ([`config::expand`]) and records `computed.toml` as read. A
     /// region whose recipe does not expand keeps its `use` opener, and its

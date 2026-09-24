@@ -224,3 +224,50 @@ fn the_plain_form_needs_both_paths() {
         .unwrap();
     assert_eq!(out.status.code(), Some(2));
 }
+
+#[test]
+fn post_expands_recipes_as_check_does() {
+    let dir = tempfile::tempdir().unwrap();
+    let r = dir.path();
+    fs::create_dir_all(r.join(".git")).unwrap();
+    fs::create_dir_all(r.join("src")).unwrap();
+    fs::write(r.join("src/main.rs"), "").unwrap();
+    fs::write(
+        r.join("computed.toml"),
+        "[recipe.layout]\nloader = \"tree\"\nsrc = \"src\"\n",
+    )
+    .unwrap();
+    fs::write(
+        r.join("NOTES.md"),
+        "# Notes\n\n<!-- computed use recipe=layout name=layout -->\n<!-- /computed -->\n",
+    )
+    .unwrap();
+    assert_eq!(
+        computed(r, &["run"]).output().unwrap().status.code(),
+        Some(1)
+    );
+    let post = serde_json::json!({
+        "cwd": r.to_str().unwrap(),
+        "hook_event_name": "PostToolUse",
+        "tool_name": "Edit",
+        "tool_input": {"file_path": "NOTES.md", "old_string": "x", "new_string": "y"},
+        "tool_response": {}
+    });
+    let out = hook(r, "post", &post);
+    assert_eq!(stdout(&out), "", "a fresh use region adds nothing");
+
+    fs::write(
+        r.join("computed.toml"),
+        "[recipe.layout]\nloader = \"tree\"\nsrc = \"src\"\ndepth = 1\n",
+    )
+    .unwrap();
+    let out = hook(r, "post", &post);
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let context = doc["hookSpecificOutput"]["additionalContext"]
+        .as_str()
+        .unwrap();
+    assert!(
+        context.contains("NOTES.md:3 layout tree stale"),
+        "{context}"
+    );
+}

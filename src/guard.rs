@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{Value, json};
 use similar::{DiffOp, TextDiff};
 
-use crate::loader::{Ctx, Production};
+use crate::loader::Production;
 use crate::marker::{self, File, ParseError, Region, Segment};
 use crate::render::{self, Mode, RegionReport, Rendered};
 use crate::report;
@@ -221,8 +221,8 @@ pub fn refusal(path: &Path, verdict: &Verdict) -> Option<String> {
 /// `check` of one template's text, inputs read from disk: what the hooks
 /// and the editor report after an edit. `Err` is a file-level error.
 pub fn check_text(path: &Path, text: &str) -> Result<Vec<RegionReport>, (usize, String)> {
-    let parsed = marker::parse(text).map_err(|e| (e.line, e.message))?;
-    let mut loaders = Production::new(Ctx::for_template(path));
+    let mut parsed = marker::parse(text).map_err(|e| (e.line, e.message))?;
+    let mut loaders = Production::for_file(path, &mut parsed);
     match render::file(&parsed, Mode::Check, false, &mut loaders) {
         Rendered::Error { line, message } => Err((line, message)),
         rendered => Ok(rendered.regions().to_vec()),

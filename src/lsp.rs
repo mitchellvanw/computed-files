@@ -373,7 +373,8 @@ impl Server<'_> {
             .docs
             .get(p.text_document_position_params.text_document.uri.as_str())?;
         let line = p.text_document_position_params.position.line;
-        let parsed = marker::parse(&doc.text).ok()?;
+        let mut parsed = marker::parse(&doc.text).ok()?;
+        let mut loaders = Production::for_file(&doc.path, &mut parsed);
         let reports = guard::check_text(&doc.path, &doc.text).unwrap_or_default();
         let described = describe(&parsed, &reports);
         let d = described
@@ -393,8 +394,10 @@ impl Server<'_> {
                 .map_or(String::new(), |n| format!(" `{n}`")),
             region.opener.canonical()
         );
+        if let Some(written) = region.opener.written() {
+            writeln!(md, "\nExpanded from `{written}` by its recipe.").unwrap();
+        }
         // The files this region's snapshot reads, from a snapshot of its own.
-        let mut loaders = Production::new(Ctx::for_template(&doc.path));
         let snapshot = loaders.snapshot(region);
         let root = Ctx::for_template(&doc.path)
             .region_root
@@ -494,7 +497,7 @@ impl Server<'_> {
             );
             return;
         };
-        let parsed = match marker::parse(&doc.text) {
+        let mut parsed = match marker::parse(&doc.text) {
             Ok(p) => p,
             Err(e) => {
                 self.show(
@@ -505,7 +508,7 @@ impl Server<'_> {
             }
         };
         let trusted = self.trusted(&doc.path);
-        let mut loaders = Production::new(Ctx::for_template(&doc.path));
+        let mut loaders = Production::for_file(&doc.path, &mut parsed);
         let rendered = render::file(&parsed, Mode::Run { force: false }, trusted, &mut loaders);
         let name = doc
             .path

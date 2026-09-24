@@ -148,6 +148,12 @@ impl Opener {
         })
     }
 
+    /// The canonical form of the `use` opener this one was expanded from,
+    /// which the file shows; `None` for an opener as written.
+    pub fn written(&self) -> Option<&str> {
+        self.written.as_deref()
+    }
+
     /// This opener standing in for the `use` opener `written`: the file
     /// keeps showing `written`, and everything else reads this one.
     pub fn expanded_from(mut self, written: &Opener) -> Opener {

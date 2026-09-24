@@ -300,3 +300,76 @@ fn computed_run(path: &Path) -> String {
     fs::write(path, before).unwrap();
     after
 }
+
+#[test]
+fn a_use_region_is_checked_hovered_and_run_as_its_recipe() {
+    let (_dir, notes) = repo();
+    let root = notes.parent().unwrap();
+    fs::write(
+        root.join("computed.toml"),
+        "[recipe.layout]\nloader = \"tree\"\nsrc = \"src\"\n",
+    )
+    .unwrap();
+    let template =
+        "# Notes\n\n<!-- computed use recipe=layout name=layout -->\n<!-- /computed -->\n";
+    fs::write(&notes, template).unwrap();
+    let mut c = Client::start();
+    let published = open(&c, &notes, template);
+    let diags = published["diagnostics"].as_array().unwrap();
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert_eq!(
+        diags[0]["message"],
+        "unrendered: never rendered (use recipe=layout name=layout)"
+    );
+
+    let hover = c.request(
+        "textDocument/hover",
+        json!({"textDocument": {"uri": uri(&notes)}, "position": {"line": 2, "character": 2}}),
+    );
+    let value = hover["contents"]["value"].as_str().unwrap();
+    assert!(
+        value.contains("`tree` region `layout`: **unrendered**"),
+        "{value}"
+    );
+    assert!(
+        value.contains("Expanded from `<!-- computed use recipe=layout name=layout -->`"),
+        "{value}"
+    );
+
+    c.next += 1;
+    let id = RequestId::from(c.next);
+    c.conn
+        .sender
+        .send(
+            Request::new(
+                id,
+                "workspace/executeCommand".into(),
+                json!({"command": lsp::RUN, "arguments": [uri(&notes)]}),
+            )
+            .into(),
+        )
+        .unwrap();
+    let text = loop {
+        if let Message::Request(r) = c.recv()
+            && r.method == "workspace/applyEdit"
+        {
+            let text = r.params["edit"]["changes"][uri(&notes)][0]["newText"]
+                .as_str()
+                .unwrap()
+                .to_string();
+            c.conn
+                .sender
+                .send(Response::new_ok(r.id, json!({"applied": true})).into())
+                .unwrap();
+            break text;
+        }
+    };
+    assert!(
+        text.contains(
+            "<!-- computed use recipe=layout name=layout | do not edit; run computed -->"
+        ),
+        "{text}"
+    );
+    assert!(text.contains("└── main.rs"), "{text}");
+    c.stop();
+}
