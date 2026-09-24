@@ -252,6 +252,13 @@ pub fn install() -> Result<u8, String> {
         .map_err(|_| "not in a git repository".to_string())?;
     let root = PathBuf::from(top.trim());
     let path = root.join(".gitattributes");
+    if crate::cli::is_link(&path) {
+        return Err(format!(
+            "{} is a symlink, which git does not read; add {} to a .gitattributes by hand",
+            path.display(),
+            ATTRIBUTES.join(" and ")
+        ));
+    }
     let current = match std::fs::read_to_string(&path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
