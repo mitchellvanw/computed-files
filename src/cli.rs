@@ -37,6 +37,10 @@ struct Cli {
 enum Format {
     Text,
     Json,
+    /// `graph` only: a Mermaid flowchart, the default.
+    Mermaid,
+    /// `graph` only: a Graphviz digraph.
+    Dot,
 }
 
 #[derive(Subcommand)]
@@ -79,6 +83,13 @@ enum Cmd {
     Trust { path: Option<PathBuf> },
     /// Remove the grant for the repository containing PATH.
     Untrust { path: Option<PathBuf> },
+    /// List the regions whose snapshots read any of PATHS, or anything under them.
+    Affected {
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+    },
+    /// Print templates, their regions and what each reads as a graph.
+    Graph { paths: Vec<PathBuf> },
 }
 
 /// Runs the command line and returns the exit code.
@@ -109,6 +120,12 @@ struct Job<'a> {
 }
 
 fn dispatch(cli: Cli) -> Result<u8> {
+    if matches!(cli.format, Format::Mermaid | Format::Dot)
+        && !matches!(cli.command, Cmd::Graph { .. })
+    {
+        eprintln!("computed: --format mermaid and dot are for `graph`");
+        return Ok(2);
+    }
     let job = |mode, trust, only| Job {
         mode,
         trust,
@@ -160,6 +177,17 @@ fn dispatch(cli: Cli) -> Result<u8> {
             }
             Ok(0)
         }
+        Cmd::Affected { paths } => {
+            crate::affected::main(paths, cli.format == Format::Json).map_err(anyhow::Error::msg)
+        }
+        Cmd::Graph { paths } => {
+            let style = match cli.format {
+                Format::Json => crate::graph::Style::Json,
+                Format::Dot => crate::graph::Style::Dot,
+                Format::Text | Format::Mermaid => crate::graph::Style::Mermaid,
+            };
+            crate::graph::main(paths, style).map_err(anyhow::Error::msg)
+        }
     }
 }
 
@@ -173,7 +201,7 @@ fn is_markdown(path: &Path) -> bool {
 /// extension, walked directories and the current directory for `.md` and
 /// `.markdown`, dotfiles included, symlinks left to the files they name.
 /// Two paths to one file are one file, named by the path that is not a link.
-fn discover(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+pub(crate) fn discover(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     let roots: Vec<PathBuf> = if paths.is_empty() {
         vec![PathBuf::from(".")]
@@ -219,7 +247,7 @@ fn discover(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     Ok(kept.into_iter().flatten().collect())
 }
 
-fn is_link(path: &Path) -> bool {
+pub(crate) fn is_link(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink())
 }
 
@@ -305,7 +333,9 @@ impl Printer {
 
     fn message(&mut self, path: &Path, message: &str) {
         match self.format {
-            Format::Text => eprint!("{}", report::error(path, None, message)),
+            Format::Text | Format::Mermaid | Format::Dot => {
+                eprint!("{}", report::error(path, None, message))
+            }
             Format::Json => {
                 let entry = Outcome::error(None, message);
                 self.merge(path, &entry);
@@ -390,7 +420,9 @@ fn process(paths: &[PathBuf], job: &Job<'_>) -> Result<u8> {
     }
     for name in job.only.iter().filter(|n| !names.contains(*n)) {
         match job.format {
-            Format::Text => eprintln!("computed: no region is named {name:?}"),
+            Format::Text | Format::Mermaid | Format::Dot => {
+                eprintln!("computed: no region is named {name:?}")
+            }
             Format::Json => {
                 printer.message(Path::new("."), &format!("no region is named {name:?}"))
             }

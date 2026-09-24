@@ -218,6 +218,12 @@ impl Production {
         &self.read
     }
 
+    /// The files read since the last call, so one region's reads can be
+    /// told from the next one's.
+    pub fn take_read(&mut self) -> BTreeSet<PathBuf> {
+        std::mem::take(&mut self.read)
+    }
+
     fn tree(&mut self, region: &Region, args: &TreeArgs) -> Result<Loaded, LoadError> {
         let key = region.opener.canonical();
         if let Some(l) = self.walks.get(&key) {

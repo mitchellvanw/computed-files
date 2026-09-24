@@ -39,8 +39,10 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── cli-commands.sh
 │   └── site-install.sh
 ├── src
+│   ├── affected.rs
 │   ├── cli.rs
 │   ├── fs.rs
+│   ├── graph.rs
 │   ├── lib.rs
 │   ├── loader.rs
 │   ├── main.rs
@@ -48,13 +50,15 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── render.rs
 │   ├── report.rs
 │   ├── sink.rs
+│   ├── survey.rs
 │   └── trust.rs
 └── tests
+    ├── affected.rs
     ├── cli.rs
     ├── fixtures
     └── render.rs
 ```
-<!-- /computed in=78aaac611c004a503bdd9b79b7ca352f8deef8b6dbc7b64285c2328a03fbdf4a out=4a04076276ffdfc5c22d7758125ddec3abb18caf6c3ea1df4c4bcc964d6198d1 -->
+<!-- /computed in=368f5b3370196ef8f51491ef5b7d2efe8a3506c93b29f37c2092bac930e66c67 out=8b80483c3f713c3452e02a887cb05d9a8f43d44bd5e63b30e7f1487c548e44c2 -->
 
 ## Decisions
 
