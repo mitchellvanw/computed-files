@@ -72,7 +72,7 @@ impl Ctx {
     }
 
     /// The directory marker paths must stay inside, canonical.
-    fn bound(&self) -> Result<PathBuf, LoadError> {
+    pub fn bound(&self) -> Result<PathBuf, LoadError> {
         match &self.repo_root {
             Some(r) => Ok(r.clone()),
             None => self
@@ -630,13 +630,19 @@ fn lexical(path: &Path) -> PathBuf {
 
 /// The `inputs=` snapshot: for every matched file in byte-order relative
 /// path, `path NUL length NUL content NUL`, closer sums taken out of the
-/// content. A matched directory means every file under it; the template
-/// itself is excluded. Every file read is added to `read`.
+/// content. Every file read is added to `read`.
 fn inputs_snapshot(
     ctx: &Ctx,
     globs: &[String],
     read: &mut BTreeSet<PathBuf>,
 ) -> Result<Vec<u8>, LoadError> {
+    content_snapshot(input_files(ctx, globs)?, read)
+}
+
+/// The files `inputs=` selects: relative path as the globs spell it, in
+/// byte order, to canonical path. A matched directory means every file
+/// under it; the template itself is excluded.
+pub fn input_files(ctx: &Ctx, globs: &[String]) -> Result<BTreeMap<Vec<u8>, PathBuf>, LoadError> {
     let template = ctx.template.canonicalize().ok();
     let bound = ctx.bound()?;
     let mut matched: BTreeMap<Vec<u8>, PathBuf> = BTreeMap::new();
@@ -676,7 +682,7 @@ fn inputs_snapshot(
             }
         }
     }
-    content_snapshot(matched, read)
+    Ok(matched)
 }
 
 /// The snapshot bytes over the matched files. A file deleted since

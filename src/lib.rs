@@ -15,4 +15,5 @@ pub mod marker;
 pub mod render;
 pub mod report;
 pub mod sink;
+pub mod trace;
 pub mod trust;

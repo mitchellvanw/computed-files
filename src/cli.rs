@@ -90,6 +90,20 @@ enum Cmd {
         #[arg(long, value_name = "NAME")]
         only: Vec<String>,
     },
+    /// Trace each exec region's command and compare the files it reads with
+    /// its inputs=.
+    Trace {
+        paths: Vec<PathBuf>,
+        /// Treat every file as trusted for this invocation without writing the store.
+        #[arg(long)]
+        trust: bool,
+        /// Only the regions with this name; repeat for more.
+        #[arg(long, value_name = "NAME")]
+        only: Vec<String>,
+        /// Rewrite each opener's inputs= with the suggestion.
+        #[arg(long)]
+        write: bool,
+    },
 }
 
 /// Runs the command line and returns the exit code.
@@ -176,6 +190,21 @@ fn dispatch(cli: Cli) -> Result<u8> {
             &crate::doctor::Job {
                 trust: *trust,
                 only,
+                verbose: cli.verbose,
+                json: cli.format == Format::Json,
+            },
+        ),
+        Cmd::Trace {
+            paths,
+            trust,
+            only,
+            write,
+        } => crate::trace::main(
+            paths,
+            &crate::trace::Job {
+                trust: *trust,
+                only,
+                write: *write,
                 verbose: cli.verbose,
                 json: cli.format == Format::Json,
             },

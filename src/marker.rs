@@ -113,6 +113,25 @@ impl Opener {
     pub fn flag(&self, flag: &str) -> bool {
         self.flags.iter().any(|f| f == flag)
     }
+
+    /// The opener with the loader attribute `key=` set to `value`: in its
+    /// place when written, else last.
+    pub fn with_attr(&self, key: &str, value: &str) -> Opener {
+        let mut out = self.clone();
+        let token = out
+            .tokens
+            .iter_mut()
+            .find(|t| matches!(t, Token::Attr(k, _) if k == key));
+        match token {
+            Some(Token::Attr(_, v)) => *v = value.to_string(),
+            _ => out.tokens.push(Token::Attr(key.into(), value.into())),
+        }
+        match out.attrs.iter_mut().find(|(k, _)| k == key) {
+            Some((_, v)) => *v = value.to_string(),
+            None => out.attrs.push((key.into(), value.into())),
+        }
+        out
+    }
 }
 
 /// The suffix the tool writes after the attributes of a rendered opener.
@@ -831,6 +850,22 @@ mod tests {
             "<!-- computed tree src=. all name=x -->"
         );
         assert_eq!(r.opener.flags, vec!["all".to_string()]);
+    }
+
+    #[test]
+    fn with_attr_replaces_a_value_in_place_or_appends_it() {
+        let f = parse("<!-- computed exec cmd=\"cat a\" inputs=a name=n -->\n<!-- /computed -->\n")
+            .unwrap();
+        let o = &region(&f, 0).opener;
+        assert_eq!(
+            o.with_attr("inputs", "a,b c").canonical(),
+            "<!-- computed exec cmd=\"cat a\" inputs=\"a,b c\" name=n -->"
+        );
+        assert_eq!(o.with_attr("inputs", "b").attr("inputs"), Some("b"));
+        assert_eq!(
+            o.with_attr("timeout", "5").canonical(),
+            "<!-- computed exec cmd=\"cat a\" inputs=a name=n timeout=5 -->"
+        );
     }
 
     #[test]

@@ -50,14 +50,16 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── render.rs
 │   ├── report.rs
 │   ├── sink.rs
+│   ├── trace.rs
 │   └── trust.rs
 └── tests
     ├── cli.rs
     ├── doctor.rs
     ├── fixtures
-    └── render.rs
+    ├── render.rs
+    └── trace.rs
 ```
-<!-- /computed in=c5ec8bddf96564e8a68d5cd116cb2c5b366eca5ffa77b74170ea966e6d1f5247 out=07ff62e00584ea150a83b7b1436af0e987f9757f8724a805c2eab96b2063fd9f -->
+<!-- /computed in=1623cb096fe670bf0e3073e74e129d03878d848ad4b61b8d1fd52147e382c996 out=3d4340e22f60d5a6f10c53fcefc7d6a99908b9c41d7bef1e97f3298ad12e342a -->
 
 ## Decisions
 
