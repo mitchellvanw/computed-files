@@ -43,7 +43,7 @@ Two branches that each re-render a region conflict inside it, over a body neithe
 computed merge --install
 ```
 
-It adds `*.md merge=computed` and `*.markdown merge=computed` to the root `.gitattributes`, which you commit, and sets `merge.computed.driver` in this clone's git config, which every clone does once, as with `computed trust`. A clone that has not installed it merges these files line by line, as before. After a merge, `computed check` exits 1 until `computed run` renders the regions left unrendered. The reasoning is [ADR 0024](adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md).
+It adds `*.md merge=computed` and `*.markdown merge=computed` to the root `.gitattributes`, which you commit, and sets `merge.computed.driver` in this clone's git config, which every clone does once, as with `computed trust`. Code files with regions ([`[discover]`](spec/computed-v0.md#what-is-the-command-line)) need a line of their own, such as `*.rs merge=computed`, added by hand. The driver reads each file in the comment syntax its path selects. A clone that has not installed it merges these files line by line, as before. After a merge, `computed check` exits 1 until `computed run` renders the regions left unrendered. The reasoning is [ADR 0024](adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md).
 
 ## Claude Code
 
@@ -72,7 +72,7 @@ Without the plugin, put the two edit hooks in `.claude/settings.json`:
 }
 ```
 
-An edit made through the shell, such as `sed -i`, is not seen by these hooks; the pre-commit hook still refuses it. Another agent or editor can ask the same question with `computed guard FILE --proposed PATH`, which exits 1 when the edit touches a region. The reasoning is [ADR 0025](adr/0025-the-guard-refuses-an-edit-before-it-lands.md).
+The guard reads each file in the comment syntax its path selects, so a region in a Rust or YAML file is guarded as one in Markdown. An edit made through the shell, such as `sed -i`, is not seen by these hooks; the pre-commit hook still refuses it. Another agent or editor can ask the same question with `computed guard FILE --proposed PATH`, which exits 1 when the edit touches a region. The reasoning is [ADR 0025](adr/0025-the-guard-refuses-an-edit-before-it-lands.md).
 
 ## Editors
 
@@ -113,6 +113,8 @@ exports.activate = () => new LanguageClient('computed', 'computed',
 ```
 
 Inputs that change on disk are noticed on the next open, change or save of the document.
+
+The server reads a document in the comment syntax its path selects, not by its language id. For regions in code files, add those file types to the setups above: `filetypes = { 'markdown', 'rust' }` in Neovim, another `[[language]]` entry in Helix, and another `documentSelector` entry in VS Code.
 
 ## Watching
 

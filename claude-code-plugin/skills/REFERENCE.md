@@ -21,6 +21,31 @@ A region is an opener, a body the tool owns, and a closer.
 
 Markers inside a fenced code block are prose, so an example like the ones above renders nothing.
 
+**Code files.** A marker is written in the file's own comment, chosen by extension or name:
+
+| Comment | Files |
+|---|---|
+| `<!-- -->` | Markdown, `.html`, `.xml`, `.svg` |
+| `//` (also `///`, `//!`) | `.rs` `.go` `.ts` `.tsx` `.js` `.c` `.h` `.cpp` `.java` `.kt` `.swift` `.cs` `.dart` `.zig` `.proto` and kin |
+| `#` | `.py` `.sh` `.rb` `.toml` `.yaml` `.yml` `.tf` `.nix` `.ini`, `Makefile`, `Dockerfile`, `.gitignore` |
+| `--` | `.sql` `.lua` `.hs` |
+| `/* */`, on one line | `.css` |
+
+~~~rust
+//! computed tree src=. depth=1 as=comment lang=text
+//! /computed
+~~~
+
+In a `//` or `#` comment, a line is an opener only when `computed` is followed by a loader name, so `// computed values are cached` stays prose; `# computed tree is the loader` is a parse error. `as=comment` writes each line of the text behind the opener's leader, fenced first when `lang=` is set. Outside Markdown a loader that would fence its text writes it raw. `toc` works only in Markdown.
+
+**Inline regions.** In Markdown and HTML, an opener and a closer on the same line hold one value of a sentence:
+
+~~~markdown
+The current release is <!-- computed value src=Cargo.toml key=package.version --><!-- /computed -->.
+~~~
+
+The text must be one line, and only `as=raw` applies; `max-lines=` is an error. Markers inside backticks are prose. `run` writes no `| do not edit` suffix inside a line. Reports name the place as `path:line:column`.
+
 ## Loaders
 
 | Loader | Attributes | Renders | Default sink |
@@ -40,7 +65,7 @@ Markers inside a fenced code block are prose, so an example like the ones above 
 Every region also takes:
 
 - `name=` for stable reports;
-- `as=raw|fence|table` to pick the sink; `table` reads CSV, `delim=tab` or `from=jsonl` and writes a Markdown table;
+- `as=raw|fence|table|comment` to pick the sink; `table` reads CSV, `delim=tab` or `from=jsonl` and writes a Markdown table, and `comment` writes comment lines in a code file;
 - `lang=` for the fence language;
 - `max-lines=N` to cut the text to N lines and a `… K more lines` note;
 - `on-stale=warn` to let `check` report the region stale without failing.
@@ -51,7 +76,7 @@ The tool writes `| do not edit; run computed` after the attributes; nothing else
 
 **`inputs=`** is a comma-separated list of globs, with no empty entries, and it is what makes an exec or transcript region checkable: `check` re-snapshots those paths and compares sums without running the command. A literal path may take a slice after `#`: `inputs="Cargo.toml#key=package.version,src/cli.rs#lines=40-90,docs/*.md"`. `volatile` declares there is nothing worth snapshotting, so the region re-renders on every `run` and `check` always passes it. `sandbox` runs the command where it can read only its inputs and the system's programs and reach no network, so an undeclared read fails the region.
 
-**Recipes.** A `computed.toml` in the template's directory or one above it, up to the repository root, holds `[recipe.NAME]` tables: `loader = "index"` and the loader's attributes, flags as `true`. `use recipe=NAME` stands for that opener; its sums are the inline opener's, and editing the recipe makes its regions stale.
+**Recipes.** A `computed.toml` in the template's directory or one above it, up to the repository root, holds `[recipe.NAME]` tables: `loader = "index"` and the loader's attributes, flags as `true`. `use recipe=NAME` stands for that opener; its sums are those of the opener it stands for, and editing the recipe makes its regions stale.
 
 Relative paths in a marker resolve against the directory of the file that holds the marker, and an exec command runs there, not in the repository root and not in the shell's working directory. An exec command gets `COMPUTED_ROOT`, `COMPUTED_FILE` (absolute) and `COMPUTED_REGION` in its environment and runs under `LC_ALL=C`, `TZ=UTC` and an empty `LANGUAGE`, so it gives the same bytes on a laptop and in CI.
 
@@ -84,7 +109,7 @@ computed trace    [paths] [--trust] [--only NAME] [--write]
 ```
 <!-- /computed in=e0ae0abb237cdd381bb9bb94a4bc501d341b5f329d56ce9d763c42eb1ef1dc53 out=bc0b59dc0cb69dca6d6c9db06e24b96bb529455e921031023662129eea9f69fc -->
 
-With no paths, the current directory is walked with the tree loader's ignore settings, dot-directories such as `.claude/` included, and every `.md` and `.markdown` file is read. An explicit file is read whatever its extension. `run --dry-run` prints the diff `run` would write and writes nothing. `--only NAME` narrows a command to the regions with that name. `--format json` prints one JSON document on stdout instead of the report.
+With no paths, the current directory is walked with the tree loader's ignore settings, dot-directories such as `.claude/` included, and every `.md` and `.markdown` file is read. A `[discover]` table in the repository root's `computed.toml`, `extensions = ["rs"]` and `names = ["Makefile"]`, adds code files to the walk. An explicit file is read whatever its extension, in the comment its name selects. `run --dry-run` prints the diff `run` would write and writes nothing. `--only NAME` narrows a command to the regions with that name. `--format json` prints one JSON document on stdout instead of the report.
 
 When one template's `inputs=` include another, `run` settles both in one invocation.
 

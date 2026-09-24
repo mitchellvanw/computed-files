@@ -5,7 +5,7 @@ description: Install the computed CLI and wire it into a repository, the pre-com
 
 # computed-setup
 
-`computed` owns the span between two comment markers in a Markdown file and rewrites it when the inputs it was computed from move. This skill puts the tool in place and gives the repository something that catches drift. Finding blocks worth owning and writing the markers is `discover-regions`, offered in step 4.
+`computed` owns the span between two comment markers in a Markdown or code file and rewrites it when the inputs it was computed from move. This skill puts the tool in place and gives the repository something that catches drift. Finding blocks worth owning and writing the markers is `discover-regions`, offered in step 4.
 
 Setup runs as survey, ask, apply. It is done when `computed --version` answers, `computed check` exits 0, and the enforcement and extras the user chose are in place.
 
@@ -91,7 +91,7 @@ One `AskUserQuestion` call carrying only what the survey left open. Drop any que
    `check` runs no command from the repository, so a `check`-only pipeline needs no trust grant on the runner. A pipeline that runs `run` passes `--trust` for that one invocation. A repository with a `git` region needs its full history checked out (`fetch-depth: 0`).
 3. **Apply the extras chosen.**
 
-   The merge driver: `computed merge --install`. It adds two lines to `.gitattributes`, which get committed, and sets the driver in this clone's git config, which every clone does once, as with `computed trust`.
+   The merge driver: `computed merge --install`. It adds `*.md` and `*.markdown` lines to `.gitattributes`, which get committed; code files with regions each need a line such as `*.rs merge=computed` by hand. It also sets the driver in this clone's git config, which every clone does once, as with `computed trust`.
 
    The guard hooks, merged into `.claude/settings.json` without disturbing what is there:
 
