@@ -230,6 +230,8 @@ pub fn refusal(path: &Path, verdict: &Verdict) -> Option<String> {
 /// `check` of one template's text, inputs read from disk: what the hooks
 /// and the editor report after an edit. `Err` is a file-level error.
 pub fn check_text(path: &Path, text: &str) -> Result<Vec<RegionReport>, (usize, String)> {
+    let file = crate::survey::target(path).unwrap_or_else(|_| path.to_path_buf());
+    let path = file.as_path();
     let mut parsed =
         marker::parse_as(text, Syntax::for_path(path)).map_err(|e| (e.line, e.message))?;
     let mut loaders = Production::for_file(path, &mut parsed);
@@ -412,9 +414,10 @@ pub fn command(
     json: bool,
 ) -> std::io::Result<u8> {
     if let Some(event) = hook {
-        let mut input = String::new();
-        std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)?;
-        if let Some(out) = self::hook(event, &input) {
+        // Bytes, so input that is not UTF-8 is answered as not JSON.
+        let mut input = Vec::new();
+        std::io::Read::read_to_end(&mut std::io::stdin(), &mut input)?;
+        if let Some(out) = self::hook(event, &String::from_utf8_lossy(&input)) {
             println!("{out}");
         }
         return Ok(0);
@@ -560,7 +563,7 @@ mod tests {
         let p = format!(
             "{}{}\n{region}",
             &RENDERED[..start],
-            &RENDERED[end..].trim_end()
+            RENDERED[end..].trim_end()
         );
         assert_eq!(judge(RENDERED, &p), Verdict::Allowed);
     }

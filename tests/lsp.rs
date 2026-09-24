@@ -21,9 +21,17 @@ struct Client {
 
 impl Client {
     fn start() -> Client {
+        Client::trusting(&[])
+    }
+
+    /// A client whose server's trust store holds `roots`.
+    fn trusting(roots: &[&Path]) -> Client {
         let (client, server) = Connection::memory();
         let store = tempfile::tempdir().unwrap();
         let path = store.path().join("trust.toml");
+        for root in roots {
+            Store::at(path.clone()).grant(root).unwrap();
+        }
         let allow = computed::allow::Store::at(store.path().join("remote.toml"));
         let handle = std::thread::spawn(move || lsp::serve(&server, Store::at(path), allow));
         let mut c = Client {
@@ -375,6 +383,41 @@ fn a_use_region_is_checked_hovered_and_run_as_its_recipe() {
     c.stop();
 }
 
+#[test]
+fn hover_lists_computed_toml_only_for_a_region_from_a_recipe() {
+    let (_dir, notes) = repo();
+    let root = notes.parent().unwrap();
+    fs::write(root.join("src/lib.rs"), "").unwrap();
+    fs::write(
+        root.join("computed.toml"),
+        "[recipe.main]\nloader = \"file\"\nsrc = \"src/main.rs\"\n",
+    )
+    .unwrap();
+    let template = "<!-- computed use recipe=main name=main -->\n<!-- /computed -->\n\n<!-- computed file src=src/lib.rs name=lib -->\n<!-- /computed -->\n";
+    fs::write(&notes, template).unwrap();
+    let mut c = Client::start();
+    open(&c, &notes, template);
+    let mut inputs = |line: u32| {
+        let hover = c.request(
+            "textDocument/hover",
+            json!({"textDocument": {"uri": uri(&notes)}, "position": {"line": line, "character": 2}}),
+        );
+        let value = hover["contents"]["value"].as_str().unwrap().to_string();
+        value[value.find("**Inputs:**").unwrap()..].to_string()
+    };
+    let main = inputs(0);
+    assert!(
+        main.contains("src/main.rs") && main.contains("computed.toml"),
+        "{main}"
+    );
+    let lib = inputs(3);
+    assert!(
+        lib.contains("src/lib.rs") && !lib.contains("computed.toml"),
+        "{lib}"
+    );
+    c.stop();
+}
+
 mod sandbox;
 
 /// `computed.run` on `path`: the message shown and the text the editor is
@@ -491,5 +534,31 @@ fn a_region_inside_a_line_has_a_range_of_its_own_and_one_in_rust_is_read_too() {
             .unwrap()
             .starts_with("unrendered")
     );
+    c.stop();
+}
+
+#[test]
+fn a_symlinked_template_runs_under_its_target_s_trust() {
+    // `a` is trusted and links to a template in `b`, which is not: the
+    // template is its target, as under `computed run`, so nothing runs.
+    let dir = tempfile::tempdir().unwrap();
+    let r = dir.path().canonicalize().unwrap();
+    for repo in ["a", "b"] {
+        fs::create_dir_all(r.join(repo).join(".git")).unwrap();
+    }
+    let text =
+        "<!-- computed exec cmd=\"touch ran; echo hi\" volatile name=hi -->\n<!-- /computed -->\n";
+    fs::write(r.join("b/DOC.md"), text).unwrap();
+    std::os::unix::fs::symlink(r.join("b/DOC.md"), r.join("a/link.md")).unwrap();
+    let link = r.join("a/link.md");
+    let mut c = Client::trusting(&[&r.join("a")]);
+    open(&c, &link, text);
+    let (shown, edit) = run_command(&mut c, &link);
+    assert!(
+        shown.contains("hi skipped; run `computed trust`"),
+        "{shown}"
+    );
+    assert_eq!(edit, None);
+    assert!(!r.join("a/ran").exists() && !r.join("b/ran").exists());
     c.stop();
 }

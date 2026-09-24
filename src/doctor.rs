@@ -224,10 +224,22 @@ impl Perturbation {
         let root = self.dir.path().to_path_buf();
         let noise = self.noise.clone();
         Box::new(move |command: Command| {
+            // A sandboxed command sets its own TMPDIR, the one place it may
+            // write: the perturbed one is a directory inside it.
+            let tmp = match command.get_envs().find(|(k, _)| *k == "TMPDIR") {
+                Some((_, Some(own))) => {
+                    let tmp = Path::new(own).join("doctor");
+                    std::fs::create_dir_all(&tmp).map_err(|e| {
+                        crate::loader::LoadError::Hard(format!("doctor: {}: {e}", tmp.display()))
+                    })?;
+                    tmp
+                }
+                _ => root.join("tmp"),
+            };
             let mut env = launch::environment(&command);
             let mut set = |k: &str, v: OsString| env.insert(k.into(), v);
             set("HOME", root.join("home").into());
-            set("TMPDIR", root.join("tmp").into());
+            set("TMPDIR", tmp.into());
             set("USER", "computed-doctor".into());
             set("LOGNAME", "computed-doctor".into());
             set("PWD", root.join("cwd").into());

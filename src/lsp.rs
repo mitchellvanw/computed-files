@@ -32,7 +32,7 @@ use crate::guard;
 use crate::loader::{Ctx, Production};
 use crate::marker::{self, Region, Segment, Syntax};
 use crate::render::{self, Action, Loaders, Mode, RegionReport, Rendered, State};
-use crate::trust::{self, Store};
+use crate::trust::Store;
 
 /// The command a code lens runs.
 pub const RUN: &str = "computed.run";
@@ -210,16 +210,9 @@ impl Server<'_> {
         self.notify("window/showMessage", ShowMessageParams { typ, message });
     }
 
+    /// Whether the store trusts the template at `path`, as `run` asks it.
     fn trusted(&self, path: &Path) -> bool {
-        let ctx = Ctx::for_template(path);
-        let root = match ctx.repo_root {
-            Some(r) => r,
-            None => match trust::root_for(&ctx.region_root) {
-                Ok(r) => r,
-                Err(_) => return false,
-            },
-        };
-        self.store.is_trusted(&root).unwrap_or(false)
+        crate::cli::is_trusted(&Ctx::for_template(path), &self.store).unwrap_or(false)
     }
 
     fn notification(&mut self, n: Notification) {
@@ -230,6 +223,8 @@ impl Server<'_> {
                 };
                 let key = p.text_document.uri.as_str().to_string();
                 let Some(path) = path_of(&key) else { return };
+                // A symlinked template is its target, as under `computed run`.
+                let path = crate::survey::target(&path).unwrap_or(path);
                 self.docs.insert(
                     key.clone(),
                     Doc {
@@ -425,14 +420,19 @@ impl Server<'_> {
         if let Some(written) = region.opener.written() {
             writeln!(md, "\nExpanded from `{written}` by its recipe.").unwrap();
         }
-        // The files this region's snapshot reads, from a snapshot of its own.
+        // The files this region's snapshot reads, from a snapshot of its
+        // own; one expanded from a recipe also reads computed.toml.
+        let recipes = loaders.take_read();
         let snapshot = loaders.snapshot(region);
+        let mut read = loaders.take_read();
+        if region.opener.written().is_some() {
+            read.extend(recipes);
+        }
         let root = Ctx::for_template(&doc.path)
             .region_root
             .canonicalize()
             .unwrap_or_default();
-        let inputs: Vec<String> = loaders
-            .read()
+        let inputs: Vec<String> = read
             .iter()
             .map(|p| {
                 p.strip_prefix(&root)

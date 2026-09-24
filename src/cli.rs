@@ -725,7 +725,7 @@ fn settle(paths: &[PathBuf], job: &Job<'_>) -> Result<Settled> {
 pub(crate) enum Opened {
     /// No region: none of the tool's business.
     Skip,
-    /// Tier 2 for the file: not UTF-8, or a parse error at a line.
+    /// Tier 2 for the file: unreadable, not UTF-8, or a parse error at a line.
     Error(Option<usize>, String),
     Template {
         /// The file itself, a symlink resolved to its target.
@@ -738,46 +738,20 @@ pub(crate) enum Opened {
     },
 }
 
-/// Reads and parses one template and expands its recipes. A symlinked
-/// template is its target: paths resolve against the target's directory
-/// and a write lands in it.
+/// Reads and parses one template and expands its recipes, as
+/// [`crate::survey::read`] does for the commands that do not render. A
+/// symlinked template is its target: paths resolve against the target's
+/// directory and a write lands in it.
 pub(crate) fn open(path: &Path) -> Result<Opened> {
-    let file = if is_link(path) {
-        path.canonicalize().context("unreadable")?
-    } else {
-        path.to_path_buf()
-    };
-    let bytes = std::fs::read(&file).context("unreadable")?;
-    let syntax = marker::Syntax::for_path(&file);
-    let text = match String::from_utf8(bytes) {
-        Ok(text) => text,
-        Err(e) if marker::has_marker(&String::from_utf8_lossy(e.as_bytes()), syntax) => {
-            return Ok(Opened::Error(None, "not UTF-8".to_string()));
-        }
-        // A file with no marker is none of the tool's business, whatever its encoding.
-        Err(_) => return Ok(Opened::Skip),
-    };
-    if !syntax.may_hold(&text) {
-        return Ok(Opened::Skip);
-    }
-    let mut parsed = match marker::parse_as(&text, syntax) {
-        Ok(p) => p,
-        Err(e) => return Ok(Opened::Error(Some(e.line), e.message)),
-    };
-    if !parsed
-        .segments
-        .iter()
-        .any(|s| matches!(s, marker::Segment::Region(_)))
-    {
-        return Ok(Opened::Skip);
-    }
-    let ctx = Ctx::for_template(&file);
-    let recipes = crate::config::expand(&mut parsed, &ctx.region_root, ctx.repo_root.as_deref());
-    Ok(Opened::Template {
-        file,
-        text,
-        parsed,
-        recipes,
+    Ok(match crate::survey::read(path) {
+        Ok(None) => Opened::Skip,
+        Ok(Some(t)) => Opened::Template {
+            file: t.file,
+            text: t.text,
+            parsed: t.parsed,
+            recipes: t.recipes,
+        },
+        Err(e) => Opened::Error(e.line, e.message),
     })
 }
 

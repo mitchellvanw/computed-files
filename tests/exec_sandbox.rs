@@ -101,6 +101,27 @@ fn a_declared_input_reads_and_an_undeclared_file_fails_the_region() {
 }
 
 #[test]
+fn a_system_or_path_directory_above_the_repository_does_not_open_it() {
+    if !sandboxable() {
+        return;
+    }
+    // A `PATH` entry that holds the repository, as `/usr` holds a checkout
+    // in `/usr/src/app`: the programs beside it still run, but the
+    // repository's undeclared files stay closed.
+    let repo = Repo::new(&region("cat secret.txt"));
+    let above = repo.path().canonicalize().unwrap();
+    let above = above.parent().unwrap();
+    let out = repo
+        .cmd(&["run", "--trust"])
+        .env("PATH", format!("{}:/usr/bin:/bin", above.display()))
+        .output()
+        .unwrap();
+    let err = stderr(&out);
+    assert!(err.contains("r exec unrendered failed; body kept"), "{err}");
+    assert!(!repo.doc().contains("undeclared"), "{}", repo.doc());
+}
+
+#[test]
 fn writes_land_only_in_tmpdir() {
     if !sandboxable() {
         return;
@@ -205,6 +226,16 @@ fn doctor_runs_a_sandboxed_region_inside_the_sandbox() {
     let repo = Repo::new(&region("cat secret.txt"));
     let out = repo.cmd(&["doctor", "--trust"]).output().unwrap();
     assert!(stderr(&out).contains("r exec failed"), "{}", stderr(&out));
+
+    // The perturbed run's TMPDIR is one the sandbox lets it write.
+    let repo = Repo::new(&region("echo x > $TMPDIR/f && cat $TMPDIR/f"));
+    let out = repo.cmd(&["-v", "doctor", "--trust"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("r exec deterministic"),
+        "{}",
+        stderr(&out)
+    );
 }
 
 #[test]

@@ -116,6 +116,23 @@ fn install_writes_the_attributes_and_the_local_driver_once() {
 }
 
 #[test]
+fn install_does_not_write_through_a_symlinked_gitattributes() {
+    let dir = repo();
+    let d = dir.path();
+    let outside = tempfile::tempdir().unwrap();
+    let victim = outside.path().join("victim");
+    fs::write(&victim, "keep\n").unwrap();
+    std::os::unix::fs::symlink(&victim, d.join(".gitattributes")).unwrap();
+    let out = computed(d, &["merge", "--install"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("symlink"),
+        "{out:?}"
+    );
+    assert_eq!(fs::read_to_string(&victim).unwrap(), "keep\n");
+}
+
+#[test]
 fn two_branches_that_re_render_a_region_merge_cleanly_and_run_makes_it_fresh() {
     let dir = repo();
     let d = dir.path();

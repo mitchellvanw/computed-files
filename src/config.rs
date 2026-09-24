@@ -55,10 +55,11 @@ pub fn find(region_root: &Path, repo_root: Option<&Path>) -> Result<PathBuf, Str
     let start = region_root
         .canonicalize()
         .map_err(|e| format!("region root: {e}"))?;
+    let bound = repo_root.unwrap_or(&start);
     for dir in start.ancestors() {
         let candidate = dir.join(FILE_NAME);
         if candidate.is_file() {
-            return Ok(candidate);
+            return inside(&candidate, bound);
         }
         if repo_root.is_none_or(|r| r == dir) {
             break;
@@ -72,6 +73,19 @@ pub fn find(region_root: &Path, repo_root: Option<&Path>) -> Result<PathBuf, Str
         ),
         None => format!("no {FILE_NAME} in {}", start.display()),
     })
+}
+
+/// `path`, a `computed.toml`, when it lies inside `bound` (canonical). A
+/// symlink out of the repository is refused unread, so no error message
+/// can show a line of a file outside it.
+fn inside(path: &Path, bound: &Path) -> Result<PathBuf, String> {
+    let target = path
+        .canonicalize()
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    if !target.starts_with(bound) {
+        return Err(format!("{} escapes {}", path.display(), bound.display()));
+    }
+    Ok(path.to_path_buf())
 }
 
 impl Config {
@@ -308,6 +322,13 @@ impl Discover {
 /// regions that use it, not to discovery.
 pub fn discovery(dir: &Path) -> Result<Discover, String> {
     let path = dir.join(FILE_NAME);
+    if !path.exists() {
+        return Ok(Discover::default());
+    }
+    let bound = dir
+        .canonicalize()
+        .map_err(|e| format!("{}: {e}", dir.display()))?;
+    inside(&path, &bound)?;
     let text = match std::fs::read_to_string(&path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Discover::default()),
@@ -479,5 +500,29 @@ mod tests {
             find(&repo.join("a"), None),
             Ok(repo.join("a").join(FILE_NAME))
         );
+    }
+
+    #[test]
+    fn a_computed_toml_that_links_out_of_the_repository_is_not_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        let repo = root.join("repo");
+        std::fs::create_dir_all(repo.join("a")).unwrap();
+        std::fs::write(root.join("creds"), "ghp_SECRET\n").unwrap();
+        std::os::unix::fs::symlink(root.join("creds"), repo.join(FILE_NAME)).unwrap();
+        let e = find(&repo.join("a"), Some(&repo)).unwrap_err();
+        assert!(e.contains("escapes"), "{e}");
+        let e = discovery(&repo).unwrap_err();
+        assert!(e.contains("escapes") && !e.contains("SECRET"), "{e}");
+        // A link that stays inside is read as the file it names.
+        std::fs::write(
+            repo.join("real.toml"),
+            "[discover]\nnames = [\"Makefile\"]\n",
+        )
+        .unwrap();
+        std::fs::remove_file(repo.join(FILE_NAME)).unwrap();
+        std::os::unix::fs::symlink(repo.join("real.toml"), repo.join(FILE_NAME)).unwrap();
+        assert!(discovery(&repo).unwrap().selects(Path::new("Makefile")));
+        assert_eq!(find(&repo.join("a"), Some(&repo)), Ok(repo.join(FILE_NAME)));
     }
 }

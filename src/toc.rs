@@ -32,6 +32,27 @@ fn shown(parsed: &marker::File) -> String {
     out
 }
 
+/// The headings of `template`'s prose as a reader sees them: none from a
+/// region body or its markers, and a region inside a heading's line read
+/// as its body. `Err` when the file does not parse.
+pub(crate) fn prose_headings(template: &str) -> Result<Vec<Heading>, String> {
+    let parsed = marker::parse(template).map_err(|e| e.to_string())?;
+    // 0-based line ranges the regions on lines of their own take, markers
+    // included.
+    let regions: Vec<(usize, usize)> = parsed
+        .segments
+        .iter()
+        .filter_map(|s| match s {
+            Segment::Region(r) if r.column.is_none() => Some((r.line - 1, r.last_line())),
+            _ => None,
+        })
+        .collect();
+    Ok(project::headings(&shown(&parsed))
+        .into_iter()
+        .filter(|h| !regions.iter().any(|&(a, b)| (a..b).contains(&h.line)))
+        .collect())
+}
+
 /// Whether a heading of `template`'s prose holds a region inside its line,
 /// so the toc reads what a render of the template writes.
 pub fn reads_regions(template: &str) -> bool {
@@ -73,21 +94,7 @@ pub fn levels(min: Option<&str>, max: Option<&str>) -> Result<(usize, usize), St
 /// The list and its snapshot for the headings of levels `min..=max` in
 /// `template`'s prose.
 pub fn toc(template: &str, min: usize, max: usize) -> Result<(String, Vec<u8>), String> {
-    let parsed = marker::parse(template).map_err(|e| format!("this file: {e}"))?;
-    // 0-based line ranges the regions on lines of their own take, markers
-    // included.
-    let regions: Vec<(usize, usize)> = parsed
-        .segments
-        .iter()
-        .filter_map(|s| match s {
-            Segment::Region(r) if r.column.is_none() => Some((r.line - 1, r.last_line())),
-            _ => None,
-        })
-        .collect();
-    let prose: Vec<Heading> = project::headings(&shown(&parsed))
-        .into_iter()
-        .filter(|h| !regions.iter().any(|&(a, b)| (a..b).contains(&h.line)))
-        .collect();
+    let prose = prose_headings(template).map_err(|e| format!("this file: {e}"))?;
     let mut slugger = Slugger::default();
     let mut text = String::new();
     let mut snapshot = Vec::new();

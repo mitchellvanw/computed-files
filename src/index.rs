@@ -37,10 +37,14 @@ impl Title {
 
 /// The title of the file at `rel`, from `content` when the title reads it.
 /// The heading's text as written, inline Markdown kept; a file that is not
-/// UTF-8 is read lossily.
+/// UTF-8 is read lossily. A template's heading is one of its prose, as a
+/// reader sees it: a region inside the line is its body, and a heading in a
+/// region body is not the file's.
 pub fn title(rel: &Path, content: Option<&[u8]>) -> String {
     let heading = content.and_then(|c| {
-        project::headings(&String::from_utf8_lossy(c))
+        let text = String::from_utf8_lossy(c);
+        crate::toc::prose_headings(&text)
+            .unwrap_or_else(|_| project::headings(&text))
             .into_iter()
             .find(|h| h.level == 1 && !h.text.is_empty())
     });
@@ -84,6 +88,21 @@ mod tests {
         assert_eq!(title(rel, Some(b"no heading\n")), "0001-rust.md");
         assert_eq!(title(rel, Some(b"#\n# Real\n")), "Real");
         assert_eq!(title(rel, None), "0001-rust.md");
+    }
+
+    #[test]
+    fn a_template_s_title_is_its_prose_as_a_reader_sees_it() {
+        let rel = Path::new("b.md");
+        let inline = b"# B is <!-- computed value src=v.toml key=x -->one<!-- /computed -->\n";
+        assert_eq!(title(rel, Some(inline)), "B is one");
+        let body =
+            b"<!-- computed file src=banner.md -->\n# Banner\n<!-- /computed -->\n\n# Real title\n";
+        assert_eq!(title(rel, Some(body)), "Real title");
+        // A file whose markers do not parse is read as it stands.
+        assert_eq!(
+            title(rel, Some(b"# T <!-- computed x\n")),
+            "T <!-- computed x"
+        );
     }
 
     #[test]
