@@ -4,7 +4,9 @@
 //! A region reaches what its snapshot read, and, so that a path that is new
 //! or already gone still answers, what its opener says it would read: the
 //! directory a tree lists, down to its depth and past dotfiles only with
-//! `all`; the paths an `inputs=` glob matches or lies under; a file's `src=`.
+//! `all`; the paths an `inputs=` or `index` glob matches or lies under, the
+//! literal path of a projected input; a `file` or `value` region's `src=`;
+//! a `toc`'s own template; and a `use` region's `computed.toml`.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
@@ -25,8 +27,12 @@ pub struct Reach {
     /// `inputs=` globs as written, against the canonical region root.
     pub globs: Vec<String>,
     pub root: PathBuf,
-    /// A `file` region's `src=`, anchored.
+    /// A `file` or `value` region's `src=`, anchored.
     pub src: Option<PathBuf>,
+    /// A `toc`'s own template, whose headings it lists, anchored.
+    pub own: Option<PathBuf>,
+    /// The `computed.toml` a `use` region's recipe comes from.
+    pub recipe: Option<PathBuf>,
 }
 
 /// The directory a tree lists and what bounds the listing.
@@ -48,8 +54,13 @@ pub fn reach(template: &Template, region: &Region, loaders: &mut Production) -> 
         listing: None,
         globs: Vec::new(),
         src: None,
+        own: None,
+        recipe: None,
         root,
     };
+    if region.opener.recipe().is_some() || region.opener.loader == "use" {
+        reach.recipe = template.recipes.read.clone();
+    }
     let at = |p: &Path| survey::anchor(&template.ctx.region_root.join(p));
     match Loader::from_opener(&region.opener) {
         Ok(Loader::Tree(args)) => {
@@ -60,8 +71,11 @@ pub fn reach(template: &Template, region: &Region, loaders: &mut Production) -> 
             });
         }
         Ok(Loader::Exec(args)) => reach.globs = args.inputs.unwrap_or_default(),
+        Ok(Loader::Index(args)) => reach.globs = args.src,
         Ok(Loader::File(args)) => reach.src = Some(at(&args.src)),
-        _ => {}
+        Ok(Loader::Value(args)) => reach.src = Some(at(&args.src)),
+        Ok(Loader::Toc(_)) => reach.own = Some(survey::anchor(&template.file)),
+        Err(_) => {}
     }
     reach
 }
@@ -72,7 +86,11 @@ impl Reach {
     /// be listed or matched.
     pub fn affects(&self, path: &Path) -> bool {
         let within = |read: &Path| read.starts_with(path);
-        if self.files.iter().any(|f| within(f)) || self.src.as_deref().is_some_and(within) {
+        if self.files.iter().any(|f| within(f))
+            || [&self.src, &self.own, &self.recipe]
+                .iter()
+                .any(|p| p.as_deref().is_some_and(within))
+        {
             return true;
         }
         if let Some(l) = &self.listing {
@@ -95,9 +113,10 @@ impl Reach {
 
 /// Whether an `inputs=` glob reaches `rel`, a path from the region root:
 /// the glob matches it or a directory above it, or `rel` is a directory the
-/// glob's literal start lies in.
+/// glob's literal start lies in. A projected entry, `path#kind=value`,
+/// reaches as its literal path does.
 fn glob_reaches(glob: &str, rel: &Path) -> bool {
-    let glob = glob.trim().trim_end_matches('/');
+    let glob = input_path(glob);
     let prefix: PathBuf = glob
         .split('/')
         .take_while(|c| !c.contains(['*', '?', '[', '{', '\\']))
@@ -117,6 +136,14 @@ fn glob_reaches(glob: &str, rel: &Path) -> bool {
         .any(|a| matcher.is_match(a))
 }
 
+/// An `inputs=` entry without its projection, trimmed as globs are.
+pub fn input_path(entry: &str) -> &str {
+    let entry = entry.trim();
+    crate::project::split_input(entry)
+        .map_or(entry, |(path, _)| path)
+        .trim_end_matches('/')
+}
+
 /// Lists every region whose snapshot reads under any of `paths`, templates
 /// found from the current directory. A query: exit 0 whatever it finds, 2
 /// when a template could not be read.
@@ -125,7 +152,7 @@ pub fn main(paths: &[PathBuf], json: bool) -> Result<u8, String> {
     let (templates, errors) = survey::templates(&[])?;
     let mut hits: Vec<(&Template, &Region)> = Vec::new();
     for t in &templates {
-        let mut loaders = Production::new(t.ctx.clone());
+        let mut loaders = t.loaders();
         for region in t.regions() {
             let reach = reach(t, region, &mut loaders);
             if targets.iter().any(|p| reach.affects(p)) {
@@ -218,5 +245,8 @@ mod tests {
         assert!(reaches("src/", "src/a.rs"));
         assert!(reaches("**/*.rs", "a/b/c.rs"));
         assert!(reaches("../CLAUDE.md", "../CLAUDE.md"));
+        assert!(reaches("Cargo.toml#key=package.version", "Cargo.toml"));
+        assert!(reaches("docs/a.md#section=A b", "docs"));
+        assert!(!reaches("Cargo.toml#key=package.version", "Cargo.lock"));
     }
 }

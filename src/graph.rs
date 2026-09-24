@@ -12,7 +12,6 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use crate::affected::{self, Reach};
-use crate::loader::Production;
 use crate::marker::Region;
 use crate::report;
 use crate::survey;
@@ -82,7 +81,7 @@ pub fn main(paths: &[PathBuf], style: Style) -> Result<u8, String> {
     let mut input_nodes = Vec::new();
     let mut region = 0;
     for (ti, t) in templates.iter().enumerate() {
-        let mut loaders = Production::new(t.ctx.clone());
+        let mut loaders = t.loaders();
         for r in t.regions() {
             let id = format!("r{region}");
             region += 1;
@@ -122,6 +121,10 @@ pub fn main(paths: &[PathBuf], style: Style) -> Result<u8, String> {
             for s in settles {
                 reads.push((id.clone(), format!("t{s}"), Edge::Settles));
             }
+            // A toc reads its own template's headings.
+            if reach.own.is_some() {
+                reads.push((id.clone(), format!("t{ti}"), Edge::Reads));
+            }
         }
     }
     nodes.extend(input_nodes);
@@ -140,7 +143,8 @@ pub fn main(paths: &[PathBuf], style: Style) -> Result<u8, String> {
 }
 
 /// `name · loader`, `line N · loader` for a region without a name, with
-/// `volatile` when the region reads nothing by declaration.
+/// `volatile` when the region reads nothing by declaration. A `use` region
+/// shows the loader its recipe expanded to and the recipe's name.
 fn region_label(r: &Region) -> String {
     let name = r
         .opener
@@ -152,39 +156,57 @@ fn region_label(r: &Region) -> String {
     } else {
         ""
     };
-    format!("{name} · {}{volatile}", r.opener.loader)
+    let loader = match (r.opener.recipe(), r.opener.attr("recipe")) {
+        (Some(recipe), _) => format!("{} via recipe {recipe}", r.opener.loader),
+        (None, Some(recipe)) if r.opener.loader == "use" => format!("use recipe {recipe}"),
+        _ => r.opener.loader.clone(),
+    };
+    format!("{name} · {loader}{volatile}")
 }
 
 /// The inputs as the opener names them, each with its label and, when it
-/// names one path, that path anchored.
+/// names one path, that path anchored, then a `use` region's
+/// `computed.toml`. A projected input keeps its projection in the label.
 fn named_inputs(reach: &Reach) -> Vec<(String, Option<PathBuf>)> {
-    if let Some(l) = &reach.listing {
+    let mut inputs = if let Some(l) = &reach.listing {
         let dir = survey::display(&l.dir);
         let label = if dir.ends_with('/') {
             dir
         } else {
             format!("{dir}/")
         };
-        return vec![(label, Some(l.dir.clone()))];
-    }
-    if let Some(src) = &reach.src {
-        return vec![(survey::display(src), Some(src.clone()))];
-    }
-    if !reach.globs.is_empty() {
-        return reach
+        vec![(label, Some(l.dir.clone()))]
+    } else if let Some(src) = &reach.src {
+        vec![(survey::display(src), Some(src.clone()))]
+    } else if !reach.globs.is_empty() {
+        reach
             .globs
             .iter()
             .map(|g| {
-                let path = survey::normalise(&reach.root.join(g.trim().trim_end_matches('/')));
-                (survey::display(&path), Some(path))
+                let bare = affected::input_path(g);
+                let path = survey::normalise(&reach.root.join(bare));
+                let projection = &g.trim()[bare.len()..];
+                let projection = projection.trim_start_matches('/');
+                (
+                    format!("{}{projection}", survey::display(&path)),
+                    Some(path),
+                )
             })
-            .collect();
+            .collect()
+    } else if reach.own.is_some() {
+        Vec::new()
+    } else {
+        reach
+            .files
+            .iter()
+            .filter(|f| Some(*f) != reach.recipe.as_ref())
+            .map(|f| (survey::display(f), Some(f.clone())))
+            .collect()
+    };
+    if let Some(recipe) = &reach.recipe {
+        inputs.push((survey::display(recipe), Some(recipe.clone())));
     }
-    reach
-        .files
-        .iter()
-        .map(|f| (survey::display(f), Some(f.clone())))
-        .collect()
+    inputs
 }
 
 fn mermaid(nodes: &[Node], edges: &[(String, String, Edge)]) -> String {

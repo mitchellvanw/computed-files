@@ -10,7 +10,7 @@ use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::loader::{self, Ctx, Loader, Production};
+use crate::loader::{self, Loader, Production};
 use crate::marker::{self, Region};
 use crate::render::{self, Loaders as _, State};
 use crate::report;
@@ -73,7 +73,7 @@ pub fn main(
         });
     }
     let mut repo: Option<Result<Repo, String>> = None;
-    let mut loaders = Production::new(template.ctx.clone());
+    let mut loaders = template.loaders();
     let mut tier = 0;
     for region in selected {
         let answer = answer(&template, region, &mut loaders, &mut repo, verbose);
@@ -282,7 +282,8 @@ fn baseline(
             return Ok(Found::Held(base));
         }
         tries += 1;
-        if let Some(snapshot) = reproduce(repo, &base, full, recorded)? {
+        let mut base = base;
+        if let Some(snapshot) = reproduce(repo, &mut base, full, recorded)? {
             return Ok(Found::Reproduced(base, snapshot));
         }
         latest.get_or_insert(base);
@@ -303,7 +304,11 @@ fn held(repo: &Repo, commit: &str, region: &Region, recorded: &str) -> Option<Re
     let holding: Vec<&Region> = survey::regions(&parsed)
         .filter(|r| r.sums.as_ref().is_some_and(|s| s.input == recorded))
         .collect();
-    let canonical = region.opener.canonical();
+    // The opener as the file shows it: a `use` region's, not its expansion.
+    let canonical = region
+        .opener
+        .written()
+        .map_or_else(|| region.opener.canonical(), str::to_string);
     holding
         .iter()
         .find(|r| region.opener.name.is_some() && r.opener.name == region.opener.name)
@@ -314,16 +319,24 @@ fn held(repo: &Repo, commit: &str, region: &Region, recorded: &str) -> Option<Re
 
 /// The snapshot `base.region` takes of `commit`'s tree, when it hashes to
 /// `recorded`. The tree is laid down in a temporary directory with an empty
-/// `.git`, so ignore rules and the repository bound apply as they did.
+/// `.git`, so ignore rules and the repository bound apply as they did. A
+/// `use` region is expanded by that tree's `computed.toml`, and `base`
+/// keeps the expansion, so its opener compares with today's.
 fn reproduce(
     repo: &Repo,
-    base: &Baseline,
+    base: &mut Baseline,
     commit: &str,
     recorded: &str,
 ) -> Result<Option<Vec<u8>>, String> {
     let dir = materialise(&repo.root, commit)?;
     let path = dir.path().join(&repo.rel);
-    let mut loaders = Production::new(Ctx::for_template(&path));
+    let mut file = marker::File {
+        segments: vec![marker::Segment::Region(base.region.clone())],
+    };
+    let mut loaders = Production::for_file(&path, &mut file);
+    if let Some(marker::Segment::Region(expanded)) = file.segments.pop() {
+        base.region = expanded;
+    }
     Ok(match loaders.snapshot(&base.region) {
         Ok(Some(snapshot)) if render::input_sum(&base.region, &snapshot) == recorded => {
             Some(snapshot)

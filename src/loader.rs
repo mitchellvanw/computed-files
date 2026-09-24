@@ -299,8 +299,20 @@ impl Production {
     /// snapshot is the hard error that says why.
     pub fn expand_recipes(&mut self, file: &mut File) {
         let expansion = config::expand(file, &self.ctx.region_root, self.ctx.repo_root.as_deref());
-        self.read.extend(expansion.read);
-        self.unexpanded.extend(expansion.errors);
+        self.take_recipes(&expansion);
+    }
+
+    /// Takes on an expansion done before these loaders existed, for a file
+    /// expanded once and snapshotted by several: `computed.toml` counts as
+    /// read, and a region whose recipe did not expand errors as it would.
+    pub fn with_recipes(mut self, expansion: &config::Expansion) -> Production {
+        self.take_recipes(expansion);
+        self
+    }
+
+    fn take_recipes(&mut self, expansion: &config::Expansion) {
+        self.read.extend(expansion.read.clone());
+        self.unexpanded.extend(expansion.errors.clone());
     }
 
     /// The region's loader, or why its recipe did not expand.

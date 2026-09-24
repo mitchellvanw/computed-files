@@ -211,3 +211,82 @@ fn graph_formats_belong_to_graph() {
     let out = computed(dir.path(), &["--format", "dot", "check"]);
     assert_eq!(out.status.code(), Some(2));
 }
+
+/// A repository with one region of each loader G1 and G5 added.
+fn loaders_repo() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let r = dir.path();
+    fs::create_dir_all(r.join(".git")).unwrap();
+    fs::create_dir_all(r.join("docs")).unwrap();
+    fs::write(r.join("docs/a.md"), "# A\n").unwrap();
+    fs::write(r.join("Cargo.toml"), "[package]\nversion = \"1.0.0\"\n").unwrap();
+    fs::write(r.join("notes.md"), "# Notes\n\n## Install\n\nx\n").unwrap();
+    fs::write(
+        r.join("computed.toml"),
+        "[recipe.docs]\nloader = \"index\"\nsrc = \"docs/*.md\"\n",
+    )
+    .unwrap();
+    fs::write(
+        r.join("README.md"),
+        "# Readme\n\n\
+         <!-- computed value src=Cargo.toml key=package.version name=version -->\n<!-- /computed -->\n\n\
+         <!-- computed index src=\"docs/*.md\" name=index -->\n<!-- /computed -->\n\n\
+         <!-- computed toc name=toc -->\n<!-- /computed -->\n\n\
+         <!-- computed exec cmd=\"echo x\" inputs=\"Cargo.toml#key=package.version\" name=proj -->\n<!-- /computed -->\n\n\
+         <!-- computed file src=notes.md section=Install name=slice -->\n<!-- /computed -->\n\n\
+         <!-- computed use recipe=docs name=recipe -->\n<!-- /computed -->\n",
+    )
+    .unwrap();
+    dir
+}
+
+#[test]
+fn the_new_loaders_are_affected_by_what_their_openers_name() {
+    let dir = loaders_repo();
+    let d = dir.path();
+    assert_eq!(
+        listed(d, &["Cargo.toml"]),
+        ["README.md:3 version", "README.md:12 proj"]
+    );
+    assert_eq!(
+        listed(d, &["docs/new.md"]),
+        ["README.md:6 index", "README.md:18 recipe"],
+        "a glob reaches a file that does not exist yet"
+    );
+    assert_eq!(listed(d, &["notes.md"]), ["README.md:15 slice"]);
+    assert_eq!(listed(d, &["computed.toml"]), ["README.md:18 recipe"]);
+    assert_eq!(
+        listed(d, &["README.md"]),
+        ["README.md:9 toc"],
+        "a toc reads its own template"
+    );
+}
+
+#[test]
+fn graph_draws_the_new_loaders_and_recipes() {
+    let dir = loaders_repo();
+    let d = dir.path();
+    let out = computed(d, &["graph"]);
+    assert_eq!(out.status.code(), Some(0));
+    let text = stdout(&out);
+    for needle in [
+        "([\"version · value\"])",
+        "[/\"Cargo.toml\"/]",
+        "[/\"docs/*.md\"/]",
+        "[/\"Cargo.toml#key=package.version\"/]",
+        "[/\"notes.md\"/]",
+        "([\"recipe · index via recipe docs\"])",
+        "[/\"computed.toml\"/]",
+    ] {
+        assert!(text.contains(needle), "{needle}\n{text}");
+    }
+    // The toc's edge goes back to its own template.
+    let toc = text
+        .lines()
+        .find(|l| l.contains("toc · toc"))
+        .and_then(|l| l.split_whitespace().next())
+        .and_then(|l| l.split('(').next())
+        .unwrap()
+        .to_string();
+    assert!(text.contains(&format!("{toc} --> t0")), "{text}");
+}

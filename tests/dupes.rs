@@ -135,3 +135,91 @@ fn dupes_prints_json() {
         "{\"exit\":1,\"errors\":[],\"duplicates\":[{\"lines\":5,\"source\":{\"path\":\"README.md\",\"start\":5,\"end\":11},\"copies\":[{\"path\":\"CLAUDE.md\",\"start\":1,\"end\":7,\"suggestion\":\"<!-- computed file src=README.md section=Install -->\"}]}]}\n"
     );
 }
+
+/// Each copy `dupes` found replaced by the region it suggests. A copy
+/// inside one already replaced (groups can nest) is left alone.
+fn apply_suggestions(d: &Path) {
+    let out = computed(d, &["--format", "json", "dupes"]);
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let mut done: Vec<String> = Vec::new();
+    for group in doc["duplicates"].as_array().unwrap() {
+        for copy in group["copies"].as_array().unwrap() {
+            let rel = copy["path"].as_str().unwrap().to_string();
+            if done.contains(&rel) {
+                continue;
+            }
+            done.push(rel.clone());
+            let path = d.join(rel);
+            let (start, end) = (
+                copy["start"].as_u64().unwrap() as usize,
+                copy["end"].as_u64().unwrap() as usize,
+            );
+            let text = fs::read_to_string(&path).unwrap();
+            let lines: Vec<&str> = text.split_inclusive('\n').collect();
+            let region = format!(
+                "{}\n<!-- /computed -->\n",
+                copy["suggestion"].as_str().unwrap()
+            );
+            let new = format!(
+                "{}{region}{}",
+                lines[..start - 1].concat(),
+                lines[end..].concat()
+            );
+            fs::write(&path, new).unwrap();
+        }
+    }
+}
+
+#[test]
+fn a_suggested_region_renders_the_copy_and_is_fresh() {
+    let dir = repo();
+    let d = dir.path();
+    fs::create_dir_all(d.join("docs")).unwrap();
+    // One copy is the whole section, one is part of a section.
+    fs::write(
+        d.join("CLAUDE.md"),
+        format!("# Agents\n\n{INSTALL}\n## Rules\n\nBe kind.\n"),
+    )
+    .unwrap();
+    fs::write(
+        d.join("docs/setup.md"),
+        "# Setup\n\nFirst this.\n\nRun the installer.\nThen add it to PATH.\n\nCheck the version.\nYou are done.\n",
+    )
+    .unwrap();
+    apply_suggestions(d);
+    let claude = fs::read_to_string(d.join("CLAUDE.md")).unwrap();
+    assert!(claude.contains("section=Install"), "{claude}");
+    let setup = fs::read_to_string(d.join("docs/setup.md")).unwrap();
+    assert!(setup.contains("src=../README.md lines="), "{setup}");
+    let out = computed(d, &["run"]);
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let setup = fs::read_to_string(d.join("docs/setup.md")).unwrap();
+    assert!(
+        setup.contains(
+            "\nRun the installer.\nThen add it to PATH.\n\nCheck the version.\nYou are done.\n"
+        ),
+        "{setup}"
+    );
+    assert!(
+        fs::read_to_string(d.join("CLAUDE.md"))
+            .unwrap()
+            .contains("\n## Install\n\nRun the installer.\n"),
+    );
+    let out = computed(d, &["check"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(
+        computed(d, &["dupes"]).status.code(),
+        Some(0),
+        "no copy is left"
+    );
+}

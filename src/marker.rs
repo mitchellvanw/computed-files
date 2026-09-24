@@ -93,6 +93,8 @@ pub struct Opener {
     /// The canonical form of the `use` opener this one was expanded from,
     /// which is what the file shows; `None` for an opener as written.
     written: Option<String>,
+    /// The recipe it was expanded from.
+    recipe: Option<String>,
     /// Every token as written, in order, for the canonical form.
     tokens: Vec<Token>,
 }
@@ -154,10 +156,16 @@ impl Opener {
         self.written.as_deref()
     }
 
+    /// The recipe this opener was expanded from; `None` for one as written.
+    pub fn recipe(&self) -> Option<&str> {
+        self.recipe.as_deref()
+    }
+
     /// This opener standing in for the `use` opener `written`: the file
     /// keeps showing `written`, and everything else reads this one.
     pub fn expanded_from(mut self, written: &Opener) -> Opener {
         self.written = Some(written.canonical());
+        self.recipe = written.attr("recipe").map(str::to_string);
         self
     }
 }
@@ -788,6 +796,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
         on_stale,
         max_lines,
         written: None,
+        recipe: None,
         tokens,
     };
     validate(line, &opener)?;

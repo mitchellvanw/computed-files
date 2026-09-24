@@ -13,8 +13,9 @@ use std::collections::BTreeSet;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use crate::loader::{Loader, Production};
+use crate::loader::Loader;
 use crate::marker::{self, Region, Sink};
+use crate::project::Projection;
 use crate::render::{self, Loaders as _, Mode, Rendered, State};
 use crate::survey::{self, Template};
 use crate::{fs, report, sink};
@@ -53,7 +54,7 @@ pub fn main(file: &Path, only: &[String], dry_run: bool, verbose: bool) -> Resul
         .regions()
         .filter(|r| only.is_empty() || r.opener.name.as_ref().is_some_and(|n| only.contains(n)))
         .collect();
-    let mut loaders = Production::new(template.ctx.clone());
+    let mut loaders = template.loaders();
     let mut tier = 0;
     let mut lines = Vec::new();
     let mut adoptions: Vec<(usize, Adoption)> = Vec::new();
@@ -148,7 +149,7 @@ fn write(template: &Template, adoptions: &[(usize, Adoption)], lines: &mut Vec<S
     }
     let adopted: Vec<usize> = adoptions.iter().map(|(l, _)| *l).collect();
     let select = |r: &Region| adopted.contains(&r.line);
-    let mut loaders = Production::new(template.ctx.clone());
+    let mut loaders = template.loaders();
     let force = Mode::Run { force: true };
     let rendered = render::file_where(&template.parsed, force, false, &select, &mut loaders);
     let text = match rendered {
@@ -214,12 +215,27 @@ fn adoption(template: &Template, region: &Region) -> Result<Adoption, String> {
         ));
     }
     let text = unshape(region)?;
-    let new = splice(&old, read_range(&old), &text);
+    let range = read_range(&path, &old, args.slice.as_ref())?;
+    if let Some(max) = region.opener.max_lines
+        && old[range.clone()].lines().count() > max
+    {
+        return Err(format!(
+            "the body shows only the first {max} lines of {shown} (max-lines={max}), and adopting would drop the rest"
+        ));
+    }
+    let new = splice(&old, range, &text);
+    let stripped = marker::strip_sums(new.as_bytes());
+    let read = match &args.slice {
+        Some(slice) => slice
+            .apply(&path, &stripped)
+            .map_err(|m| format!("the edit does not round-trip: {shown} written back: {m}"))?,
+        None => stripped.into_owned(),
+    };
     let back = sink::body(
         region.opener.sink,
         &region.opener.lang,
         region.opener.max_lines,
-        &marker::strip_sums(new.as_bytes()),
+        &read,
     )
     .map_err(|m| {
         format!("the edit does not round-trip: {shown} written back would fail to render: {m}")
@@ -237,11 +253,20 @@ fn adoption(template: &Template, region: &Region) -> Result<Adoption, String> {
     })
 }
 
-/// The bytes of `source` the loader's text came from: all of it but the
-/// trailing newlines normalisation strips. Where a slice of the file is
-/// read, this is the slice.
-fn read_range(source: &str) -> Range<usize> {
-    0..source.trim_end_matches(['\n', '\r']).len()
+/// The bytes of `source` the loader's text came from: all of it, or the
+/// span its slice selects, but the trailing newlines normalisation strips.
+/// A slice that is not one span of the file cannot take an edit back.
+fn read_range(
+    path: &Path,
+    source: &str,
+    slice: Option<&Projection>,
+) -> Result<Range<usize>, String> {
+    let range = match slice {
+        Some(slice) => slice.range(path, source.as_bytes())?,
+        None => 0..source.len(),
+    };
+    let kept = source[range.clone()].trim_end_matches(['\n', '\r']).len();
+    Ok(range.start..range.start + kept)
 }
 
 /// `source` with `range` replaced by `text`, an LF text written in the
@@ -318,9 +343,31 @@ mod tests {
 
     #[test]
     fn splice_keeps_the_trailing_newlines_and_the_line_endings() {
+        let whole = |s: &str| read_range(Path::new("a.md"), s, None).unwrap();
         let s = "a\r\nb\r\n\r\n";
-        assert_eq!(splice(s, read_range(s), "x\ny"), "x\r\ny\r\n\r\n");
+        assert_eq!(splice(s, whole(s), "x\ny"), "x\r\ny\r\n\r\n");
         let s = "a";
-        assert_eq!(splice(s, read_range(s), "b"), "b");
+        assert_eq!(splice(s, whole(s), "b"), "b");
+    }
+
+    #[test]
+    fn a_slice_reads_its_own_span_less_its_trailing_newlines() {
+        let s = "# A\n\na\n\n## B\n\nb\n\n# C\n\nc\n";
+        let at = |kind: &str, value: &str| {
+            let p = Projection::parse(kind, value).unwrap();
+            read_range(Path::new("a.md"), s, Some(&p)).map(|r| &s[r])
+        };
+        assert_eq!(at("section", "B"), Ok("## B\n\nb"));
+        assert_eq!(at("section", "A"), Ok("# A\n\na\n\n## B\n\nb"));
+        assert_eq!(at("lines", "3-4"), Ok("a"));
+        let s = "x\n// ANCHOR: o\n1\n// ANCHOR: i\n2\n// ANCHOR_END: i\n// ANCHOR_END: o\n";
+        let p = Projection::parse("anchor", "i").unwrap();
+        assert_eq!(
+            read_range(Path::new("a.rs"), s, Some(&p)).map(|r| &s[r]),
+            Ok("2")
+        );
+        let p = Projection::parse("anchor", "o").unwrap();
+        let e = read_range(Path::new("a.rs"), s, Some(&p)).unwrap_err();
+        assert!(e.contains("not one span"), "{e}");
     }
 }

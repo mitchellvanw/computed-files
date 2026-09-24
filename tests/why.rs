@@ -279,3 +279,52 @@ fn a_hand_edit_is_named_and_shown_with_v() {
     assert!(text.contains(&format!("rendered in {rendered} ")), "{text}");
     assert!(text.contains("        +Readme, by hand\n"), "{text}");
 }
+
+#[test]
+fn a_use_region_is_explained_through_the_recipe_of_its_commit() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    git(d, &["init", "-q", "-b", "main"]);
+    git(d, &["config", "user.name", "Test"]);
+    git(d, &["config", "user.email", "test@example.com"]);
+    fs::create_dir_all(d.join("src")).unwrap();
+    fs::write(d.join("src/main.rs"), "").unwrap();
+    fs::write(
+        d.join("computed.toml"),
+        "[recipe.layout]\nloader = \"tree\"\nsrc = \"src\"\n",
+    )
+    .unwrap();
+    fs::write(
+        d.join("NOTES.md"),
+        "<!-- computed use recipe=layout name=layout -->\n<!-- /computed -->\n",
+    )
+    .unwrap();
+    assert_eq!(computed(d, &["run"]).status.code(), Some(1));
+    let rendered = commit(d, "Render");
+    // An input changes: the expansion is the same, the listing is not.
+    fs::write(d.join("src/lib.rs"), "").unwrap();
+    commit(d, "Add lib");
+    let out = computed(d, &["why", "NOTES.md"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    let text = stdout(&out);
+    assert!(text.starts_with("NOTES.md:1 layout tree stale\n"), "{text}");
+    assert!(
+        text.contains(&format!("rendered from {rendered} ")),
+        "{text}"
+    );
+    assert!(text.contains("    + lib.rs\n"), "{text}");
+    assert!(!text.contains("opener changed"), "{text}");
+    // The recipe changes: the expanded openers differ.
+    fs::write(
+        d.join("computed.toml"),
+        "[recipe.layout]\nloader = \"tree\"\nsrc = \"src\"\ndepth = 1\n",
+    )
+    .unwrap();
+    commit(d, "Shallower");
+    let text = stdout(&computed(d, &["why", "NOTES.md"]));
+    assert!(text.contains("opener changed"), "{text}");
+    assert!(
+        text.contains("+ <!-- computed tree depth=1 src=src name=layout -->"),
+        "{text}"
+    );
+}

@@ -171,3 +171,131 @@ fn nothing_edited_is_nothing_to_adopt() {
     let out = computed(dir.path(), &["adopt", "README.md", "--only", "nope"]);
     assert_eq!(out.status.code(), Some(2));
 }
+
+/// A repository whose `GUIDE.md` includes one section and one line range
+/// of `docs/manual.md`, rendered.
+fn sliced() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    fs::create_dir_all(d.join(".git")).unwrap();
+    fs::create_dir_all(d.join("docs")).unwrap();
+    fs::write(
+        d.join("docs/manual.md"),
+        "# Manual\n\n## Install\n\nRun the installer.\n\n## Use\n\nRun it.\n\nline 11\nline 12\n",
+    )
+    .unwrap();
+    fs::write(
+        d.join("GUIDE.md"),
+        "<!-- computed file src=docs/manual.md section=Install name=install -->\n<!-- /computed -->\n\n<!-- computed file src=docs/manual.md lines=11-12 name=tail -->\n<!-- /computed -->\n",
+    )
+    .unwrap();
+    assert_eq!(computed(d, &["run"]).status.code(), Some(1));
+    dir
+}
+
+fn edit_guide(d: &Path, from: &str, to: &str) {
+    let text = read(d, "GUIDE.md");
+    assert!(text.contains(from), "{text}");
+    fs::write(d.join("GUIDE.md"), text.replacen(from, to, 1)).unwrap();
+}
+
+#[test]
+fn an_edit_to_a_section_is_written_back_into_that_section_only() {
+    let dir = sliced();
+    let d = dir.path();
+    edit_guide(
+        d,
+        "Run the installer.\n",
+        "Run the installer, then restart.\n",
+    );
+    let out = computed(d, &["adopt", "GUIDE.md", "--only", "install"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_eq!(
+        read(d, "docs/manual.md"),
+        "# Manual\n\n## Install\n\nRun the installer, then restart.\n\n## Use\n\nRun it.\n\nline 11\nline 12\n"
+    );
+    let out = computed(d, &["check"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+}
+
+#[test]
+fn an_edit_to_a_line_range_is_written_back_into_those_lines() {
+    let dir = sliced();
+    let d = dir.path();
+    edit_guide(d, "line 12\n", "line twelve\n");
+    let out = computed(d, &["adopt", "GUIDE.md", "--only", "tail"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(
+        read(d, "docs/manual.md").ends_with("Run it.\n\nline 11\nline twelve\n"),
+        "{}",
+        read(d, "docs/manual.md")
+    );
+    let out = computed(d, &["check"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+}
+
+#[test]
+fn an_edit_that_renames_the_section_heading_is_refused() {
+    let dir = sliced();
+    let d = dir.path();
+    edit_guide(d, "## Install\n", "## Setup\n");
+    let out = computed(d, &["adopt", "GUIDE.md", "--only", "install"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("does not round-trip"),
+        "{}",
+        stderr(&out)
+    );
+    assert!(read(d, "docs/manual.md").contains("## Install\n"));
+}
+
+#[test]
+fn a_body_cut_by_max_lines_is_refused() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    fs::create_dir_all(d.join(".git")).unwrap();
+    fs::write(d.join("long.md"), "one\ntwo\nthree\nfour\n").unwrap();
+    fs::write(
+        d.join("README.md"),
+        "<!-- computed file src=long.md max-lines=2 name=l -->\n<!-- /computed -->\n",
+    )
+    .unwrap();
+    assert_eq!(computed(d, &["run"]).status.code(), Some(1));
+    let text = read(d, "README.md");
+    // Keep the body the same length so only the explicit rule refuses it.
+    fs::write(d.join("README.md"), text.replace("\ntwo\n", "\n")).unwrap();
+    let out = computed(d, &["adopt", "README.md"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(stderr(&out).contains("max-lines=2"), "{}", stderr(&out));
+    assert_eq!(read(d, "long.md"), "one\ntwo\nthree\nfour\n");
+}
+
+#[test]
+fn a_use_region_adopts_into_its_recipes_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    fs::create_dir_all(d.join(".git")).unwrap();
+    fs::write(d.join("intro.md"), "Hello\n").unwrap();
+    fs::write(
+        d.join("computed.toml"),
+        "[recipe.intro]\nloader = \"file\"\nsrc = \"intro.md\"\n",
+    )
+    .unwrap();
+    fs::write(
+        d.join("README.md"),
+        "<!-- computed use recipe=intro name=i -->\n<!-- /computed -->\n",
+    )
+    .unwrap();
+    assert_eq!(computed(d, &["run"]).status.code(), Some(1));
+    let text = read(d, "README.md");
+    fs::write(d.join("README.md"), text.replace("Hello", "Hello there")).unwrap();
+    let out = computed(d, &["adopt", "README.md"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_eq!(read(d, "intro.md"), "Hello there\n");
+    assert!(
+        read(d, "README.md").starts_with("<!-- computed use recipe=intro name=i |"),
+        "the file keeps its use opener"
+    );
+    let out = computed(d, &["check"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+}

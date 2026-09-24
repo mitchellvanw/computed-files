@@ -208,7 +208,7 @@ impl Entry {
 }
 
 /// What expanding a file's `use` regions came to.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Expansion {
     /// The canonical `computed.toml` read, when there was one to read.
     pub read: Option<PathBuf>,

@@ -6,6 +6,7 @@
 //! first three, `value` takes `key=`, and an exec `inputs=` entry takes any
 //! of them as a `#` suffix on a literal path. Pure: bytes in, bytes out.
 
+use std::ops::Range;
 use std::path::Path;
 
 use crate::marker;
@@ -99,6 +100,31 @@ impl Projection {
                 .map_err(|_| format!("{}: {} is not UTF-8", self.canonical(), path.display()))
         };
         match self {
+            Projection::Lines { .. } | Projection::Section(_) => {
+                Ok(content[self.range(path, content)?].to_vec())
+            }
+            Projection::Anchor(name) => anchor(text()?, name)
+                .map(String::into_bytes)
+                .map_err(|e| format!("{}: {e}", self.canonical())),
+            Projection::Key(key) => lookup(path, text()?, key)
+                .map(|v| v.canonical().into_bytes())
+                .map_err(|e| format!("{}: {e}", self.canonical())),
+        }
+    }
+}
+
+impl Projection {
+    /// The bytes of `content` the slice is, for a slice that is one span of
+    /// the file: `lines=`, `section=`, and an `anchor=` with no other
+    /// anchor's marker line inside it. What writes a slice back into its
+    /// file, such as `adopt`, splices this range. `key=` is a value, not a
+    /// span. Finding nothing is the error `apply` gives.
+    pub fn range(&self, path: &Path, content: &[u8]) -> Result<Range<usize>, String> {
+        let text = || {
+            std::str::from_utf8(content)
+                .map_err(|_| format!("{}: {} is not UTF-8", self.canonical(), path.display()))
+        };
+        match self {
             Projection::Lines { first, last } => {
                 let count = content.split_inclusive(|&b| b == b'\n').count();
                 let last = last.unwrap_or(count);
@@ -109,7 +135,7 @@ impl Projection {
                         if count == 1 { "" } else { "s" }
                     ));
                 }
-                Ok(line_span(content, first - 1, last).to_vec())
+                Ok(line_range(content, first - 1, last))
             }
             Projection::Section(want) => {
                 let text = text()?;
@@ -121,14 +147,35 @@ impl Projection {
                     .iter()
                     .find(|h| h.level <= all[k].level)
                     .map_or(usize::MAX, |h| h.line);
-                Ok(line_span(text.as_bytes(), all[k].line, end).to_vec())
+                Ok(line_range(content, all[k].line, end))
             }
-            Projection::Anchor(name) => anchor(text()?, name)
-                .map(String::into_bytes)
-                .map_err(|e| format!("{}: {e}", self.canonical())),
-            Projection::Key(key) => lookup(path, text()?, key)
-                .map(|v| v.canonical().into_bytes())
-                .map_err(|e| format!("{}: {e}", self.canonical())),
+            Projection::Anchor(name) => {
+                let text = text()?;
+                let slice = anchor(text, name).map_err(|e| format!("{}: {e}", self.canonical()))?;
+                let lines: Vec<&str> = text.split_inclusive('\n').collect();
+                let start = lines
+                    .iter()
+                    .position(|l| anchor_name(l, "ANCHOR:") == Some(name))
+                    .expect("anchor found it");
+                let end = start
+                    + 1
+                    + lines[start + 1..]
+                        .iter()
+                        .position(|l| anchor_name(l, "ANCHOR_END:") == Some(name))
+                        .expect("anchor found its end");
+                let range = line_range(content, start + 1, end);
+                if content[range.clone()] != *slice.as_bytes() {
+                    return Err(format!(
+                        "{}: the slice leaves out other anchors' marker lines, so it is not one span of the file",
+                        self.canonical()
+                    ));
+                }
+                Ok(range)
+            }
+            Projection::Key(_) => Err(format!(
+                "{}: a value, not a span of the file",
+                self.canonical()
+            )),
         }
     }
 }
@@ -190,9 +237,9 @@ pub fn split_input(entry: &str) -> Result<(&str, Option<Projection>), String> {
     Ok((path, Some(projection)))
 }
 
-/// Lines `from..to` of `content`, 0-based, `to` exclusive and clamped,
-/// each with its terminator.
-fn line_span(content: &[u8], from: usize, to: usize) -> &[u8] {
+/// The bytes of lines `from..to` of `content`, 0-based, `to` exclusive and
+/// clamped, each with its terminator.
+fn line_range(content: &[u8], from: usize, to: usize) -> Range<usize> {
     let mut start = content.len();
     let mut end = content.len();
     let mut offset = 0;
@@ -206,7 +253,7 @@ fn line_span(content: &[u8], from: usize, to: usize) -> &[u8] {
         }
         offset += line.len();
     }
-    &content[start.min(end)..end]
+    start.min(end)..end
 }
 
 /// The lines of `text` split at LF, without terminators, as the marker

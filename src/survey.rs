@@ -5,7 +5,8 @@
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
-use crate::loader::Ctx;
+use crate::config::{self, Expansion};
+use crate::loader::{Ctx, Production};
 use crate::marker::{self, File, Region, Segment};
 
 /// A template read and parsed, with the context its paths resolve in.
@@ -15,13 +16,21 @@ pub struct Template {
     /// The file itself: a symlinked template is its target.
     pub file: PathBuf,
     pub text: String,
+    /// The parse, `use` regions expanded to their recipes' openers.
     pub parsed: File,
     pub ctx: Ctx,
+    /// What expanding the recipes came to.
+    pub recipes: Expansion,
 }
 
 impl Template {
     pub fn regions(&self) -> impl Iterator<Item = &Region> {
         regions(&self.parsed)
+    }
+
+    /// Fresh loaders for this template, as `run` would build them.
+    pub fn loaders(&self) -> Production {
+        Production::new(self.ctx.clone()).with_recipes(&self.recipes)
     }
 }
 
@@ -43,7 +52,7 @@ pub fn regions(file: &File) -> impl Iterator<Item = &Region> {
 
 /// Reads one file as `run` does: `None` when it holds no region, whatever
 /// its encoding; an error when it has markers and is not UTF-8 or does not
-/// parse.
+/// parse. `use` regions are expanded, as `run` expands them.
 pub fn read(path: &Path) -> Result<Option<Template>, FileError> {
     let fail = |line, message: String| FileError {
         path: path.to_path_buf(),
@@ -67,16 +76,19 @@ pub fn read(path: &Path) -> Result<Option<Template>, FileError> {
     if !text.contains("<!--") {
         return Ok(None);
     }
-    let parsed = marker::parse(&text).map_err(|e| fail(Some(e.line), e.message))?;
+    let mut parsed = marker::parse(&text).map_err(|e| fail(Some(e.line), e.message))?;
     if regions(&parsed).next().is_none() {
         return Ok(None);
     }
+    let ctx = Ctx::for_template(&file);
+    let recipes = config::expand(&mut parsed, &ctx.region_root, ctx.repo_root.as_deref());
     Ok(Some(Template {
         path: path.to_path_buf(),
-        ctx: Ctx::for_template(&file),
+        ctx,
         file,
         text,
         parsed,
+        recipes,
     }))
 }
 
