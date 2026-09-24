@@ -1,5 +1,5 @@
-//! The three loaders, `tree`, `exec` and `file`, and the production
-//! `Loaders` adapter.
+//! The loaders, `tree`, `exec`, `file`, `value`, `index` and `toc`, and the
+//! production `Loaders` adapter.
 
 /// What every loader produces: the text a sink shapes, and the snapshot of
 /// the inputs it read, which the input sum is taken over.
