@@ -79,6 +79,17 @@ enum Cmd {
     Trust { path: Option<PathBuf> },
     /// Remove the grant for the repository containing PATH.
     Untrust { path: Option<PathBuf> },
+    /// Run every loader twice, once under a perturbed environment, and report
+    /// regions whose output differs or moved without their inputs. Writes nothing.
+    Doctor {
+        paths: Vec<PathBuf>,
+        /// Treat every file as trusted for this invocation without writing the store.
+        #[arg(long)]
+        trust: bool,
+        /// Only the regions with this name; repeat for more.
+        #[arg(long, value_name = "NAME")]
+        only: Vec<String>,
+    },
 }
 
 /// Runs the command line and returns the exit code.
@@ -160,6 +171,15 @@ fn dispatch(cli: Cli) -> Result<u8> {
             }
             Ok(0)
         }
+        Cmd::Doctor { paths, trust, only } => crate::doctor::main(
+            paths,
+            &crate::doctor::Job {
+                trust: *trust,
+                only,
+                verbose: cli.verbose,
+                json: cli.format == Format::Json,
+            },
+        ),
     }
 }
 
@@ -173,7 +193,7 @@ fn is_markdown(path: &Path) -> bool {
 /// extension, walked directories and the current directory for `.md` and
 /// `.markdown`, dotfiles included, symlinks left to the files they name.
 /// Two paths to one file are one file, named by the path that is not a link.
-fn discover(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+pub(crate) fn discover(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     let roots: Vec<PathBuf> = if paths.is_empty() {
         vec![PathBuf::from(".")]
@@ -401,16 +421,23 @@ fn process(paths: &[PathBuf], job: &Job<'_>) -> Result<u8> {
     Ok(tier)
 }
 
-fn process_file(path: &Path, job: &Job<'_>, store: &Store) -> Outcome {
-    match try_process_file(path, job, store) {
-        Ok(outcome) => outcome,
-        Err(e) => Outcome::error(None, format!("{e:#}")),
-    }
+/// A template as `open` found it.
+pub(crate) enum Opened {
+    /// No region: none of the tool's business.
+    Skip,
+    /// Tier 2 for the file: not UTF-8, or a parse error at a line.
+    Error(Option<usize>, String),
+    Template {
+        /// The file itself, a symlink resolved to its target.
+        file: PathBuf,
+        text: String,
+        parsed: marker::File,
+    },
 }
 
-fn try_process_file(path: &Path, job: &Job<'_>, store: &Store) -> Result<Outcome> {
-    // A symlinked template is its target: paths resolve against the
-    // target's directory and the write lands in the target.
+/// Reads and parses one template. A symlinked template is its target:
+/// paths resolve against the target's directory and a write lands in it.
+pub(crate) fn open(path: &Path) -> Result<Opened> {
     let file = if is_link(path) {
         path.canonicalize().context("unreadable")?
     } else {
@@ -420,17 +447,51 @@ fn try_process_file(path: &Path, job: &Job<'_>, store: &Store) -> Result<Outcome
     let text = match String::from_utf8(bytes) {
         Ok(text) => text,
         Err(e) if marker::has_marker(&String::from_utf8_lossy(e.as_bytes())) => {
-            return Ok(Outcome::error(None, "not UTF-8"));
+            return Ok(Opened::Error(None, "not UTF-8".to_string()));
         }
         // A file with no marker is none of the tool's business, whatever its encoding.
-        Err(_) => return Ok(Outcome::default()),
+        Err(_) => return Ok(Opened::Skip),
     };
     if !text.contains("<!--") {
-        return Ok(Outcome::default());
+        return Ok(Opened::Skip);
     }
     let parsed = match marker::parse(&text) {
         Ok(p) => p,
-        Err(e) => return Ok(Outcome::error(Some(e.line), e.message)),
+        Err(e) => return Ok(Opened::Error(Some(e.line), e.message)),
+    };
+    if !parsed
+        .segments
+        .iter()
+        .any(|s| matches!(s, marker::Segment::Region(_)))
+    {
+        return Ok(Opened::Skip);
+    }
+    Ok(Opened::Template { file, text, parsed })
+}
+
+/// Whether the store trusts the template's repository root, or its region
+/// root outside a repository.
+pub(crate) fn is_trusted(ctx: &Ctx, store: &Store) -> Result<bool> {
+    let root = ctx
+        .repo_root
+        .clone()
+        .map(Ok)
+        .unwrap_or_else(|| trust::root_for(&ctx.region_root))?;
+    Ok(store.is_trusted(&root)?)
+}
+
+fn process_file(path: &Path, job: &Job<'_>, store: &Store) -> Outcome {
+    match try_process_file(path, job, store) {
+        Ok(outcome) => outcome,
+        Err(e) => Outcome::error(None, format!("{e:#}")),
+    }
+}
+
+fn try_process_file(path: &Path, job: &Job<'_>, store: &Store) -> Result<Outcome> {
+    let (file, text, parsed) = match open(path)? {
+        Opened::Skip => return Ok(Outcome::default()),
+        Opened::Error(line, message) => return Ok(Outcome::error(line, message)),
+        Opened::Template { file, text, parsed } => (file, text, parsed),
     };
     let names: Vec<String> = parsed
         .segments
@@ -441,24 +502,9 @@ fn try_process_file(path: &Path, job: &Job<'_>, store: &Store) -> Result<Outcome
         })
         .flatten()
         .collect();
-    if !parsed
-        .segments
-        .iter()
-        .any(|s| matches!(s, marker::Segment::Region(_)))
-    {
-        return Ok(Outcome::default());
-    }
     let ctx = Ctx::for_template(&file);
     let needs_trust = matches!(job.mode, Mode::Run { .. } | Mode::DryRun { .. });
-    let trusted = needs_trust
-        && (job.trust || {
-            let root = ctx
-                .repo_root
-                .clone()
-                .map(Ok)
-                .unwrap_or_else(|| trust::root_for(&ctx.region_root))?;
-            store.is_trusted(&root)?
-        });
+    let trusted = needs_trust && (job.trust || is_trusted(&ctx, store)?);
     let select = |r: &Region| {
         job.only.is_empty() || r.opener.name.as_ref().is_some_and(|n| job.only.contains(n))
     };

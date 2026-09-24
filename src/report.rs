@@ -140,12 +140,12 @@ pub fn json(files: &[FileJson<'_>], exit: u8) -> String {
     out
 }
 
-fn optional(s: Option<&str>) -> String {
+pub(crate) fn optional(s: Option<&str>) -> String {
     s.map_or("null".to_string(), string)
 }
 
 /// A JSON string literal.
-fn string(s: &str) -> String {
+pub(crate) fn string(s: &str) -> String {
     let mut out = String::from("\"");
     for c in s.chars() {
         match c {

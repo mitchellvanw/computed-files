@@ -41,6 +41,7 @@ use std::time::{Duration, Instant};
 use globset::GlobMatcher;
 
 use crate::fs::{self, Ignores, WalkOpts};
+use crate::launch::Wrap;
 use crate::marker::{self, Opener, Region};
 use crate::render::Loaders;
 
@@ -201,6 +202,7 @@ pub struct Production {
     ctx: Ctx,
     walks: HashMap<String, Loaded>,
     read: BTreeSet<PathBuf>,
+    wrap: Option<Box<Wrap>>,
 }
 
 impl Production {
@@ -209,7 +211,14 @@ impl Production {
             ctx,
             walks: HashMap::new(),
             read: BTreeSet::new(),
+            wrap: None,
         }
+    }
+
+    /// Every exec command this adapter runs is started through `wrap`.
+    pub fn with_wrap(mut self, wrap: Box<Wrap>) -> Production {
+        self.wrap = Some(wrap);
+        self
     }
 
     /// The canonical paths of every file a snapshot read, so a caller can
@@ -298,7 +307,12 @@ impl Loaders for Production {
                     None => Vec::new(),
                     Some(globs) => inputs_snapshot(&self.ctx, globs, &mut self.read)?,
                 };
-                let text = exec(&self.ctx, &args, &self.region_name(region))?;
+                let text = exec(
+                    &self.ctx,
+                    &args,
+                    &self.region_name(region),
+                    self.wrap.as_deref(),
+                )?;
                 Ok(Loaded { text, snapshot })
             }
             Loader::File(args) => self.file(&args),
@@ -702,8 +716,14 @@ fn push_entry(out: &mut Vec<u8>, rel: &[u8], content: &[u8]) {
 /// exits or the timeout expires, the group is killed: the output is what
 /// the command printed before its shell was done, and a background job it
 /// left behind cannot hold the pipes open. A process that left the group
-/// and still holds them is a failure once the timeout has passed.
-fn exec(ctx: &Ctx, args: &ExecArgs, region_name: &str) -> Result<String, LoadError> {
+/// and still holds them is a failure once the timeout has passed. `wrap`
+/// may put a tracer or another environment around the shell.
+pub fn exec(
+    ctx: &Ctx,
+    args: &ExecArgs,
+    region_name: &str,
+    wrap: Option<&Wrap>,
+) -> Result<String, LoadError> {
     let template = ctx
         .template
         .canonicalize()
@@ -713,9 +733,6 @@ fn exec(ctx: &Ctx, args: &ExecArgs, region_name: &str) -> Result<String, LoadErr
         .arg("-c")
         .arg(&args.cmd)
         .current_dir(&ctx.region_root)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
         .env("LC_ALL", "C")
         .env("LANGUAGE", "")
         .env("TZ", "UTC")
@@ -725,9 +742,21 @@ fn exec(ctx: &Ctx, args: &ExecArgs, region_name: &str) -> Result<String, LoadErr
         Some(root) => command.env("COMPUTED_ROOT", root),
         None => command.env_remove("COMPUTED_ROOT"),
     };
+    if let Some(wrap) = wrap {
+        command = wrap(command)?;
+    }
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     std::os::unix::process::CommandExt::process_group(&mut command, 0);
     let deadline = Instant::now() + args.timeout;
-    let mut child = command.spawn().map_err(|e| hard(format!("/bin/sh: {e}")))?;
+    let mut child = command.spawn().map_err(|e| {
+        hard(format!(
+            "{}: {e}",
+            Path::new(command.get_program()).display()
+        ))
+    })?;
     let (tx, rx) = mpsc::channel();
     let pipes: [Box<dyn Read + Send>; 2] = [
         Box::new(child.stdout.take().expect("piped")),
