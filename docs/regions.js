@@ -3,7 +3,7 @@
 //
 //   g   the group heading            n   the entry number
 //   f   the file it would live in     who agent | human | both
-//   l   tree | exec                   m   the marker line, real grammar
+//   l   the loader                    m   the marker line, real grammar
 //   d   why it rots today             c   a caveat, when there is one
 //   x   an example of the body        xk  live | real | shape
 //
@@ -19,14 +19,16 @@ const ENTRIES = [
   m: O + "exec cmd=scripts/module-map.sh inputs=src/*.rs,scripts/module-map.sh name=modules as=fence" + C,
   d: `Two sources of truth for one fact. In this repository the README hand-copies the same descriptions that already exist as <code>//!</code> comments in the source, and the two wordings have already diverged.`,
   xk: "real",
-  x: `cli.rs      The five commands: clap definitions, discovery, per-file context…
-fs.rs       The walk, the repository root, and the atomic write.
-loader.rs   The two loaders, tree and exec, and the production Loaders adapter.
-marker.rs   The marker grammar: parse a file into prose and regions, and serialise it back.
-render.rs   Decides what every region becomes. Pure: a parsed file, a mode, a trust…
-report.rs   The stderr line per region, loader stderr indented beneath, and the…
-sink.rs     The two sinks, raw and fence, and the normalisation every loader's…
-trust.rs    The per-clone trust store: trust.toml under XDG_CONFIG_HOME, one…` },
+  x: `adopt.rs    \`adopt\`: a hand edit inside a \`file\` region written back into the f…
+affected.rs \`affected\`: the regions whose snapshots read a path. Runs the snaps…
+allow.rs    The per-machine allowlist of URL prefixes a \`remote\` region may fet…
+cli.rs      The commands: clap definitions, discovery, per-file context and tru…
+config.rs   \`computed.toml\` and the \`use\` loader. A repository names recipes, e…
+doctor.rs   \`computed doctor\`: runs every region's loader twice, once as \`run\` …
+dupes.rs    \`dupes\`: verbatim blocks copied between Markdown files, or within o…
+fs.rs       The walk, the ignore rules, the repository root, and the atomic wri…
+git.rs      The \`git\` loader: recent commits touching a path, the most recent t…
+…` },
 
 { g: "Agent-first", n: 2, f: "CLAUDE.md", who: "agent", l: "exec",
   t: "The internal dependency graph — which module uses which",
@@ -178,9 +180,9 @@ run:  cargo clippy --all-targets -- -D warnings
 run:  cargo fmt --check
 run:  computed check . docs/index.html` },
 
-{ g: "Agent-first", n: 15, f: "CLAUDE.md", who: "agent", l: "exec",
+{ g: "Agent-first", n: 15, f: "CLAUDE.md", who: "agent", l: "file",
   t: "The per-directory ownership map",
-  m: O + `exec cmd="cat ../.github/CODEOWNERS" inputs=../.github/CODEOWNERS name=owners as=fence` + C,
+  m: O + "file src=.github/CODEOWNERS name=owners as=fence" + C,
   d: `CODEOWNERS is already a per-path ownership map, and the table in the docs duplicates it. <code>codeowners-generator --preserve-block-position</code> exists precisely to keep a generated block inside a hand-editable file — the same idea, one file over.`,
   xk: "shape",
   x: `/src/loader.rs   @team-core
@@ -305,9 +307,9 @@ fr-FR.json
 ja-JP.json
 pt-BR.json` },
 
-{ g: "Serving both", n: 27, f: "README.md", who: "both", l: "exec",
+{ g: "Serving both", n: 27, f: "README.md", who: "both", l: "file",
   t: "The “these copies must stay in sync” ledger",
-  m: O + `exec cmd="cat docs/tables/states.md" inputs=docs/tables/states.md name=states as=raw` + C,
+  m: O + "file src=docs/tables/states.md name=states" + C,
   d: `Compute the canonical table once, embed the same region in every file that needs it, and let <code>check</code> catch a divergence. Measured here: the exit-code table lives in four files, the command synopsis in four, the state table in four — and exactly one of those copies is a region. Kubernetes hand-rolls this with seventy-six verify/update script pairs.`,
   xk: "shape",
   x: `| State | run | check |
@@ -322,12 +324,21 @@ pt-BR.json` },
   m: O + "exec cmd=scripts/grammar-table.sh inputs=src/marker.rs,scripts/grammar-table.sh name=grammar as=raw" + C,
   d: `The best single region this project could add. The loader and attribute table is a constant in <code>src/marker.rs</code>, and it is hand-copied into the README, the reference, this site and the spec. <code>schemars</code> does the equivalent for serde types.`,
   xk: "real",
-  x: `| Loader | Attributes           | Flags     | Default sink |
-|--------|----------------------|-----------|--------------|
-| tree   | src, depth           | all, dirs | fence        |
-| exec   | cmd, inputs, timeout | volatile  | raw          |
+  x: `| Loader     | Attributes                      | Flags                   | Default sink |
+|------------|---------------------------------|-------------------------|--------------|
+| tree       | src, depth                      | all, dirs               | fence        |
+| exec       | cmd, inputs, timeout            | volatile, sandbox       | raw          |
+| file       | src, lines, section, anchor     |                         | raw          |
+| value      | src, key                        |                         | raw          |
+| index      | src, title                      |                         | raw          |
+| toc        | min, max                        |                         | raw          |
+| use        | recipe                          |                         | raw          |
+| symbol     | src, item, part                 |                         | fence        |
+| git        | src, n                          | log, tags, contributors | raw          |
+| remote     | url, sha256, timeout            |                         | raw          |
+| transcript | steps, inputs, timeout, workdir | volatile, sandbox       | fence        |
 
-Common to both: name, as, lang` },
+Common to all: name, as, lang, on-stale, max-lines` },
 
 { g: "Serving both", n: 29, f: "docs/spec/computed-v0.md", who: "both", l: "exec",
   t: "Spec coverage by tests — which section of the spec has a test",
@@ -350,10 +361,10 @@ Common to both: name, as, lang` },
 discover-regions  Find hand-written blocks in a repository's Markdown that go
                   stale on their own, and turn them into computed regions.` },
 
-{ g: "Serving both", n: 31, f: "CLAUDE.md", who: "both", l: "exec", shipped: true,
+{ g: "Serving both", n: 31, f: "CLAUDE.md", who: "both", l: "index", shipped: true,
   t: "The index of decisions",
-  m: O + "exec cmd=scripts/adr-index.sh inputs=docs/adr/*.md,scripts/adr-index.sh name=adrs" + C,
-  d: `Already running in this repository's <code>CLAUDE.md</code>. <code>adr-log</code> is the prior art and uses the same marker shape, with no check mode; <code>adr generate toc</code> only prints to stdout and leaves a human to place it.`,
+  m: O + "index src=docs/adr/*.md name=adrs" + C,
+  d: `Already running in this repository's <code>CLAUDE.md</code>. It began as an exec region over a shell script and became one <code>index</code> line, which needs no trust. <code>adr-log</code> is the prior art and uses the same marker shape, with no check mode; <code>adr generate toc</code> only prints to stdout and leaves a human to place it.`,
   xk: "live",
   x: `- [Rust for the prototype](docs/adr/0001-rust-for-the-prototype.md)
 - [Two sums in the closer](docs/adr/0002-two-sum-closer.md)
@@ -389,11 +400,16 @@ discover-regions  Find hand-written blocks in a repository's Markdown that go
   m: O + "exec cmd=scripts/cli-commands.sh inputs=src/cli.rs,scripts/cli-commands.sh name=commands as=fence" + C,
   d: `Already running in this repository's agent reference. An open issue on adobe/aio-cli is the same problem, unsolved for three years. simonw/llm solves it with cog, at the cost of needing the interpreter, the package and a doctored environment in CI.`,
   xk: "live",
-  x: `computed run      [paths] [--force] [--dry-run] [--trust]
-computed check    [paths]
-computed clean    [paths] [--force] [--dry-run]
+  x: `computed run      [paths] [--force] [--dry-run] [--trust] [--only NAME] [--allow PREFIX]
+computed check    [paths] [--only NAME]
+computed clean    [paths] [--force] [--dry-run] [--only NAME]
+computed update   [paths] [--dry-run] [--only NAME] [--allow PREFIX]
+computed allow    [prefix]
+computed disallow <prefix>
 computed trust    [path]
-computed untrust  [path]` },
+computed untrust  [path]
+computed stats    [paths]
+…` },
 
 { g: "Files that are not documentation", n: 34, f: "docs/spec/computed-v0.md", who: "both", l: "exec",
   t: "Inside a spec — its own crate layout and dependency list",

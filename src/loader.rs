@@ -1,5 +1,6 @@
-//! The loaders, `tree`, `exec`, `file`, `value`, `index` and `toc`, and the
-//! production `Loaders` adapter.
+//! The loaders, `tree`, `exec`, `file`, `value`, `index`, `toc`, `symbol`,
+//! `git`, `remote` and `transcript`, and the production `Loaders` adapter,
+//! which expands `use` regions from their recipes first.
 
 /// What every loader produces: the text a sink shapes, and the snapshot of
 /// the inputs it read, which the input sum is taken over.

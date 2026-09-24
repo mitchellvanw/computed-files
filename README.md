@@ -1,6 +1,6 @@
 # computed
 
-Keep marked regions of a hand-written Markdown file current. The document is a view. The truth lives somewhere else: a directory listing or the output of a command.
+Keep marked regions of a hand-written Markdown file current. The document is a view. The truth lives somewhere else: a directory listing, a part of another file, the repository's history, or the output of a command.
 
 ~~~markdown
 ## Layout
@@ -20,7 +20,7 @@ Keep marked regions of a hand-written Markdown file current. The document is a v
 
 The prose around the markers is yours. The body between them belongs to the tool. `computed run` renders every region that needs it; `computed check` in CI exits 1 if anything drifted, without running a single command.
 
-One static binary, Rust, no runtime to install. The full design is in [`docs/spec/computed-v0.md`](docs/spec/computed-v0.md); the decisions that are hard to reverse are under [`docs/adr/`](docs/adr/). This repository is its own first user: [`CLAUDE.md`](CLAUDE.md) carries a tree region and an exec region, kept current by `computed run` in pre-commit and verified by `computed check` in CI.
+One static binary, Rust, no runtime to install. The full design is in [`docs/spec/computed-v0.md`](docs/spec/computed-v0.md); the decisions that are hard to reverse are under [`docs/adr/`](docs/adr/). This repository is its own first user: [`CLAUDE.md`](CLAUDE.md) carries a file tree and an index of the ADRs, kept current by `computed run` in pre-commit and verified by `computed check` in CI.
 
 ## Install
 
@@ -42,6 +42,8 @@ This repository is also a Claude Code plugin. Installing it hands an agent the m
 ```
 
 `/reload-plugins` makes the skills live in this session. `/computed-setup` installs and wires the tool, then offers `/discover-regions`, which finds the hand-written blocks worth computing and writes the markers.
+
+The plugin also guards the agent's edits. Before an edit lands, a hook refuses one that changes a region's body and names the source to edit instead; after it, a second hook reports any region the edit left stale. `run` refusing a hand edit at commit time is the backstop, not the first signal. [ADR 0025](docs/adr/0025-the-guard-refuses-an-edit-before-it-lands.md); without the plugin, see [`docs/integrations.md`](docs/integrations.md#claude-code).
 
 The two wizards are [`computed-setup`](claude-code-plugin/skills/computed-setup/SKILL.md) and [`discover-regions`](claude-code-plugin/skills/discover-regions/SKILL.md). They share [`REFERENCE.md`](claude-code-plugin/skills/REFERENCE.md), whose command block is itself a `computed` region over `src/cli.rs`, so CI fails if the command line moves and the skills do not.
 
@@ -95,19 +97,32 @@ Every state is derived from the file and its inputs alone.
 
 **Templates that read each other settle in one run.** When one region's `inputs=` include another template, `run` renders again whatever read a file it just wrote, until nothing changes, and the sums in a closer are left out of any snapshot that reads them. [ADR 0014](docs/adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md).
 
-**`check` never runs a loader.** It recomputes snapshots, compares both sums and reports. So it is safe on an unvetted clone and cheap in a hook. The diff `run` would write lives on `run --dry-run`. [ADR 0006](docs/adr/0006-check-never-runs-a-loader.md).
+**`check` never runs a command from the repository.** It recomputes snapshots, compares both sums and reports. Snapshots read files, and for a `git` region they read history with `git`; they never run an exec command and never fetch. So `check` is safe on an unvetted clone and cheap in a hook. The diff `run` would write lives on `run --dry-run`. [ADR 0006](docs/adr/0006-check-never-runs-a-loader.md), [ADR 0018](docs/adr/0018-the-git-snapshot-runs-git-under-check.md).
 
 ## Loaders and sinks
 
 A loader produces text and a snapshot of what it read. A sink shapes that text into what goes in the file.
 
-| Loader | Attributes | Snapshot | Default sink |
-|---|---|---|---|
-| `tree` | `src=.` `depth=` and the flags `all` `dirs` | One relative path per line, from the same walk that drew the listing | `fence` |
-| `exec` | `cmd=` `timeout=30` and exactly one of `inputs=` or `volatile` | Path, length and content of every matched file; empty when volatile | `raw` |
-| `file` | `src=`, one file, included verbatim; needs no trust | Path, length and content of that file | `raw` |
+| Loader | Renders | Trust |
+|---|---|---|
+| `tree` | a directory listing, `tree`-style, gitignore-aware | no |
+| `file` | another file, or one slice of it: `lines=`, `section=`, `anchor=` | no |
+| `value` | one field of a TOML, JSON or YAML file: `key=package.version` | no |
+| `index` | a linked list of files matched by globs, titled by their first heading | no |
+| `toc` | the file's own headings, with GitHub's anchors | no |
+| `symbol` | one item of a Rust, Python or Go file: whole, its signature, or its doc | no |
+| `git` | recent commits, tags or contributors | no |
+| `remote` | a document fetched over HTTPS, pinned by its SHA-256 | no; an allowlist |
+| `exec` | a command's output, with `inputs=` or `volatile` | yes |
+| `transcript` | a shell session, each step and what it printed | yes |
 
-Common attributes: `name=` for stable reports, `as=` to pick a sink, `lang=` for the fence language. An indented region, such as one inside a list item, gets its body indented to match. The `tree` loader is gitignore-aware through the `ignore` crate, with the per-clone and per-user exclude files switched off so the listing is the same on every machine.
+Sinks are `raw` (Markdown as it stands), `fence` (a code block) and `table`, which turns CSV, TSV or JSON Lines into a Markdown table. Every region also takes `name=`, `as=`, `lang=`, `max-lines=N`, which cuts long output to N lines and a note, and `on-stale=warn`, which lets `check` report the region stale without failing. The full grammar of each loader is in the [spec](docs/spec/computed-v0.md#which-loaders).
+
+**A region reads only what it names.** The snapshot of `file src=README.md section=Install` is that section, and of `value src=Cargo.toml key=package.version` the version, so an edit anywhere else in the file leaves the region fresh. An `exec` input can be narrowed the same way: `inputs="Cargo.toml#key=package.version,src/*.rs"`. [ADR 0016](docs/adr/0016-a-projection-snapshots-only-the-part-it-reads.md).
+
+**Native loaders need no trust.** Every loader but `exec` and `transcript` reads files, history or a pinned document and runs nothing from the repository, so a fresh clone renders them without a grant. Before, an ADR index or a version string was a script, and a fresh clone's hook failed on it until someone ran `computed trust`. [ADR 0017](docs/adr/0017-trust-gates-running-repository-code-and-nothing-else.md).
+
+**A long opener can be named once.** A `computed.toml` holds recipes, `[recipe.adrs]` with a loader and its attributes, and a region writes `use recipe=adrs`. The recipe's expansion is the opener for every purpose, sums included. [ADR 0022](docs/adr/0022-recipes-in-computed-toml.md).
 
 Relative paths in a marker resolve against the directory of the file that contains the marker, not the repository root and not the shell's working directory, and an exec command runs there. A region reads the same from a pre-commit hook, from CI, and from a terminal, and moving the file moves its regions with it. [ADR 0004](docs/adr/0004-region-root-is-the-template-directory.md).
 
@@ -115,27 +130,54 @@ Every loader's text is normalised before a sink sees it, and exec runs with `LC_
 
 ### Exec regions run only in a trusted clone
 
-Cloning a repository should not execute anything in it. An exec region runs only after `computed trust` has recorded a grant for that repository root on this machine, in `~/.config/computed/trust.toml`, never in the working tree. Until then `run` skips the region, keeps its body, reports it `untrusted` and exits 1. Tree regions in the same file still render. CI passes `run --trust` for one invocation; a `check`-only pipeline needs no trust at all. [ADR 0007](docs/adr/0007-exec-trust-per-clone.md).
+Cloning a repository should not execute anything in it. An exec or transcript region runs only after `computed trust` has recorded a grant for that repository root on this machine, in `~/.config/computed/trust.toml`, never in the working tree. Until then `run` skips the region, keeps its body, reports it `untrusted` and exits 1. Other regions in the same file still render. CI passes `run --trust` for one invocation; a `check`-only pipeline needs no trust at all. [ADR 0007](docs/adr/0007-exec-trust-per-clone.md).
+
+A `remote` region has a gate of its own. `check` never fetches: the snapshot is the url and its pin. `run` fetches only under a url prefix this machine has allowed with `computed allow`, and a body that no longer matches the pin keeps the old one. `computed update` moves the pins, as a reviewable one-line diff per region. [ADR 0019](docs/adr/0019-remote-regions-are-pinned-and-allowlisted.md).
+
+### Keeping `check` honest
+
+`check` answers from sums, so it believes two things it cannot see: that a loader prints the same for the same inputs, and that `inputs=` names everything a command reads. Three tools test them.
+
+- `computed doctor` renders every region twice, the second time from another directory under a changed environment, and reports regions whose output differs, or whose output moved while their inputs did not.
+- `computed trace` runs each exec command under a file-access tracer, lists the files it read that `inputs=` does not declare and the declared ones it never read, and with `--write` fixes the opener. It needs no root: `strace` on Linux, the sandbox's own read reports on macOS. [ADR 0021](docs/adr/0021-trace-reads-the-macos-sandbox-reports.md).
+- The `sandbox` flag on an exec region runs its command where it can read only its declared inputs and the system's programs, and reach no network. An undeclared read fails the region, so its `inputs=` is complete or it does not render. A sandboxed region still needs trust. [ADR 0020](docs/adr/0020-the-sandbox-enforces-inputs-and-does-not-replace-trust.md).
 
 ## The command line
 
 ```
-computed run   [paths] [--force] [--dry-run] [--trust] [--only NAME]
-computed check [paths] [--only NAME]
-computed clean [paths] [--force] [--dry-run] [--only NAME]
-computed trust   [path]
-computed untrust [path]
+computed run      [paths] [--force] [--dry-run] [--trust] [--only NAME] [--allow PREFIX]
+computed check    [paths] [--only NAME]
+computed clean    [paths] [--force] [--dry-run] [--only NAME]
+computed trust    [path]
+computed untrust  [path]
+computed update   [paths] [--dry-run] [--only NAME] [--allow PREFIX]
+computed allow    [PREFIX]
+computed disallow PREFIX
+computed doctor   [paths] [--only NAME] [--trust] [--allow PREFIX]
+computed trace    [paths] [--only NAME] [--trust] [--write]
+computed affected PATHS...
+computed graph    [paths] [--format mermaid|dot|json]
+computed why      FILE [--only NAME | --line N]
+computed stats    [paths]
+computed dupes    [paths] [--min-lines N]
+computed adopt    FILE [--only NAME] [--dry-run]
+computed merge    BASE OURS THEIRS [PATH] | --install
+computed guard    FILE --proposed PATH | --hook pre|post
+computed watch    [paths] [--trust] [--allow PREFIX]
+computed lsp
 ```
+
+`run`, `check` and `clean` are the tool; the rest are built on them. `update`, `allow` and `disallow` move remote pins and keep the allowlist. `doctor` and `trace` test what `check` has to believe. `affected` lists the regions a path reaches, `graph` draws what every region reads, `why` explains from git history why a region is stale, `stats` says how much of each file is computed, and `dupes` finds blocks copied between Markdown files and the `file` region that would replace each copy. `adopt` writes a hand edit in a `file` region back into its source. `merge`, `guard`, `watch` and `lsp` are for git, agents and editors, below.
 
 With no paths, the current directory is walked with the tree loader's ignore settings, dot-directories such as `.claude/` and `.github/` included, and every `.md` and `.markdown` file is read. An explicit file is read whatever its extension. A symlinked file is written through, never replaced. `--only NAME` narrows a command to the regions with that name.
 
 | Exit | Meaning |
 |---|---|
-| 0 | Nothing to report. Everything is fresh. |
-| 1 | The content said no: drift under `check`, a write, a refused file, a loader failure or an untrusted region under `run`. |
-| 2 | The tool could not answer: usage error, marker parse error, a path escaping the repository, `inputs=` matching nothing, a file edited while `run` computed it. |
+| 0 | Nothing to report. Everything is fresh, or only stale where the opener says `on-stale=warn`. |
+| 1 | The content said no: drift under `check`; a write, a refused file, a loader failure, or an untrusted or disallowed region under `run`. |
+| 2 | The tool could not answer: usage error, marker parse error, a path escaping the repository, `inputs=` matching nothing, a slice that finds nothing, a file edited while `run` computed it. |
 
-One line per region goes to stderr; `--dry-run` diffs are the only thing on stdout. Fresh regions print only with `-v`. `--format json` prints one JSON document on stdout instead, every region included.
+One line per region goes to stderr; `--dry-run` diffs are the only thing on stdout. Fresh regions print only with `-v`. `--format json` prints one JSON document on stdout instead, every region included. Each command's own output and exit codes are in the [spec](docs/spec/computed-v0.md#what-is-the-command-line).
 
 ### Hooks
 
@@ -145,6 +187,14 @@ Pre-commit runs `run`, CI runs `check`. The committed [`.pre-commit-config.yaml`
 #!/bin/sh
 exec computed run
 ```
+
+The rest is set out in [`docs/integrations.md`](docs/integrations.md):
+
+- **A GitHub Action.** `uses: mitchellvanw/computed-files@main` installs a checked release and runs `check`, annotating each region that is not fresh. With `command: suggest` it posts, on a pull request, what `run` would write as review suggestions.
+- **A merge driver.** Two branches that each re-render a region conflict inside it. `computed merge --install` routes Markdown through a driver that takes the side that changed a region and leaves a region both sides changed unrendered for the next `run`. [ADR 0024](docs/adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md).
+- **Claude Code hooks** that refuse an edit to a region before it lands, with or without the plugin.
+- **Editors.** `computed lsp` shows each region's state as you type and renders it from a code lens. Setups for Neovim, Helix and VS Code.
+- **`computed watch`**, which runs `run` whenever something a region reads changes.
 
 ## Try it
 
@@ -164,19 +214,30 @@ Then act like someone else in the repository: add a file under `src/` and `check
 
 ```
 src/marker.rs     the marker grammar: parse to prose and regions, serialise back
-src/sink.rs       normalisation, raw and fence
+src/sink.rs       normalisation, raw, fence and table, and the max-lines cut
 src/render.rs     the sums, the states, refuse, untrusted, failure, clean; pure behind a Loaders seam
 src/fs.rs         the walk, the repository root, the atomic write
-src/loader.rs     tree over the walk, exec over /bin/sh with the pinned environment
+src/loader.rs     every loader behind one enum, the pinned shell, the read set, recipe expansion
+src/project.rs    the projections: lines=, section=, anchor=, key=
 src/trust.rs      the per-clone grant store
-src/report.rs     the stderr line per region and the dry-run diff
-src/cli.rs        the five commands, discovery, exit tiers
+src/allow.rs      the per-machine allowlist for remote regions
+src/report.rs     the stderr line per region, the dry-run diff, the JSON document
+src/cli.rs        clap, discovery, exit tiers, settling, one dispatch arm per command
+
+src/{symbol,git,remote,transcript,index,toc,table,config}.rs
+                  one loader, sink or the recipe file each
+src/{update,doctor,trace,affected,graph,why,stats,dupes,adopt,merge,guard,watch,lsp}.rs
+                  one command each
 
 tests/render.rs   render through a fake Loaders against golden files; the goldens pin the sum vectors
 tests/cli.rs      the pre-commit scenario and the exit tiers, end to end
+tests/*.rs        one end-to-end file per loader and command
 
-docs/spec/        the v0 specification
+action.yml        the GitHub Action; its scripts are under scripts/action/
+claude-code-plugin/  the skills and the guard hooks
+docs/spec/        the specification
 docs/adr/         the decisions, argued
+docs/integrations.md  the Action, the merge driver, the Claude Code hooks, editors
 docs/research/    prior-art survey, gitignore semantics for the tree loader
 prototypes/       the HTML logic prototypes the design was tested on
 CONTEXT.md        the vocabulary: template, region, marker, sum, snapshot, drift
@@ -186,7 +247,7 @@ CONTEXT.md        the vocabulary: template, region, marker, sum, snapshot, drift
 
 ## Not yet
 
-`watch` is deferred until dogfooding shows agent sessions reading stale regions between commits. Also not in v0: a copy layout, sinks beyond `raw` and `fence`, configuration files, colour, Windows. The spec lists each with the reason it waits.
+Not built, by decision: a copy layout, colour, Windows, TypeScript for `symbol`. The spec lists what is still open with the reason each waits.
 
 ## Vocabulary
 

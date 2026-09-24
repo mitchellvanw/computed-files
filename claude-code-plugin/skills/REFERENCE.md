@@ -23,19 +23,39 @@ Markers inside a fenced code block are prose, so an example like the ones above 
 
 ## Loaders
 
-| Loader | Attributes | Default sink |
-|---|---|---|
-| `tree` | `src=.`, `depth=`, and the flags `all` and `dirs` | `fence` |
-| `exec` | `cmd=`, `timeout=30`, and exactly one of `inputs=` or `volatile` | `raw` |
-| `file` | `src=`, one file included verbatim; runs nothing, so needs no trust | `raw` |
+| Loader | Attributes | Renders | Default sink |
+|---|---|---|---|
+| `tree` | `src=.`, `depth=`, flags `all` and `dirs` | a directory listing, gitignore-aware | `fence` |
+| `file` | `src=`, and at most one of `lines=A-B`, `section=TEXT`, `anchor=NAME` | a file, or that slice of it | `raw` |
+| `value` | `src=`, `key=a.b.c` | one scalar of a `.toml`, `.json`, `.yaml` or `.yml` file | `raw` |
+| `index` | `src="GLOB,GLOB"`, `title=h1\|filename` | `- [Title](path)` per matched file | `raw` |
+| `toc` | `min=2`, `max=3` | this file's own headings as links | `raw` |
+| `symbol` | `src=`, `item=`, `part=whole\|signature\|doc` | one item of a `.rs`, `.py` or `.go` file | `fence` in the file's language |
+| `git` | one flag of `log`, `tags`, `contributors`; `src=.`, `n=10` | recent commits, tags or authors | `raw` |
+| `remote` | `url=https://…`, `sha256=`, `timeout=30` | a document pinned by its SHA-256 | `raw` |
+| `exec` | `cmd=`, `timeout=30`, exactly one of `inputs=` or `volatile`, flag `sandbox` | a command's stdout | `raw` |
+| `transcript` | `steps="A ;; B"`, exactly one of `inputs=` or `volatile`, `timeout=`, `workdir=tmp\|copy`, flag `sandbox` | each step as `$ step` and its output | `fence`, `lang=console` |
+| `use` | `recipe=NAME` and nothing else of the loader's | the opener named in `computed.toml` | the recipe's |
 
-Every region also takes `name=` for stable reports, `as=raw|fence` to pick the sink, and `lang=` for the fence language. The tool writes `| do not edit; run computed` after the attributes; nothing else may follow a `|`. An indented opener, such as one inside a list item, gets its body indented to match. To show marker examples in a region, fence them: `file src=example.md as=fence lang=markdown`.
+Every region also takes:
 
-`inputs=` is a comma-separated list of globs, with no empty entries, and it is what makes an exec region checkable: `check` re-snapshots those paths and compares sums without running the command. `volatile` declares there is nothing worth snapshotting, so the region re-renders on every `run` and `check` always passes it.
+- `name=` for stable reports;
+- `as=raw|fence|table` to pick the sink; `table` reads CSV, `delim=tab` or `from=jsonl` and writes a Markdown table;
+- `lang=` for the fence language;
+- `max-lines=N` to cut the text to N lines and a `… K more lines` note;
+- `on-stale=warn` to let `check` report the region stale without failing.
 
-Relative paths in a marker resolve against the directory of the file that holds the marker, and an exec command runs there, not in the repository root and not in the shell's working directory. An exec command gets `COMPUTED_ROOT`, `COMPUTED_FILE` (absolute) and `COMPUTED_REGION` in its environment and runs under `LC_ALL=C`, `TZ=UTC` and an empty `LANGUAGE`, so it gives the same bytes on a laptop and in CI. `tree` follows `.gitignore`.
+The tool writes `| do not edit; run computed` after the attributes; nothing else may follow a `|`. An indented opener, such as one inside a list item, gets its body indented to match. To show marker examples in a region, fence them: `file src=example.md as=fence lang=markdown`.
 
-An exec region runs only in a clone `computed trust` has granted, recorded in `~/.config/computed/trust.toml` and never in the working tree. Cloning a repository therefore executes nothing in it.
+**Slices.** `lines=`, `section=` and `anchor=` on `file`, and `key=` on `value`, snapshot only that part of the file, so an edit elsewhere leaves the region fresh. `section=` matches a heading's text exactly, at any level, and runs to the next heading of the same or higher level. `anchor=NAME` takes the lines between `ANCHOR: NAME` and `ANCHOR_END: NAME`. A slice that finds nothing is an `error`.
+
+**`inputs=`** is a comma-separated list of globs, with no empty entries, and it is what makes an exec or transcript region checkable: `check` re-snapshots those paths and compares sums without running the command. A literal path may take a slice after `#`: `inputs="Cargo.toml#key=package.version,src/cli.rs#lines=40-90,docs/*.md"`. `volatile` declares there is nothing worth snapshotting, so the region re-renders on every `run` and `check` always passes it. `sandbox` runs the command where it can read only its inputs and the system's programs and reach no network, so an undeclared read fails the region.
+
+**Recipes.** A `computed.toml` in the template's directory or one above it, up to the repository root, holds `[recipe.NAME]` tables: `loader = "index"` and the loader's attributes, flags as `true`. `use recipe=NAME` stands for that opener; its sums are the inline opener's, and editing the recipe makes its regions stale.
+
+Relative paths in a marker resolve against the directory of the file that holds the marker, and an exec command runs there, not in the repository root and not in the shell's working directory. An exec command gets `COMPUTED_ROOT`, `COMPUTED_FILE` (absolute) and `COMPUTED_REGION` in its environment and runs under `LC_ALL=C`, `TZ=UTC` and an empty `LANGUAGE`, so it gives the same bytes on a laptop and in CI.
+
+**Trust.** `exec` and `transcript` regions run only in a clone `computed trust` has granted, recorded in `~/.config/computed/trust.toml` and never in the working tree. Cloning a repository therefore executes nothing in it. Every other loader runs nothing from the repository and needs no grant. `remote` fetches only under a url prefix this machine allowed with `computed allow`; `computed update` fetches and writes the `sha256=` pin.
 
 ## Commands
 
@@ -44,14 +64,37 @@ An exec region runs only in a clone `computed trust` has granted, recorded in `~
 computed run      [paths] [--force] [--dry-run] [--trust] [--only NAME] [--allow PREFIX]
 computed check    [paths] [--only NAME]
 computed clean    [paths] [--force] [--dry-run] [--only NAME]
+computed update   [paths] [--dry-run] [--only NAME] [--allow PREFIX]
+computed allow    [prefix]
+computed disallow <prefix>
 computed trust    [path]
 computed untrust  [path]
+computed stats    [paths]
+computed guard    [file] [--proposed PATH] [--hook HOOK]
+computed watch    [paths] [--trust] [--allow PREFIX]
+computed lsp
+computed affected <paths>
+computed graph    [paths]
+computed why      <file> [--only NAME] [--line N]
+computed merge    [base] [ours] [theirs] [path] [--install]
+computed adopt    <file> [--only NAME] [--dry-run]
+computed dupes    [paths] [--min-lines N]
+computed doctor   [paths] [--trust] [--allow PREFIX] [--only NAME]
+computed trace    [paths] [--trust] [--only NAME] [--write]
 ```
-<!-- /computed in=dd54da8f6e0a71a63af3a129c58fdf8ca19fb08976df7cf6959954fe620a6af9 out=62ff5182e2b4af5b172cf45e30590aaa5dcef60420b115ecccbdd28ed4392ec9 -->
+<!-- /computed in=661365ae7b7c18192c5beb888a183c668a40b17d4a56940f061893a38d7077d3 out=bc0b59dc0cb69dca6d6c9db06e24b96bb529455e921031023662129eea9f69fc -->
 
 With no paths, the current directory is walked with the tree loader's ignore settings, dot-directories such as `.claude/` included, and every `.md` and `.markdown` file is read. An explicit file is read whatever its extension. `run --dry-run` prints the diff `run` would write and writes nothing. `--only NAME` narrows a command to the regions with that name. `--format json` prints one JSON document on stdout instead of the report.
 
 When one template's `inputs=` include another, `run` settles both in one invocation.
+
+Beyond `run`, `check` and `clean`, reach for:
+
+- `affected PATH` before changing a file, to see which regions it feeds; `why FILE` to see what moved since a stale region was rendered.
+- `trace` to find what an exec command reads that `inputs=` misses, `trace --write` to fix the opener; `doctor` to find a region whose output changes between runs or moved without its inputs.
+- `dupes` to find blocks copied between Markdown files, each with the `file` region that would replace the copy.
+- `adopt FILE` to write a hand edit inside a `file` region back into its source.
+- `stats` for how much of each file is computed; `graph` for what every region reads.
 
 ## States
 
@@ -66,15 +109,20 @@ One line per region goes to stderr, as `path:line name loader state`. Fresh regi
 | `unrendered` | The closer carries no sums. | renders | exit 1 |
 | `error` | The tool could not answer for this region. | skips it, renders the rest, exit 2 | exit 2 |
 
+A stale region whose opener says `on-stale=warn` is reported `stale warn` by `check`, which still exits 0.
+
 | Exit | Meaning |
 |---|---|
 | 0 | Everything is fresh. |
-| 1 | The content said no: drift under `check`; a write, a refused file, a loader failure or an untrusted region under `run`. |
-| 2 | The tool could not answer: usage error, marker parse error, a path escaping the repository, `inputs=` matching nothing, a file edited while `run` computed it. |
+| 1 | The content said no: drift under `check`; a write, a refused file, a loader failure, or an untrusted or disallowed region under `run`. |
+| 2 | The tool could not answer: usage error, marker parse error, a path escaping the repository, `inputs=` or a slice matching nothing, a file edited while `run` computed it. |
 
 ## Acting on a state
 
 - **`stale`**. Run `computed run`.
 - **`edited`**. The body no longer matches `out=`. `run` refuses the whole file, leaves every region in it untouched and exits 1. `computed run --dry-run` shows the diff `--force` would apply; keep the hand-written change somewhere if it was wanted, then `computed run --force` hands the body back to the tool.
-- **`untrusted`**. An exec region in a clone with no grant. Run `computed trust`, or pass `run --trust` for a single invocation.
+- **`untrusted`**. An exec or transcript region in a clone with no grant. Run `computed trust`, or pass `run --trust` for a single invocation.
+- **`disallowed`**. A remote region whose url is not on this machine's allowlist. `computed allow <prefix>` allows it; the message names the prefix. Pass `--allow <prefix>` for a single invocation.
+- **A pin mismatch or a missing pin**. A remote document changed, or was never pinned. `computed update` fetches it and writes the new `sha256=`; review that one-line diff, then `computed run`.
 - **A loader failure**. The command's stderr prints under the region's line, the last good body and sums stay put, and the run exits 1. Repair the input and run again.
+- **`error`**. The message beneath names the cause: a glob or slice that matches nothing, a path outside the repository, a missing `computed.toml` recipe, a shallow clone under a `git` region. Fix the opener or the input it names.

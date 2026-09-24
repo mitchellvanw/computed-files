@@ -126,7 +126,7 @@
       <ol class="list-none p-0 m-0 grid gap-1.5 sm:grid-cols-2">
         <li><a href="#markers">1 · The markers</a></li>
         <li><a href="#hashes">2 · The two hashes</a></li>
-        <li><a href="#loaders">3 · Tree and exec</a></li>
+        <li><a href="#loaders">3 · The loaders</a></li>
         <li><a href="#states">4 · The states</a></li>
         <li><a href="#edits">5 · Hand edits</a></li>
         <li><a href="#trust">6 · Who may run a command</a></li>
@@ -152,10 +152,12 @@
       <table class="ref min-w-[36rem]">
         <thead><tr><th>In the opening comment</th><th>Meaning</th></tr></thead>
         <tbody>
-          <tr><td>tree · exec</td><td>The first word picks what fills the region. There are two.</td></tr>
+          <tr><td>tree · exec · file · …</td><td>The first word picks what fills the region. There are ten, <a href="#loaders" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">below</a>.</td></tr>
           <tr><td>name=</td><td>Optional. Reports use it instead of the line number. Unique per file.</td></tr>
-          <tr><td>as=fence · as=raw</td><td>How the text lands in the file. <code>fence</code> wraps it in a code block, <code>raw</code> pastes it as Markdown. Tree defaults to fence, exec to raw.</td></tr>
+          <tr><td>as=fence · as=raw · as=table</td><td>How the text lands in the file. <code>fence</code> wraps it in a code block, <code>raw</code> pastes it as Markdown, <code>table</code> turns CSV or JSON Lines into a Markdown table. Tree defaults to fence, exec to raw.</td></tr>
           <tr><td>lang=</td><td>The language on the code fence. Empty by default.</td></tr>
+          <tr><td>max-lines=N</td><td>Keep the first N lines of the output and a note of how many were cut.</td></tr>
+          <tr><td>on-stale=warn</td><td><code>check</code> reports the region when it is stale, and does not fail on it.</td></tr>
           <tr><td>| do not edit; run computed</td><td>The tool adds this suffix when it renders. You do not write it, and the parser ignores it.</td></tr>
         </tbody>
       </table>
@@ -169,7 +171,7 @@
   <section class="mt-24 grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.25fr)]" id="hashes">
     <div>
       <h2 class="text-2xl mb-3">The two hashes</h2>
-      <p><code>in=</code> is a SHA-256 over the opening comment and a snapshot of the inputs. For tree, the snapshot is the list of paths it printed. For exec, it is the bytes of every file named in <code>inputs=</code>. If either changes, the region is stale.</p>
+      <p><code>in=</code> is a SHA-256 over the opening comment and a snapshot of the inputs. For tree, the snapshot is the list of paths it printed. For exec, it is the bytes of every file named in <code>inputs=</code>. For a region that reads part of a file, such as one section or one key, it is only that part. If any of it changes, the region is stale.</p>
       <p class="mt-3"><code>out=</code> is a SHA-256 over the body, byte for byte. If it no longer matches, someone edited the body.</p>
       <p class="mt-3">Both live in the closing comment, so a fresh clone carries everything <code>check</code> needs. There is no cache and no sidecar file. The binary's version is not part of either hash, so upgrading does not make every region stale.</p>
     </div>
@@ -219,7 +221,7 @@
 
   <!-- ─────────────────────────── loaders ─────────────────────────── -->
   <section class="mt-24" id="loaders">
-    <h2 class="text-2xl mb-3">Tree, exec and file</h2>
+    <h2 class="text-2xl mb-3">The loaders</h2>
     <div class="mt-6 grid gap-6 md:grid-cols-2">
       <div class="rounded-lg border border-line bg-ground-2 p-5">
         <h3 class="text-lg font-medium mb-1">tree</h3>
@@ -235,7 +237,9 @@
         <p class="text-[0.95rem] mt-3">The command runs with the file's directory as its working directory, a 30 second limit you can change with <code>timeout=</code>, and <code>LC_ALL=C</code> and <code>TZ=UTC</code> set so its output does not depend on the machine. An exec region only runs in a repository you have trusted. See <a href="#trust" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">who may run a command</a>.</p>
       </div>
     </div>
-    <p class="mt-6"><code>file src=docs/shared.md</code> pastes one file as it stands, so a section shared by <code>CLAUDE.md</code> and <code>AGENTS.md</code> is written once. It runs no command, so it needs no trust. With <code>as=fence lang=markdown</code> it shows a file as code, markers and all.</p>
+    <p class="mt-6"><code>file src=docs/shared.md</code> pastes one file as it stands, so a section shared by <code>CLAUDE.md</code> and <code>AGENTS.md</code> is written once. <code>section=Install</code>, <code>lines=10-40</code> or <code>anchor=example</code> takes one part of it, and only that part goes into the snapshot. With <code>as=fence lang=markdown</code> it shows a file as code, markers and all.</p>
+    <p class="mt-3">Six more read without running anything. <code>value src=Cargo.toml key=package.version</code> takes one field of a TOML, JSON or YAML file. <code>index src="docs/adr/*.md"</code> lists files as links titled by their first heading. <code>toc</code> lists the file's own headings. <code>symbol src=src/lib.rs item=parse part=signature</code> takes one item of a Rust, Python or Go file. <code>git log</code>, <code>git tags</code> and <code>git contributors</code> read the history. <code>remote url=… sha256=…</code> renders a document pinned by its hash. None of them needs trust. <code>transcript</code> runs a shell session and shows each step with its output, and needs trust as exec does.</p>
+    <p class="mt-3">A <code>computed.toml</code> can name an opener once, as a recipe, and a region writes <code>use recipe=NAME</code> for it.</p>
     <p class="mt-3 text-ink-2">Relative paths resolve against the directory of the file holding the marker, not the repository root or the shell's working directory. So a region reads the same from a hook, from CI, and from a terminal, and moving the file moves its regions with it. A path that leaves the repository is an error, because such a region would render differently on every machine.</p>
     <p class="mt-3 text-ink-2">Before the text lands in the file, line endings become LF and trailing newlines are stripped. A command that prints invalid UTF-8, a control character, or a line that looks like a marker outside a fence has failed. A region indented inside a list item gets its body indented to match. When a command fails, times out, or exits non-zero, the old body and both hashes stay, its stderr is printed under the region's line, and the run exits 1. Deleting an input does not blank a region.</p>
   </section>
@@ -321,7 +325,7 @@
         </tbody>
       </table>
     </div>
-    <p class="mt-6 text-ink-2">Because <code>check</code> never runs a command, a command whose output changes for the same inputs is invisible until you pass <code>--force</code>. That is the price of a check that needs no runtime and no trust.</p>
+    <p class="mt-6 text-ink-2">Because <code>check</code> never runs a command, a command whose output changes for the same inputs is invisible until you pass <code>--force</code>. That is the price of a check that needs no runtime and no trust. <code>computed doctor</code> runs every loader twice and names such a region, and <code>computed trace</code> names the files a command reads that its <code>inputs=</code> leaves out.</p>
   </section>
 
   <!-- ─────────────────────────── edits ─────────────────────────── -->
@@ -330,7 +334,7 @@
       <h2 class="text-2xl mb-3">Hand edits</h2>
       <p>The file you commit is the file the tool edits. Outside a marker pair everything is yours and a run never touches it. Inside, the body is the tool's, and an edit there is refused rather than overwritten. The region stays as edited, the whole file is left unwritten, and the run exits 1.</p>
       <p class="mt-3">To regenerate, pass <code>--force</code>, which overwrites every edited region in the files you name, or delete both hashes from the closing comment. Editing the opening comment is not a hand edit. It changes <code>in=</code>, so the region is stale and renders on the next run.</p>
-      <p class="mt-3">The reason to refuse rather than warn is the pre-commit path. A warning from a hook that still writes and exits 0 is an overwrite with a line nobody reads. On <code>CLAUDE.md</code> the editor is usually an agent, and a failed hook is the one signal that reaches it.</p>
+      <p class="mt-3">The reason to refuse rather than warn is the pre-commit path. A warning from a hook that still writes and exits 0 is an overwrite with a line nobody reads. On <code>CLAUDE.md</code> the editor is usually an agent, and a failed hook is the one signal that reaches it. In Claude Code the plugin gets the signal there sooner: a hook refuses the edit before it lands.</p>
     </div>
     <figure class="fig mt-8">
       <svg width="660" height="210" viewBox="0 0 660 210" role="img" aria-label="One CLAUDE.md file. Bands outside the regions are yours and a prose edit there is kept. Bands inside the regions belong to the tool and an edit there is refused.">
@@ -369,7 +373,8 @@
     <pre class="mt-6 rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>computed trust            <span class="text-ink-2"># this repository, on this machine</span>
 computed untrust          <span class="text-ink-2"># take it back</span>
 computed run --trust      <span class="text-ink-2"># this one invocation, for CI</span></code></pre>
-    <p class="mt-6">The grant is stored in <code>~/.config/computed/trust.toml</code>, keyed by the repository root. Nothing inside a checkout can grant itself. In an untrusted clone, <code>run</code> skips every exec region, reports it as untrusted, still renders the tree regions, and exits 1. <code>check</code> never runs a command, so it needs no trust at all.</p>
+    <p class="mt-6">The grant is stored in <code>~/.config/computed/trust.toml</code>, keyed by the repository root. Nothing inside a checkout can grant itself. In an untrusted clone, <code>run</code> skips every exec and transcript region, reports it as untrusted, still renders every other region, and exits 1. <code>check</code> never runs a command, so it needs no trust at all.</p>
+    <p class="mt-3">Only a region that runs a command from the repository needs a grant. The <code>git</code> loader runs <code>git</code> to read history, and that runs nothing the repository controls. A <code>remote</code> region fetches only under a url prefix this machine has allowed with <code>computed allow</code>, and a grant allows no url.</p>
     <p class="mt-3 text-ink-2">This defends against one thing: cloning a repository and having <code>computed run</code> execute its commands before anyone has read them. A malicious branch pulled into a clone you already trust runs on the next <code>run</code>, the same as a Makefile or a pre-commit hook would.</p>
   </section>
 
@@ -387,6 +392,11 @@ computed run --trust      <span class="text-ink-2"># this one invocation, for CI
             <tr><td>check [paths]</td><td>Report the state of every region. Runs no command. Exit 1 on anything but fresh.</td></tr>
             <tr><td>clean [paths]</td><td>Empty every body and strip the hashes, leaving the markers. The next run rebuilds them.</td></tr>
             <tr><td>trust · untrust [path]</td><td>Grant or revoke exec for the repository containing the path.</td></tr>
+            <tr><td>update · allow · disallow</td><td>Pin each remote region's document by its SHA-256; keep the url prefixes this machine may fetch.</td></tr>
+            <tr><td>doctor · trace</td><td>Render every region twice to find output that is not stable; trace each command to find what <code>inputs=</code> misses.</td></tr>
+            <tr><td>affected · graph · why</td><td>Which regions a path feeds, what every region reads, and why one is stale, from git history.</td></tr>
+            <tr><td>stats · dupes · adopt</td><td>How much of each file is computed; blocks copied between files; a hand edit written back into its source.</td></tr>
+            <tr><td>merge · guard · watch · lsp</td><td>A git merge driver, the Claude Code edit guard, a watcher, and a language server.</td></tr>
             <tr><td>--only NAME</td><td>Only the regions with that name. Repeat for more.</td></tr>
             <tr><td>-v</td><td>Also print the regions that are fine.</td></tr>
             <tr><td>--format json</td><td>One JSON document on stdout instead of the report.</td></tr>
@@ -412,7 +422,7 @@ CLAUDE.md:58        exec untrusted  skipped; run `computed trust`</code></pre>
   <section class="mt-24 max-w-[42rem]" id="writes">
     <h2 class="text-2xl mb-3">How files are written</h2>
     <p>Every write goes to a temporary file that is then renamed over the original, keeping its permissions. A symlink is written through, so <code>AGENTS.md</code> linked to <code>CLAUDE.md</code> stays a link. A file edited while its commands ran is not overwritten. When one file's <code>inputs=</code> read another, <code>run</code> renders again until both settle, so one run leaves <code>check</code> passing. Nothing is written when the bytes would be identical, so running twice changes nothing and the file's modification time does not move. A file with one refused region is not written at all, even if other regions in it are merely stale. Other files in the same invocation still are.</p>
-    <p class="mt-3 text-ink-2">There is no watch command. Pre-commit runs <code>run</code> and CI runs <code>check</code>, and that has been enough so far. A watcher would sit on top of <code>run</code> and gets built when dogfooding shows agents reading stale regions between commits.</p>
+    <p class="mt-3 text-ink-2"><code>computed watch</code> runs <code>run</code> again whenever a template or a file its regions read changes. It knows its own writes by their bytes, so a pass it made does not start another.</p>
   </section>
 
   <!-- ─────────────────────────── elsewhere ─────────────────────────── -->

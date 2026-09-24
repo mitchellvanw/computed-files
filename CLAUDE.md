@@ -30,6 +30,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── catalogue.html
 │   ├── how-it-works.html
 │   ├── index.html
+│   ├── integrations.md
 │   ├── regions.js
 │   ├── research
 │   └── spec
@@ -111,11 +112,11 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── watch.rs
     └── why.rs
 ```
-<!-- /computed in=55664ff6519a22654fe825944843219c10cd6afa3cd14d7a797156b35d6050d1 out=049f2f30faf58fa970bdee128354cc1d440ce7b3103b697ca9d32480315473e2 -->
+<!-- /computed in=9ab69b0d646abbea401374cc4a8b89db5be3be7125464656559b783a2707ff72 out=d7a2a75c484b7672b0df01f33e5992242828d0c2ee9ddfcd9e26b89a56369621 -->
 
 ## Decisions
 
-<!-- computed exec cmd=scripts/adr-index.sh inputs=docs/adr/*.md,scripts/adr-index.sh name=adrs | do not edit; run computed -->
+<!-- computed index src=docs/adr/*.md name=adrs | do not edit; run computed -->
 
 - [Rust for the prototype](docs/adr/0001-rust-for-the-prototype.md)
 - [Two sums in the closer](docs/adr/0002-two-sum-closer.md)
@@ -132,5 +133,15 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 - [A region the tool cannot answer skips only itself](docs/adr/0013-a-region-the-tool-cannot-answer-skips-only-itself.md)
 - [Snapshots ignore closer sums, and `run` settles templates that read each other](docs/adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md)
 - [The `file` loader](docs/adr/0015-the-file-loader.md)
+- [A projection snapshots only the part it reads](docs/adr/0016-a-projection-snapshots-only-the-part-it-reads.md)
+- [Trust gates running repository code, and nothing else](docs/adr/0017-trust-gates-running-repository-code-and-nothing-else.md)
+- [The `git` loader's snapshot runs `git` under `check`](docs/adr/0018-the-git-snapshot-runs-git-under-check.md)
+- [Remote regions are pinned by SHA-256 and fetch only under a per-machine allowlist](docs/adr/0019-remote-regions-are-pinned-and-allowlisted.md)
+- [The sandbox enforces `inputs=` and does not replace trust](docs/adr/0020-the-sandbox-enforces-inputs-and-does-not-replace-trust.md)
+- [`trace` reads the macOS sandbox's own reports](docs/adr/0021-trace-reads-the-macos-sandbox-reports.md)
+- [Recipes live in `computed.toml`, the first configuration file](docs/adr/0022-recipes-in-computed-toml.md)
+- [`on-stale=warn` softens only staleness](docs/adr/0023-on-stale-warn-softens-only-staleness.md)
+- [The merge driver merges by structure and leaves a region both sides re-rendered unrendered](docs/adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md)
+- [The Claude Code guard refuses an edit to a region before it lands](docs/adr/0025-the-guard-refuses-an-edit-before-it-lands.md)
 
-<!-- /computed in=7889c53daa593b8da7ee057aaefb8a89a5b0ffe62cbe79d0df3496843c3a0765 out=1d5d18700a303ecb8aa4e56252ba741d3b04a292cec7d258a2712448d332b8b2 -->
+<!-- /computed in=d620c03695928af311145a87f4e46eba0bc57b62c10c0132b37f665d805de117 out=fa9e6d48384ba65b1e77ebce943b38b872f2ea088545155b478bf15993829755 -->
