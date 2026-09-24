@@ -1,6 +1,6 @@
 # computed
 
-`computed` keeps marked regions of a markdown file current by computation. The document is a view; the truth lives in a directory listing, a file, the repository's history, a pinned document or the output of a command. This is the specification of the tool as it stands on the main branch: the marker grammar, the loaders and sinks, the freshness model, the hand-edit policy, the trust model and the allowlist, the command line, and the crate layout. It began as the design for v0 and milestone 1, and the file keeps that name: the tool is still before 1.0, and nothing here is a stability promise.
+`computed` keeps marked regions of Markdown and code files current by computation. The document is a view; the truth lives in a directory listing, a file, the repository's history, a pinned document or the output of a command. This is the specification of the tool as it stands on the main branch: the marker grammar, the loaders and sinks, the freshness model, the hand-edit policy, the trust model and the allowlist, the command line, and the crate layout. It began as the design for v0 and milestone 1, and the file keeps that name: the tool is still before 1.0, and nothing here is a stability promise.
 
 Every decision here was made on a ticket and, where it is hard to reverse, recorded as an ADR under [`docs/adr/`](../adr/). The spec gists; the ADR argues. Vocabulary is [`CONTEXT.md`](../../CONTEXT.md), and this document uses its terms without redefining them. Anything the spec leaves open is listed at the end, with the reason it is open.
 
@@ -14,7 +14,7 @@ Rust, one static binary, no runtime to install ([ADR 0001](../adr/0001-rust-for-
 
 ## What does a region look like?
 
-A region is the span between an opener and a closer. Both are whole-line HTML comments. Rendered, a region looks like this:
+A region is the span between an opener and a closer. Both are comments in the file's own syntax, an HTML comment in Markdown, each on a line of its own. Rendered, a region looks like this:
 
 ````markdown
 <!-- computed tree src=. depth=2 name=layout | do not edit; run computed -->
@@ -26,11 +26,37 @@ A region is the span between an opener and a closer. Both are whole-line HTML co
 <!-- /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->
 ````
 
-The prose around the markers is the author's. The body between them belongs to the tool.
+The prose around the markers is the author's. The body between them belongs to the tool. In Markdown and HTML a region can also sit inside a line and hold one value of a sentence ([Inline regions](#inline-regions)).
 
 ### Markers
 
-A marker is a whole line: optional leading whitespace, which is preserved, the comment, optional trailing whitespace, which is ignored. No other container is a marker: not a link, not inline code, not a fence. Markers inside CommonMark fenced code blocks (backtick or tilde, any length, with a matching closer) are ignored, so a document can show marker examples. Indented code blocks are not tracked. The comment end may touch the last token: `<!-- /computed-->` is a closer.
+A marker is a whole line, except in an [inline region](#inline-regions): optional leading whitespace, which is preserved, the comment, optional trailing whitespace, which is ignored. No other container is a marker: not a link, not inline code, not a fence. Markers inside CommonMark fenced code blocks (backtick or tilde, any length, with a matching closer) of a Markdown file are ignored, so a document can show marker examples. Indented code blocks are not tracked. The comment end may touch the last token: `<!-- /computed-->` is a closer.
+
+The comment is the file's own, chosen by its file name, else its extension, compared without case ([ADR 0026](../adr/0026-a-marker-is-a-comment-in-the-files-own-syntax.md)):
+
+| Syntax | Marker comment | Files |
+|---|---|---|
+| Markdown | `<!-- … -->` | `md`, `markdown` |
+| HTML | `<!-- … -->` | `html`, `htm`, `xml`, `svg` |
+| Slash | `//`, `///` or `//!` | `rs` `js` `mjs` `cjs` `jsx` `ts` `tsx` `go` `c` `h` `cc` `cpp` `hpp` `java` `kt` `swift` `scala` `cs` `dart` `zig` `proto` |
+| Hash | `#` | `py` `sh` `bash` `zsh` `rb` `toml` `yaml` `yml` `pl` `r` `tf` `nix` `ini` `cfg`; the names `Makefile`, `GNUmakefile`, `makefile`, `Dockerfile`, `Containerfile`, `.gitignore`, `.gitattributes`, `.dockerignore` |
+| Dash | `--` | `sql` `lua` `hs` |
+| CSS | `/* … */` on one line | `css` |
+
+A file with any other extension reads as Markdown, as every file did before files had syntaxes.
+
+```rust
+// computed tree src=. depth=1 as=comment
+// /computed
+```
+
+- **Leader.** A line comment's leader is followed by a space or a tab. The longest leader is tried first, so `////`, `//computed`, `##` and `#!` are prose. Any leader of the syntax opens or closes a region, and the tool writes both markers in the opener's: a `//` closer under a `//!` opener is `//!` after the next render.
+- **Lookalikes.** In a line comment, a line is an opener only when `computed` is followed by a space and a loader name the tool knows; `// computed values are cached` is prose. A known loader followed by bad attributes is a parse error: `# computed tree is the loader` names the unknown flag `is`. A closer is `/computed` followed by a space or the end of the line. In `<!-- -->` and `/* */` a comment starting `computed` is a marker whatever follows, as before, so an unknown loader there is a parse error.
+- **CSS.** `*/` inside the marker is a parse error, and so is text after the closing `*/`.
+- **Fences.** Only Markdown has fenced code blocks. Everywhere else a line of three backticks is text, and markers are read on every line.
+- **`<script>` and `<style>`.** In HTML, the lines from a `<script>` or `<style>` start tag through the line holding its end tag hold no markers: their text is not HTML, and `<!--` in it opens no comment. An element never closed runs to the end of the file, as a browser reads it.
+
+Indentation, the suffix and the sums work the same in every syntax. The canonical opener hashed into the input sum is written in the `<!-- -->` form whatever comment the file uses, and the comment itself is part of the loader line ([When is a region fresh?](#when-is-a-region-fresh)).
 
 The opener:
 
@@ -54,12 +80,29 @@ The closer:
 
 The body is the lines strictly between the marker lines. The tool writes what the sink produced and adds no blank lines of its own; the sink emits the blank lines CommonMark needs. When the opener is indented, as inside a list item, every non-blank body line carries the same indentation, so the region stays inside its container. Every line the tool writes into a region ends as the opener's line does, so a CRLF file stays CRLF.
 
+### Inline regions
+
+In Markdown and HTML, an opener comment that does not stand alone on its line, with its closer later on the same line, is an inline region ([ADR 0027](../adr/0027-a-region-inside-a-line.md)):
+
+```markdown
+The current release is <!-- computed value src=Cargo.toml key=package.version -->0.2.0<!-- /computed in=<64 hex> out=<64 hex> -->.
+```
+
+- **Place.** A line may hold several. The comment's end is found as the tokeniser reads a quoted value, so a `-->` inside quotes does not end it. The body is the text between the markers, with no newline.
+- **Code spans.** In Markdown, inline markers inside a fenced block or a code span are prose. Spans follow CommonMark: a run of N backticks closes at the next run of exactly N, a backslash escape opens nothing, and an HTML comment is skipped whole, so a backtick in a marker's attributes opens no span. A span may cross lines within a paragraph, where a paragraph is the run of non-blank lines outside fences and whole-line markers, broken before a line that starts a heading, quote, table row or list item. Indented code blocks, setext headings and HTML blocks are not tracked.
+- **Bodies are opaque.** Inside a region on lines of its own, inline-looking markers are the body's text, not regions, so a `file` region can include a template that holds inline regions.
+- **Text.** The loader's text after normalisation must be one line; more is a loader failure, "the text is N lines, and a region inside a line holds one". Empty text is an empty body.
+- **Sink.** Only `raw`, with no blank lines around the text. A loader whose default is `fence` renders raw inline. `lang=` is accepted and ignored. Before writing, the tool checks that the text cannot break the markers, and the whole-file parse-back check runs as for any region.
+- **Opener.** The suffix `| do not edit; run computed` is never written inside a line; one written by hand is dropped on the next render. The closer carries both sums in full. `clean` writes `<!-- computed … --><!-- /computed -->`.
+- **Reports** give the place as `path:line:column`, the column counted in characters from 1 to the opener's `<`, as rustc counts it ([Reporting](#what-is-the-command-line)).
+
 ### Parse errors
 
 All hard, the file is not written, exit 2:
 
-- **Structure.** Opener without closer, closer without opener, opener inside a body (nesting is not supported), one-sum closer, malformed sum.
-- **Tokens.** Unknown loader, unknown attribute or flag, a duplicate attribute or flag, duplicate name, value containing `-->`, an empty entry in a comma-separated list (a stray comma).
+- **Structure.** Opener without closer, closer without opener, opener inside a body (nesting is not supported), one-sum closer, malformed sum. A marker comment that does not end on its line. An inline opener with no closer later on its line: "a region inside a line needs its closer later on the same line", which is also what `<!-- computed tree --> trailing` reports. In CSS, `*/` inside the marker or text after it.
+- **Tokens.** Unknown loader (in a line comment, an unknown word after `computed` makes the line prose instead), unknown attribute or flag, a duplicate attribute or flag, duplicate name whether the other region is inline or not, value containing `-->`, an empty entry in a comma-separated list (a stray comma).
+- **Syntax.** `as=comment` in Markdown, HTML or CSS, whose comments have no leader. On an inline region, any `as=` other than `raw`, and `max-lines=`. A recipe is checked at expansion, per region, so a recipe with `as=comment` is valid in `computed.toml`.
 - **Values.** `timeout=0`; `max-lines=0` or a non-number; `on-stale=` other than `warn`; `as=` naming no sink; `delim=` or `from=` without `as=table`, or with a value the sink does not know; a malformed projection, or two projections on one `file`; a projection on a wildcard path in `inputs=`; `min=` greater than `max=` on `toc`; `title=` other than `h1` or `filename` on `index`; a malformed `item=` or `part=` on `symbol`; a `sha256=` that is not 64 lowercase hex digits; a `url=` that is not `https://`, or plain `http://` to a loopback host.
 - **Required attributes.** `exec` without `cmd=`, `file` without `src=`, `value` without `src=` or `key=`, `index` without `src=`, `symbol` without `src=` or `item=`, `remote` without `url=`, `transcript` without `steps=`, `use` without `recipe=`, and `git` without exactly one of `log`, `tags` or `contributors`.
 - **Combinations.** Neither or both of `inputs=` and `volatile` on `exec` or `transcript`; `sandbox` with `volatile`; `sandbox` with `workdir=copy`; a loader attribute or flag on a `use` opener.
@@ -96,6 +139,8 @@ Ten, and a recipe that stands for any of them. Modelled as a closed `enum Loader
 
 Every loader has a format constant, all 1 today.
 
+The default sink is the one in the table in Markdown. In every other syntax, HTML included, a loader whose default is `fence` defaults to `raw`, since a fence means nothing there; an explicit `as=fence` is kept. Inside a line every loader writes raw.
+
 ### Paths and the region root
 
 Every relative path in a marker resolves against the template's directory, the region root, and an exec command or a transcript runs with that directory as its working directory ([ADR 0004](../adr/0004-region-root-is-the-template-directory.md)). Neither the repository root nor the invocation directory: the first makes a nested file spell its own path back, the second makes the same file render differently from a hook, from CI and from a shell.
@@ -105,7 +150,7 @@ Every `src=` and `inputs=` must resolve inside the repository root, or inside th
 ### Common attributes
 
 - `name=` is optional and unique per file. Reports use the name, else `loader@line`.
-- `as=` selects the sink: `raw`, `fence` or `table` ([Which sinks?](#which-sinks)). `lang=` sets the fence language, default empty, except where a loader sets its own.
+- `as=` selects the sink: `raw`, `fence`, `table` or `comment` ([Which sinks?](#which-sinks)). `lang=` sets the fence language, default empty, except where a loader sets its own.
 - `max-lines=N`, at least 1, cuts the loader's text to its first N lines and a note, `… K more lines` ([What makes loader text deterministic?](#what-makes-loader-text-deterministic)).
 - `on-stale=warn` lets `check` report the region `stale` without failing ([When is a region fresh?](#when-is-a-region-fresh)).
 
@@ -176,7 +221,9 @@ A verbatim include that runs no command and needs no trust ([ADR 0015](../adr/00
 
 - `min=` and `max=`, levels 1 to 6, default 2 and 3. A bound given alone moves the other out of its way.
 - Text: a nested list, two spaces per level, `- [Heading](#anchor)`, of the template's own ATX headings in prose. Every region body is left out, the toc's own included, so rendering never moves it. Anchors follow github-slugger, duplicates numbered `-1`, `-2`.
-- Snapshot: per listed heading, its level, text and anchor. The template is not in the read set: a run's own write leaves its prose unchanged.
+- A heading that holds an inline region is listed with the markers dropped and the body kept, which is the anchor GitHub gives it.
+- Snapshot: per listed heading, its level, text and anchor. The template is not in the read set, since a run's own write leaves its prose unchanged, unless a listed heading holds an inline region: then it is, so `run` settles the toc after the value moves.
+- Markdown only. In any other syntax the region is an error: "toc lists the headings of a Markdown file, and X is not one".
 
 ### `symbol`
 
@@ -217,19 +264,20 @@ loader = "index"
 src = "docs/adr/*.md"
 ```
 
-- The file holds `[recipe.NAME]` tables and nothing else. Each has `loader`, the loader's attributes as strings or integers, flags as `true`, and any of `as`, `lang`, `on-stale` and `max-lines`. A recipe cannot use another recipe, and cannot set `name`.
+- The file holds `[recipe.NAME]` tables and a `[discover]` table, and nothing else. Discovery reads `[discover]` from the repository root's file only ([Discovery](#what-is-the-command-line)). A recipe has `loader`, the loader's attributes as strings or integers, flags as `true`, and any of `as`, `lang`, `on-stale` and `max-lines`. A recipe cannot use another recipe, and cannot set `name`.
 - A `use` opener takes `recipe=` and common attributes, which override the recipe's. A loader attribute or flag on it is a parse error.
-- Lookup: the nearest `computed.toml`, walking up from the region root to the repository root, never above it. Read only for a template with a `use` region.
-- The expansion is the region's opener for every purpose. Paths resolve against the using template's region root. The input sum is over the expanded canonical opener, so a `use` region has the sums of the equivalent inline opener and switching between the two is not a change. Editing the recipe is. An exec recipe needs trust.
+- Lookup: the nearest `computed.toml`, walking up from the region root to the repository root, never above it. Read for recipes only for a template with a `use` region. A bad `[discover]` table is an error in the file, so it makes those regions `error` too.
+- The expansion is the region's opener for every purpose. Paths resolve against the using template's region root. The input sum is over the expanded canonical opener, so a `use` region has the sums of the equivalent opener written out, and switching between the two is not a change. Editing the recipe is. An exec recipe needs trust.
 - `computed.toml` is in the read set. A missing file or recipe, or any error in the file, makes the regions that use it `error`; only those are skipped. The file shows the `use` opener as written.
 
 ## Which sinks?
 
 - **`raw`** writes a blank line, the text, a blank line.
 - **`fence`** writes the opening fence with `lang=`, the text, the closing fence. The backtick run is one longer than the longest that starts a line of the text, minimum three.
+- **`comment`** writes every line of the text behind the opener's line-comment leader and a space, and a blank line as the leader alone. With `lang=`, the text is fenced first, so a Rust `//!` doc comment holds a code block. Empty text is an empty body. It needs a line comment, so it is a parse error in Markdown, HTML and CSS. `max-lines=` cuts it as it cuts `raw`.
 - **`table`** reads the text as CSV (`as=table`, RFC 4180 quoting), tab-separated values (`delim=tab`, no quoting) or JSON Lines (`from=jsonl`, columns from the first object's keys) and writes a GitHub Markdown table: a blank line, a header row, a delimiter row, the data rows padded to the widest cell, a blank line. A newline in a cell becomes `<br>` and an unescaped `|` becomes `\|`. A ragged row, bad JSON or empty text is a loader failure.
 
-Every line is LF-terminated. Interior blank lines are untouched.
+Every line is LF-terminated. Interior blank lines are untouched. An inline region's body is the text alone, with no terminator ([Inline regions](#inline-regions)).
 
 ## What makes loader text deterministic?
 
@@ -243,7 +291,7 @@ Normalisation, applied in the `sink` module to every loader's text before any si
 
 Then `max-lines=N` cuts text longer than N lines to its first N and one note line, `… K more lines` (or `… 1 more line`), which cannot parse as a marker or open a fence. `raw` and `fence` keep the note as the text's last line. `table` keeps the header, cuts data rows, and puts the note in its own paragraph after the table. The output sum is over the cut body.
 
-One rule keeps the file parseable, because the grammar skips markers inside fences and loader text can contain fence lines: after the sink has shaped the body, the region must parse back to the same body. `fence` guarantees this by its backtick run. For `raw`, text whose fences are unbalanced would swallow the closer on the next parse; that is a loader failure, and so is a line that would parse as a marker unless a fence in the text holds it. A `max-lines` cut that leaves a fence open fails the same way. Every table line starts with `|`, so a table cannot break the parse. The invariant that a file the tool wrote always parses is then checked on the whole file before it is written, because a region's fence can close a fence the prose left open above it: when the rendered file does not parse back to the same regions, the file is not written, exit 2, and the error names the unclosed fence.
+One rule keeps the file parseable, because the grammar skips markers inside fences and loader text can contain fence lines: after the sink has shaped the body, the region must parse back to the same body. `fence` guarantees this by its backtick run. For `raw`, text whose fences are unbalanced would swallow the closer on the next parse; that is a loader failure, and so is a line that would parse as a marker unless a fence in the text holds it. A `max-lines` cut that leaves a fence open fails the same way. Every table line starts with `|`, so a table cannot break the parse. The check runs in the region's own syntax: outside Markdown a fence holds nothing, so text with a marker line is a loader failure there under any sink. The invariant that a file the tool wrote always parses is then checked on the whole file before it is written, because a region's fence can close a fence the prose left open above it: when the rendered file does not parse back to the same regions, the file is not written, exit 2, and the error names the unclosed fence.
 
 A change to any normalisation rule bumps every loader's format constant.
 
@@ -251,7 +299,7 @@ A change to any normalisation rule bumps every loader's format constant.
 
 A region carries two sums in its closer. Both are SHA-256, stored as the full 64 lowercase hex characters ([ADR 0010](../adr/0010-sha-256-sums.md)).
 
-**Input sum.** SHA-256 over, in order: the domain line `computed-in/1\n`; the loader and its format constant, `<loader>/<n>\n`, or `<loader>/<n> indent="<indent>"\n` for an indented opener, a tab written `\t`; the canonical opener line (single-space tokens, suffix stripped, indentation stripped) followed by `\n`; the snapshot bytes. For a `use` region the loader and opener are the expansion's.
+**Input sum.** SHA-256 over, in order: the domain line `computed-in/1\n`; the loader line, `<loader>/<n>` with `<n>` the format constant, then ` indent="<indent>"` for an indented opener, a tab written `\t`, then ` comment="<leader>"` when the marker comment is not `<!--`, as in `tree/1 comment="//"`, then ` inline` for an inline region, then `\n`; the canonical opener line (single-space tokens, suffix stripped, indentation stripped, in the `<!-- -->` form whatever the file's comment) followed by `\n`; the snapshot bytes. For a `use` region the loader and opener are the expansion's. The comment is there because the body depends on it, through `as=comment` and the default sink outside Markdown, and it is left out for `<!--` so no Markdown or HTML sum moved when syntaxes arrived. ` inline` means a region on lines of its own and an inline one with the same opener never share an input sum. The test vector: SHA-256 of `computed-in/1\ntree/1 comment="//"\n<!-- computed tree -->\nsnap` is `a8bb2356ce07208e43c3bd2576624f6603e3ea7d751819da00f54861a93d7b48`, pinned in `render`'s unit tests.
 
 **Output sum.** SHA-256 over the body bytes exactly as they sit between the marker lines, each line with its terminator. An empty body hashes empty.
 
@@ -346,7 +394,17 @@ computed lsp
 
 A flag a command does not take is a usage error: `check --force`, `check --trust`, `clean --trust`. No `-C`, no stdin except where a command reads a hook's JSON or speaks a protocol, no `-`.
 
-**Discovery.** With no paths, walk the current directory with the same `ignore` settings as the tree loader, dotfiles included (so `.claude/` and `.github/` are covered, and `.git` never is), and read `.md` and `.markdown` files. Symlinks found by the walk are skipped: the file they name is found in its own right. An explicit file is read whatever its extension; an explicit symlink is its target, resolved against the target's directory and written through, never replaced. Two paths to one file are processed once. A file with no marker is skipped whatever its encoding; a file with markers must be UTF-8. An explicit directory is walked. A file with no opener is skipped silently. A path that does not exist is a usage error. Files are processed in byte-order sorted path order. Every command that takes `[paths]` discovers this way.
+**Discovery.** With no paths, walk the current directory with the same `ignore` settings as the tree loader, dotfiles included (so `.claude/` and `.github/` are covered, and `.git` never is), and read `.md` and `.markdown` files, and the files the `[discover]` table of the root's `computed.toml` adds. Symlinks found by the walk are skipped: the file they name is found in its own right. An explicit file is read whatever its extension, in the syntax its name selects; an explicit symlink is its target, resolved against the target's directory and written through, never replaced. Two paths to one file are processed once. A file with no marker is skipped whatever its encoding; a file with markers must be UTF-8. An explicit directory is walked. A file with no opener is skipped silently. A path that does not exist is a usage error. Files are processed in byte-order sorted path order. Every command that takes `[paths]` discovers this way.
+
+Discovery reads code only when asked ([ADR 0026](../adr/0026-a-marker-is-a-comment-in-the-files-own-syntax.md)):
+
+```toml
+[discover]
+extensions = ["rs", "html"]
+names = ["Makefile"]
+```
+
+The file read is the `computed.toml` at the repository root of each walked directory, or the walked directory itself outside a repository, and only its `[discover]` table, so a broken recipe does not break discovery. An extension may be written with a leading dot and compares without case. An extension or name with no comment syntax, a value that is not a list of strings, or another key is exit 2, and the message lists what the tool knows.
 
 **Exit codes.**
 
@@ -358,22 +416,23 @@ A flag a command does not take is a usage error: `check --force`, `check --trust
 
 The invocation exits with the highest tier any file or region hit. A parse error skips its file whole. A region the tool cannot answer, such as a hard loader error, skips only itself: it is reported `error` with the message beneath, its body and sums are kept, and the rest of its file is still rendered and written ([ADR 0013](../adr/0013-a-region-the-tool-cannot-answer-skips-only-itself.md)). Other files are still processed and written.
 
-**Settling.** `run` writes a file only when it still holds the bytes it was read as, so an edit made while commands ran is not overwritten. After a pass over the files, `run` passes again over every file whose read set holds a file it just wrote, until a pass writes nothing; one `run` leaves every file it touched fresh under `check`, whatever order they sort in. Files still changing after one pass per file feed each other with no fixed point, and are exit 2 ([ADR 0014](../adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md)).
+**Settling.** `run` writes a file only when it still holds the bytes it was read as, so an edit made while commands ran is not overwritten. After a pass over the files, `run` passes again over every file whose read set holds a file it just wrote, until a pass writes nothing; one `run` leaves every file it touched fresh under `check`, whatever order they sort in. Files still changing after one pass per file plus one feed each other with no fixed point, and are exit 2 ([ADR 0014](../adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md), amended). The extra pass is for a file that reads itself: a `toc` whose headings hold an inline region needs the pass after the value moves.
 
 **`run --dry-run`.** Renders everything `run` would, prints a unified diff per file that would change to stdout, writes nothing. A refused file prints its refusal line and the diff `run --force` would apply, labelled `(run --force)`, so the hand edit can be kept before it is overwritten. Exit code as `run`, plus 1 when any file would have changed. This is the only path that shows the pending diff.
 
-**Reporting.** One line per region on stderr, columns `path:line`, name (blank when absent), loader, state, action:
+**Reporting.** One line per region on stderr, columns `path:line` (`path:line:column` for an inline region), name (blank when absent), loader, state, action:
 
 ```
-CLAUDE.md:12 layout tree   stale      written
-CLAUDE.md:40 deps   exec   edited     refused; run with --force
-CLAUDE.md:58        exec   untrusted  skipped; run `computed trust`
-NOTES.md:9   rules  remote disallowed skipped; run `computed allow`
+CLAUDE.md:12   layout  tree   stale      written
+CLAUDE.md:40   deps    exec   edited     refused; run with --force
+CLAUDE.md:58           exec   untrusted  skipped; run `computed trust`
+NOTES.md:9     rules   remote disallowed skipped; run `computed allow`
+README.md:3:24 version value  stale      written
 ```
 
 Fresh regions, and volatile regions under `check`, print only with `-v`. A region softened by `on-stale=warn` prints under `check` with the action `warn`. Nothing is printed and the exit is 0 when everything is fresh. Loader stderr, or the message of a region in `error`, is printed indented under the region's line. A region reported identically by more than one pass is printed once. `check` uses the same shape without the action column. Diffs are the only thing on stdout. No colour.
 
-**JSON.** `--format json` prints `{"exit": n, "files": [...]}` on stdout and nothing on stderr. Each file with something to say has `path`, `error` (`{line, message}` or null, `line` null for the file as a whole), `regions` (every region, silent ones included: `line`, `name`, `loader`, `state`, `action` as a key such as `written`, `would-write` or `disallowed`, or null under `check`, `severity`, `"warn"` for a softened region and null otherwise, and `message`), and `diff` (the `--dry-run` diff or null). The other commands print their own documents, each with an `exit` key.
+**JSON.** `--format json` prints `{"exit": n, "files": [...]}` on stdout and nothing on stderr. Each file with something to say has `path`, `error` (`{line, message}` or null, `line` null for the file as a whole), `regions` (every region, silent ones included: `line`, `column` (null unless the region is inline), `name`, `loader`, `state`, `action` as a key such as `written`, `would-write` or `disallowed`, or null under `check`, `severity`, `"warn"` for a softened region and null otherwise, and `message`), and `diff` (the `--dry-run` diff or null). The other commands print their own documents, each with an `exit` key; `trace` and `guard` give an inline region's `column` too, and `stats`, `affected`, `graph` and `doctor` do not.
 
 **`clean`.** Empties every region body and strips both sums from the closer, leaving the region unrendered with its opener line unchanged. Markers stay, so the next `run` rebuilds the region. Runs no loader and needs no trust. Honours the hand-edit policy: an edited region refuses the file, `--force` overrides. Takes paths and `--dry-run` like `run`.
 
@@ -394,22 +453,23 @@ These run the snapshot step at most, never `load`, so they are safe on an unvett
 
 - **`affected PATHS...`** lists, on stdout, every region a path reaches: through its read set, a `tree` or `file` `src=` at or under the path, an `inputs=` glob that would match it, `git log` or `git contributors` history under it, `computed.toml` for a `use` region, or the template itself for `toc`. Paths need not exist, so a deleted or a new path is a fair question. Exit 0, or 2 when a template does not parse.
 - **`graph`** draws templates, their regions and their inputs as Mermaid (default), Graphviz (`--format dot`) or JSON. An input is drawn as the opener names it, a glob as one node. A region that reads another template points at it with a dashed `settles` edge.
-- **`why FILE`** explains a region's state from git history. For a stale region it finds the latest commit whose template holds the same `in=` and whose tree, laid down in a temporary directory, recomputes to it, then prints that commit and what changed since: the opener, the listing, each input `added`, `removed` or `changed` (with a diff under `-v`), and the commits that changed them. Exit 2 when no commit reproduces or the file is not in a repository; `why` is a query, and `check` is the gate.
-- **`stats`** counts every region's body lines, bytes and estimated tokens (bytes over four, marked `~`), and each file's computed share, on stdout. No loader runs.
-- **`dupes`** finds verbatim blocks of at least `--min-lines` lines (default 4) copied between Markdown files outside regions, and suggests for each copy the `file src=… section=…` or `lines=` region that would include the original. Exit 1 when it finds any.
+- **`why FILE`** explains a region's state from git history. `--line N` selects every region whose opener is on line N, inline ones included. For a stale region it finds the latest commit whose template holds the same `in=` and whose tree, laid down in a temporary directory, recomputes to it, then prints that commit and what changed since: the opener, the listing, each input `added`, `removed` or `changed` (with a diff under `-v`), and the commits that changed them. Exit 2 when no commit reproduces or the file is not in a repository; `why` is a query, and `check` is the gate.
+- **`stats`** counts every region's body lines, bytes and estimated tokens (bytes over four, marked `~`), and each file's computed share, on stdout. An inline region counts no lines and its body's bytes. No loader runs.
+- **`dupes`** finds verbatim blocks of at least `--min-lines` lines (default 4) copied between Markdown files outside regions, the body of an inline region left out as a region's is, and suggests for each copy the `file src=… section=…` or `lines=` region that would include the original. Other files discovery finds are skipped. Exit 1 when it finds any.
 
 ### `adopt`
 
-`adopt FILE` writes a hand edit inside a `file` region back into its source. For each selected region in state `edited`, it takes the opener's indentation and the sink's own lines off the body, splices what is left into the source, over the slice when there is one, and renders the region again. The rendered body must equal the edited one before and after the write, or every source is put back. It refuses other loaders, `stale+edited` regions, a `table` sink, a body cut by `max-lines`, a source that is itself a template, and two regions adopting into one source. `--dry-run` prints each source's diff. Exit 1 on a refusal or when `--dry-run` would write.
+`adopt FILE` writes a hand edit inside a `file` region back into its source. For each selected region in state `edited`, it takes the opener's indentation and the sink's own lines off the body, splices what is left into the source, over the slice when there is one, and renders the region again. The rendered body must equal the edited one before and after the write, or every source is put back. It refuses other loaders, inline regions, `stale+edited` regions, a `table` sink, a body cut by `max-lines`, a source that is itself a template, and two regions adopting into one source. `--dry-run` prints each source's diff. Exit 1 on a refusal or when `--dry-run` would write.
 
 ### `merge`
 
-A git merge driver for templates ([ADR 0024](../adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md)). `computed merge BASE OURS THEIRS [PATH]` takes git's `%O %A %B %P` and writes the result to OURS. It merges the prose and openers line by line, with each region's body and closer held out. A region only one side changed takes that side; a region both sides changed differently takes ours' body under a closer with no sums, so it is unrendered and the next `run` renders it from the merged inputs. Exit 0 when no conflict is left, 1 when one is, 2 on an error. `computed merge --install` adds `*.md merge=computed` and `*.markdown merge=computed` to the root `.gitattributes` and sets the driver in this clone's git config.
+A git merge driver for templates ([ADR 0024](../adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md)). `computed merge BASE OURS THEIRS [PATH]` takes git's `%O %A %B %P` and writes the result to OURS. It merges the prose and openers line by line, with each region's body and closer held out. A region only one side changed takes that side; a region both sides changed differently takes ours' body under a closer with no sums, so it is unrendered and the next `run` renders it from the merged inputs. Exit 0 when no conflict is left, 1 when one is, 2 on an error. `computed merge --install` adds `*.md merge=computed` and `*.markdown merge=computed` to the root `.gitattributes` and sets the driver in this clone's git config. It reads each file in the syntax `%P` names, Markdown when git gives no path. A code file with regions needs its own line in `.gitattributes`, such as `*.rs merge=computed`; `--install` adds only the Markdown ones. Inline regions merge as prose, so both sides changing one is an ordinary conflict.
 
 ### `guard`
 
 Whether an edit changes what the tool owns ([ADR 0025](../adr/0025-the-guard-refuses-an-edit-before-it-lands.md)). An edit may change prose, add a region, remove one whole, move one intact, or change an opener. It may not change a body or a closer, or break the markers.
 
+- The syntax comes from the file's path. On an inline region's line, an edit to the prose around the region is allowed and an edit to its body is refused, named as `path:line:column`. An edit to the closer alone is reported as a body edit.
 - `guard FILE --proposed PATH` judges the text in PATH against FILE: exit 0 when allowed, 1 when a region is touched or the markers break, 2 on a usage error.
 - `guard --hook pre` reads a Claude Code PreToolUse hook's JSON on stdin, applies the `Edit`, `MultiEdit` or `Write` in memory, and answers `permissionDecision: deny` with a reason when the edit is refused. `guard --hook post` runs `check` on the edited file and returns any drift as `additionalContext`. Both always exit 0.
 
@@ -421,7 +481,8 @@ Whether an edit changes what the tool owns ([ADR 0025](../adr/0025-the-guard-ref
 
 A language server on stdin and stdout for any editor that speaks the protocol.
 
-- **Diagnostics** are `check` of the unsaved buffer against inputs on disk, published on open, change and save, spanning opener to closer. `stale` and `unrendered` are warnings; `edited`, `stale+edited` and `error` are errors; an exec region that is not fresh in an untrusted clone is information.
+- **Syntax** comes from the document's path, not its `languageId`, so a Rust or HTML document is read as the tool reads the file.
+- **Diagnostics** are `check` of the unsaved buffer against inputs on disk, published on open, change and save, spanning opener to closer, or for an inline region the markers and body on their line, in UTF-16 columns. `stale` and `unrendered` are warnings; `edited`, `stale+edited` and `error` are errors; an exec region that is not fresh in an untrusted clone is information.
 - **Hover** anywhere in a region shows its loader, state, canonical opener, the `use` opener it expanded from, its read set and its sums.
 - **Code lens** on each opener, `computed: <state> — Run`, runs the `computed.run` command. It renders the buffer as `run` would, under the trust store and the allowlist, and sends the result as a `workspace/applyEdit` rather than writing the file, so unsaved text is rendered as it stands and the change can be undone.
 
@@ -460,9 +521,9 @@ Dependencies: `clap`, `ignore`, `globset`, `sha2`, `tempfile`, `anyhow` (cli onl
 
 The core, as milestone 1 built it:
 
-- **`marker`.** Parses a file into `File { segments }`, each `Segment::Prose(String)` or `Segment::Region(Region)`. `Region` carries `line`, `indent`, `raw_opener`, `raw_closer`, `body` as the bytes sit, the closer's `in`/`out` sums, and the parsed `Opener { loader, flags, attrs, name, sink, lang, on_stale, max_lines }`. The grammar table names every loader's attributes, flags and default sink. `Opener::canonical()` gives the single-space form without suffix or indent. `serialise(&File) -> String` is the inverse. Parse errors are `ParseError { line, message }`, all tier 2.
+- **`marker`.** `parse_as(text, Syntax)` parses a file into `File { segments, syntax }`, each segment `Segment::Prose(String)` or `Segment::Region(Region)`; `parse` is the Markdown case, and `Syntax::for_path` picks the syntax from a file name. `Region` carries `line`, `column` (`Some` for an inline region), `indent`, `raw_opener`, `raw_closer`, `body` as the bytes sit, the closer's `in`/`out` sums, its `syntax` and the `comment` its opener is written in, and the parsed `Opener { loader, flags, attrs, name, sink, lang, on_stale, max_lines }`. The grammar table names every loader's attributes, flags and default sink. `Opener::canonical()` gives the single-space form without suffix or indent. `serialise(&File) -> String` is the inverse. Parse errors are `ParseError { line, message }`, all tier 2.
 - **`loader`.** `enum Loader`, one variant per loader, built from an `Opener`; `format_constant() -> u32`; the production `Loaders` adapter, `Production`, which expands recipes per file. Resolves every path against a per-file `Ctx { template, region_root, repo_root: Option<PathBuf> }` and makes the escape check there, the only place marker paths are resolved. Derives the three `COMPUTED_*` variables and runs every shell command through one core, which sets the pinned environment, applies any wrap and then the sandbox. Records the read set of every snapshot, which `cli` uses to settle. `LoadError::Hard(String)` is tier 2 for its region (escape, empty glob, a projection that finds nothing, unreadable input); `LoadError::Failed { stderr }` is tier 1 (exit status, timeout, bad UTF-8, failed normalisation); `LoadError::NotAllowed` is a disallowed url, tier 1.
-- **`sink`.** `raw`, `fence` and `table`, pure: `Loaded` text in, body out. Normalisation, the `max-lines` cut and the parse-back check sit beside them.
+- **`sink`.** `raw`, `fence`, `table` and `comment`, pure: `Loaded` text in, body out. Normalisation, the `max-lines` cut and the parse-back check sit beside them.
 - **`render`.** `file(parsed: &File, mode: Mode, trusted: bool, loaders: &mut dyn Loaders) -> Rendered`. Pure, no I/O. `file_where` takes a selection too, for `--only`. `Mode { Run { force }, DryRun { force }, Check, Clean { force, dry_run } }`. `Loaders` has two methods: `snapshot(&Region) -> Result<Option<Vec<u8>>, LoadError>`, where `None` is volatile, and `load(&Region) -> Result<Loaded, LoadError>`. `Rendered { Written { text, regions }, Unchanged { regions }, Refused { regions }, Error { line, message } }`. `render` owns the sums, the freshness cache, the states, the refuse rule and its per-file consequence, the trust test (`needs_trust`), the untrusted and disallowed skips, loader failure and hard errors keeping the body, `on-stale=warn`, the body's indentation and line endings, the whole-file parse-back check, and `clean`. Fresh regions are emitted from their raw lines. Per region it returns `RegionReport { line, name: Option<String>, loader, state, action, stderr: Option<String> }`.
 - **`fs`.** `walk(root, WalkOpts { depth, all, dirs }) -> impl Iterator<Item = Entry>` with the `ignore` settings in exactly one place, used by discovery and by `tree`; `Ignores`, the same `.gitignore` rules matched path by path for `inputs=` expansion, with a test that a `**` expansion selects exactly the files the walk lists; `repo_root(path) -> Option<PathBuf>`, walking up for `.git` and canonicalising; `write(path, text)` through temp and rename, no-op when unchanged, writing through a symlink rather than replacing it; `replace(path, old, new)`, the same, only while the file still holds `old`.
 - **`trust`.** The `trust.toml` store under `XDG_CONFIG_HOME`, store path injectable; `grant`, `revoke`, `is_trusted(root)`. Uses `fs::repo_root`.
@@ -475,7 +536,7 @@ Loaders, sinks and what they share:
 - **`index`**, **`toc`**, **`table`**. The pure text of the `index` and `toc` loaders and of the `table` sink.
 - **`truncate`.** The `max-lines` cut and its note.
 - **`symbol`**, **`git`**, **`remote`**, **`transcript`**. One loader each.
-- **`config`.** `computed.toml`, its lookup, and recipe expansion.
+- **`config`.** `computed.toml`, its lookup, recipe expansion, and the `[discover]` table.
 - **`allow`.** The allowlist store and prefix matching.
 - **`launch`**, **`sandbox`**. How a command is started, the `Wrap` that `doctor` and `trace` put around it, and the sandbox that goes on last.
 
@@ -488,7 +549,7 @@ Why a `Loaders` trait when the loader set is an enum? They are different things 
 - `render` through a fake `Loaders` against golden files under `tests/fixtures`: template in, text and reports out, covering the state table, refuse ordering, untrusted, loader failure and every mode. The golden files also fix the sum vectors.
 - Unit tests beside every module: `marker` round trips and every grammar error, `sink` per variant and a table of byte sequences for normalisation, `fs::walk` over a tempdir with a `.gitignore`, `trust` and `allow` with an injected store path, each projection, each loader's text, the merge skeleton, the guard's rule, the trace log parsers.
 - `cli`: `assert_cmd` for the three exit tiers and the pre-commit scenario.
-- One end-to-end file per feature, over a temporary repository: `file_slice`, `value`, `index`, `toc`, `projected_inputs`, `table`, `symbol`, `history` (the `git` loader), `remote` (against a loopback server), `transcript`, `max_lines`, `on_stale`, `recipes`, `stats`, `affected` (with `graph`), `why`, `merge`, `adopt`, `dupes`, `doctor`, `trace` and `exec_sandbox` (with the real tracer and sandbox, skipped with a note where the machine has none), `guard` (fed sample hook JSON), `watch`, `lsp` (in process over an in-memory connection).
+- One end-to-end file per feature, over a temporary repository: `file_slice`, `value`, `index`, `toc`, `projected_inputs`, `table`, `symbol`, `history` (the `git` loader), `remote` (against a loopback server), `transcript`, `max_lines`, `on_stale`, `recipes`, `syntax` (code files, `as=comment`, `[discover]`), `inline`, `stats`, `affected` (with `graph`), `why`, `merge`, `adopt`, `dupes`, `doctor`, `trace` and `exec_sandbox` (with the real tracer and sandbox, skipped with a note where the machine has none), `guard` (fed sample hook JSON), `watch`, `lsp` (in process over an in-memory connection).
 
 ## What was milestone 1?
 
@@ -535,9 +596,11 @@ Each item waits on something dogfooding will show.
 - **`symbol` languages.** TypeScript is left out: its grammar crate ships TypeScript and TSX together, which doubles the cost.
 - **`watch` scope.** Any change under a watched root that `.gitignore` does not ignore triggers a full pass, even when no region reads it.
 - **The Linux sandbox** has run on aarch64 with Landlock ABI 9 only. It wants a CI run on x86_64 and an older kernel.
+- **Markdown and HTML share a comment.** Both write `<!--`, so the loader line does not tell them apart, and a `tree`, `symbol` or `transcript` region moved from a `.md` file to an `.html` one keeps its sums and its fenced body: `check` calls it fresh, and only `run --force` rewrites it raw. Folding the syntax into the sum would move every HTML region's sum once.
+- **Code spans in paragraphs** are approximated: indented code blocks, setext headings and HTML blocks do not end a paragraph for the span scan.
 - **A second dogfood repository**, if one is named.
 
-Out of scope, and returning only if the destination is redrawn: copy layout, symlink layouts, file formats other than markdown, image sinks, nesting, regions that read other regions, Windows, Elixir.
+Out of scope, and returning only if the destination is redrawn: copy layout, symlink layouts, block comments that span lines (`/* */` across lines, Python docstrings), image sinks, nesting, regions that read other regions, Windows, Elixir.
 
 ## Decision record
 
@@ -556,7 +619,7 @@ Out of scope, and returning only if the destination is redrawn: copy layout, sym
 | [0011](../adr/0011-gitignore-is-not-a-flag.md) | The tree loader honours `.gitignore` without a flag. |
 | [0012](../adr/0012-wildcards-in-inputs-do-not-reach-ignored-paths.md) | Wildcards in `inputs=` do not reach ignored paths. |
 | [0013](../adr/0013-a-region-the-tool-cannot-answer-skips-only-itself.md) | A region the tool cannot answer skips only itself. |
-| [0014](../adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md) | Snapshots ignore closer sums, and `run` settles templates that read each other. |
+| [0014](../adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md) | Snapshots ignore closer sums, and `run` settles templates that read each other. Amended: one pass per file plus one. |
 | [0015](../adr/0015-the-file-loader.md) | The `file` loader. |
 | [0016](../adr/0016-a-projection-snapshots-only-the-part-it-reads.md) | A projection snapshots only the part it reads. |
 | [0017](../adr/0017-trust-gates-running-repository-code-and-nothing-else.md) | Trust gates running repository code, and nothing else. |
@@ -564,7 +627,9 @@ Out of scope, and returning only if the destination is redrawn: copy layout, sym
 | [0019](../adr/0019-remote-regions-are-pinned-and-allowlisted.md) | Remote regions are pinned by SHA-256 and fetch only under a per-machine allowlist. |
 | [0020](../adr/0020-the-sandbox-enforces-inputs-and-does-not-replace-trust.md) | The sandbox enforces `inputs=` and does not replace trust. |
 | [0021](../adr/0021-trace-reads-the-macos-sandbox-reports.md) | `trace` reads the macOS sandbox's own reports. |
-| [0022](../adr/0022-recipes-in-computed-toml.md) | Recipes live in `computed.toml`, the first configuration file. |
+| [0022](../adr/0022-recipes-in-computed-toml.md) | Recipes live in `computed.toml`, the first configuration file. Amended by 0026: `[discover]`. |
 | [0023](../adr/0023-on-stale-warn-softens-only-staleness.md) | `on-stale=warn` softens only staleness. |
 | [0024](../adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md) | The merge driver leaves a region both sides re-rendered unrendered. |
 | [0025](../adr/0025-the-guard-refuses-an-edit-before-it-lands.md) | The Claude Code guard refuses an edit to a region before it lands. |
+| [0026](../adr/0026-a-marker-is-a-comment-in-the-files-own-syntax.md) | A marker is a comment in the file's own syntax, and discovery reads code only when asked. |
+| [0027](../adr/0027-a-region-inside-a-line.md) | A region can sit inside a line, in Markdown and HTML. |
