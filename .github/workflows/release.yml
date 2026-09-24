@@ -47,8 +47,36 @@ jobs:
             *.tar.gz
             *.tar.gz.sha256
 
-  release:
+  # Publishes the tagged version to crates.io by trusted publishing, with no
+  # stored token: crates.io's settings for the crate name this repository and
+  # `release.yml` (https://crates.io/docs/trusted-publishing). A tag that is
+  # not `v` plus Cargo.toml's version stops here, before anything is public.
+  publish:
     needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Tag matches Cargo.toml
+        run: |
+          set -eu
+          v=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          if [ "v$v" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME is not v$v, the version in Cargo.toml" >&2
+            exit 1
+          fi
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - run: cargo publish --locked
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+  # The GitHub release follows the crates.io publish, so the release page and
+  # the site never announce a version `cargo install` cannot fetch.
+  release:
+    needs: [build, publish]
     runs-on: ubuntu-latest
     permissions:
       contents: write
