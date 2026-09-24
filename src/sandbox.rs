@@ -78,13 +78,22 @@ impl Allowance {
         let listing = ctx.bound()?;
         let path = std::env::var_os("PATH").unwrap_or_default();
         let on_path = std::env::split_paths(&path).filter(|p| p.is_absolute());
-        let mut system: Vec<PathBuf> = SYSTEM
+        let mut system = Vec::new();
+        for tree in SYSTEM
             .iter()
             .map(PathBuf::from)
             .chain(on_path)
             .filter_map(|p| p.canonicalize().ok())
-            .filter(|p| !p.starts_with(&listing))
-            .collect();
+        {
+            if tree.starts_with(&listing) {
+                continue;
+            }
+            if listing.starts_with(&tree) {
+                around(&tree, &listing, &mut system);
+            } else {
+                system.push(tree);
+            }
+        }
         system.sort();
         system.dedup();
         Ok(Allowance {
@@ -94,6 +103,32 @@ impl Allowance {
             tmp: tmp.to_path_buf(),
             writable: Vec::new(),
         })
+    }
+}
+
+/// What of `tree`, a system or `PATH` directory that holds the repository
+/// `hole` (a checkout in `/usr/src/app`), a sandbox may read: every entry
+/// but the one on the way to `hole`, whose entries are taken in turn, so the
+/// repository stays closed. A symlink counts as its target, and is left out
+/// when that target is in the repository or holds it.
+fn around(tree: &Path, hole: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(tree) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path == hole {
+            continue;
+        }
+        // `hole` is canonical, so a directory on the way to it is no symlink.
+        if hole.starts_with(&path) {
+            around(&path, hole, out);
+            continue;
+        }
+        match path.canonicalize() {
+            Ok(p) if !p.starts_with(hole) && !hole.starts_with(&p) => out.push(p),
+            _ => {}
+        }
     }
 }
 
@@ -425,6 +460,26 @@ mod tests {
         assert!(
             !p.contains("mach-lookup"),
             "no Mach service: deny default holds"
+        );
+    }
+
+    #[test]
+    fn a_tree_that_holds_the_repository_is_opened_only_around_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = dir.path().canonicalize().unwrap();
+        let repo = top.join("src/app");
+        std::fs::create_dir_all(repo.join("docs")).unwrap();
+        std::fs::create_dir_all(top.join("bin")).unwrap();
+        std::fs::create_dir_all(top.join("src/other")).unwrap();
+        std::fs::write(top.join("src/note"), "").unwrap();
+        std::os::unix::fs::symlink(&repo, top.join("into")).unwrap();
+        std::os::unix::fs::symlink(&top, top.join("src/up")).unwrap();
+        let mut out = Vec::new();
+        around(&top, &repo, &mut out);
+        out.sort();
+        assert_eq!(
+            out,
+            [top.join("bin"), top.join("src/note"), top.join("src/other")]
         );
     }
 
