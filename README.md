@@ -89,9 +89,11 @@ Every state is derived from the file and its inputs alone.
 | `volatile` | Declares no inputs; body matches `out=`. | re-renders every time | passes |
 | `unrendered` | The closer carries no sums. | renders | exit 1 |
 
-**Hand edits are refused, not silently reverted.** A file with one edited region is left untouched in full and the run exits 1 with the region named. `run --force` overwrites. The reason is the case where a body edit and an input change land together: under overwrite the edit vanishes inside a legitimate re-render, and on `CLAUDE.md` the editor is usually an agent that does not know the region is owned. A failed hook is the one signal that reaches it. [ADR 0005](docs/adr/0005-refuse-hand-edited-regions.md).
+**Hand edits are refused, not silently reverted.** A file with one edited region is left untouched in full and the run exits 1 with the region named. `run --dry-run` shows what `--force` would do to it, and `run --force` overwrites; `--force` also re-renders fresh regions, for output that moved without its inputs. The reason is the case where a body edit and an input change land together: under overwrite the edit vanishes inside a legitimate re-render, and on `CLAUDE.md` the editor is usually an agent that does not know the region is owned. A failed hook is the one signal that reaches it. [ADR 0005](docs/adr/0005-refuse-hand-edited-regions.md).
 
-**A loader failure keeps the last good body.** Non-zero exit, timeout, or output that fails normalisation: the body and sums stay as they were, the command's stderr is printed under the region's line, and the run exits 1 so CI notices. Restoring the input and running again repairs it.
+**A loader failure keeps the last good body.** Non-zero exit, timeout, or output that fails normalisation: the body and sums stay as they were, the command's stderr is printed under the region's line, and the run exits 1 so CI notices. Restoring the input and running again repairs it. A region the tool cannot answer at all, such as `inputs=` matching nothing, is reported `error` and exits 2, and the other regions in its file are still kept current. [ADR 0013](docs/adr/0013-a-region-the-tool-cannot-answer-skips-only-itself.md).
+
+**Templates that read each other settle in one run.** When one region's `inputs=` include another template, `run` renders again whatever read a file it just wrote, until nothing changes, and the sums in a closer are left out of any snapshot that reads them. [ADR 0014](docs/adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md).
 
 **`check` never runs a loader.** It recomputes snapshots, compares both sums and reports. So it is safe on an unvetted clone and cheap in a hook. The diff `run` would write lives on `run --dry-run`. [ADR 0006](docs/adr/0006-check-never-runs-a-loader.md).
 
@@ -103,8 +105,9 @@ A loader produces text and a snapshot of what it read. A sink shapes that text i
 |---|---|---|---|
 | `tree` | `src=.` `depth=` and the flags `all` `dirs` | One relative path per line, from the same walk that drew the listing | `fence` |
 | `exec` | `cmd=` `timeout=30` and exactly one of `inputs=` or `volatile` | Path, length and content of every matched file; empty when volatile | `raw` |
+| `file` | `src=`, one file, included verbatim; needs no trust | Path, length and content of that file | `raw` |
 
-Common attributes: `name=` for stable reports, `as=` to pick a sink, `lang=` for the fence language. The `tree` loader is gitignore-aware through the `ignore` crate, with the per-clone and per-user exclude files switched off so the listing is the same on every machine.
+Common attributes: `name=` for stable reports, `as=` to pick a sink, `lang=` for the fence language. An indented region, such as one inside a list item, gets its body indented to match. The `tree` loader is gitignore-aware through the `ignore` crate, with the per-clone and per-user exclude files switched off so the listing is the same on every machine.
 
 Relative paths in a marker resolve against the directory of the file that contains the marker, not the repository root and not the shell's working directory, and an exec command runs there. A region reads the same from a pre-commit hook, from CI, and from a terminal, and moving the file moves its regions with it. [ADR 0004](docs/adr/0004-region-root-is-the-template-directory.md).
 
@@ -117,22 +120,22 @@ Cloning a repository should not execute anything in it. An exec region runs only
 ## The command line
 
 ```
-computed run   [paths] [--force] [--dry-run] [--trust]
-computed check [paths]
-computed clean [paths] [--force] [--dry-run]
+computed run   [paths] [--force] [--dry-run] [--trust] [--only NAME]
+computed check [paths] [--only NAME]
+computed clean [paths] [--force] [--dry-run] [--only NAME]
 computed trust   [path]
 computed untrust [path]
 ```
 
-With no paths, the current directory is walked with the tree loader's ignore settings and every `.md` file is read. An explicit file is read whatever its extension.
+With no paths, the current directory is walked with the tree loader's ignore settings, dot-directories such as `.claude/` and `.github/` included, and every `.md` and `.markdown` file is read. An explicit file is read whatever its extension. A symlinked file is written through, never replaced. `--only NAME` narrows a command to the regions with that name.
 
 | Exit | Meaning |
 |---|---|
 | 0 | Nothing to report. Everything is fresh. |
 | 1 | The content said no: drift under `check`, a write, a refused file, a loader failure or an untrusted region under `run`. |
-| 2 | The tool could not answer: usage error, marker parse error, a path escaping the repository, `inputs=` matching nothing. |
+| 2 | The tool could not answer: usage error, marker parse error, a path escaping the repository, `inputs=` matching nothing, a file edited while `run` computed it. |
 
-One line per region goes to stderr; `--dry-run` diffs are the only thing on stdout. Fresh regions print only with `-v`.
+One line per region goes to stderr; `--dry-run` diffs are the only thing on stdout. Fresh regions print only with `-v`. `--format json` prints one JSON document on stdout instead, every region included.
 
 ### Hooks
 
@@ -183,7 +186,7 @@ CONTEXT.md        the vocabulary: template, region, marker, sum, snapshot, drift
 
 ## Not yet
 
-`watch` is deferred until dogfooding shows agent sessions reading stale regions between commits. Also not in v0: a copy layout, a `file` loader, sinks beyond `raw` and `fence`, configuration files, colour or machine-readable reports, Windows. The spec lists each with the reason it waits.
+`watch` is deferred until dogfooding shows agent sessions reading stale regions between commits. Also not in v0: a copy layout, sinks beyond `raw` and `fence`, configuration files, colour, Windows. The spec lists each with the reason it waits.
 
 ## Vocabulary
 

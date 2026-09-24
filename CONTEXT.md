@@ -57,7 +57,7 @@ A change made to a rendered file by a person or an agent rather than by the tool
 _Avoid_: manual edit, external write
 
 **Inputs**:
-The paths a region declares it was computed from. The tree loader's inputs are implied by its listing; an exec region declares them or declares itself volatile.
+The paths a region declares it was computed from. The tree loader's inputs are implied by its listing, and the file loader's input is its `src=`; an exec region declares them or declares itself volatile.
 _Avoid_: dependencies, sources, watch list
 
 **Fresh**:

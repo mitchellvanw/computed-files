@@ -219,7 +219,7 @@
 
   <!-- ─────────────────────────── loaders ─────────────────────────── -->
   <section class="mt-24" id="loaders">
-    <h2 class="text-2xl mb-3">Tree and exec</h2>
+    <h2 class="text-2xl mb-3">Tree, exec and file</h2>
     <div class="mt-6 grid gap-6 md:grid-cols-2">
       <div class="rounded-lg border border-line bg-ground-2 p-5">
         <h3 class="text-lg font-medium mb-1">tree</h3>
@@ -235,8 +235,9 @@
         <p class="text-[0.95rem] mt-3">The command runs with the file's directory as its working directory, a 30 second limit you can change with <code>timeout=</code>, and <code>LC_ALL=C</code> and <code>TZ=UTC</code> set so its output does not depend on the machine. An exec region only runs in a repository you have trusted. See <a href="#trust" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">who may run a command</a>.</p>
       </div>
     </div>
-    <p class="mt-6 text-ink-2">Relative paths resolve against the directory of the file holding the marker, not the repository root or the shell's working directory. So a region reads the same from a hook, from CI, and from a terminal, and moving the file moves its regions with it. A path that leaves the repository is an error, because such a region would render differently on every machine.</p>
-    <p class="mt-3 text-ink-2">Before the text lands in the file, line endings become LF and trailing newlines are stripped. A command that prints invalid UTF-8, a control character, or a line that looks like a marker has failed. When a command fails, times out, or exits non-zero, the old body and both hashes stay, its stderr is printed under the region's line, and the run exits 1. Deleting an input does not blank a region.</p>
+    <p class="mt-6"><code>file src=docs/shared.md</code> pastes one file as it stands, so a section shared by <code>CLAUDE.md</code> and <code>AGENTS.md</code> is written once. It runs no command, so it needs no trust. With <code>as=fence lang=markdown</code> it shows a file as code, markers and all.</p>
+    <p class="mt-3 text-ink-2">Relative paths resolve against the directory of the file holding the marker, not the repository root or the shell's working directory. So a region reads the same from a hook, from CI, and from a terminal, and moving the file moves its regions with it. A path that leaves the repository is an error, because such a region would render differently on every machine.</p>
+    <p class="mt-3 text-ink-2">Before the text lands in the file, line endings become LF and trailing newlines are stripped. A command that prints invalid UTF-8, a control character, or a line that looks like a marker outside a fence has failed. A region indented inside a list item gets its body indented to match. When a command fails, times out, or exits non-zero, the old body and both hashes stay, its stderr is printed under the region's line, and the run exits 1. Deleting an input does not blank a region.</p>
   </section>
 
   <!-- ─────────────────────────── states ─────────────────────────── -->
@@ -381,15 +382,17 @@ computed run --trust      <span class="text-ink-2"># this one invocation, for CI
           <tbody>
             <tr><td>run [paths]</td><td>Render every region that is not fresh and write the files. Exit 1 when it wrote, refused, or a command failed.</td></tr>
             <tr><td>run --dry-run</td><td>Print the diff each file would get, write nothing. The only place the pending diff is shown.</td></tr>
-            <tr><td>run --force</td><td>Also overwrite edited regions.</td></tr>
+            <tr><td>run --force</td><td>Also overwrite edited regions, and re-render fresh ones.</td></tr>
             <tr><td>run --trust</td><td>Treat every file as trusted for this invocation.</td></tr>
             <tr><td>check [paths]</td><td>Report the state of every region. Runs no command. Exit 1 on anything but fresh.</td></tr>
             <tr><td>clean [paths]</td><td>Empty every body and strip the hashes, leaving the markers. The next run rebuilds them.</td></tr>
             <tr><td>trust · untrust [path]</td><td>Grant or revoke exec for the repository containing the path.</td></tr>
+            <tr><td>--only NAME</td><td>Only the regions with that name. Repeat for more.</td></tr>
             <tr><td>-v</td><td>Also print the regions that are fine.</td></tr>
+            <tr><td>--format json</td><td>One JSON document on stdout instead of the report.</td></tr>
           </tbody>
         </table>
-        <p class="mt-6 text-ink-2">With no paths, a command walks the current directory for <code>.md</code> files, skipping what <code>.gitignore</code> skips. A file you name is read whatever its extension.</p>
+        <p class="mt-6 text-ink-2">With no paths, a command walks the current directory for <code>.md</code> and <code>.markdown</code> files, <code>.claude/</code> and <code>.github/</code> included, skipping what <code>.gitignore</code> skips. A file you name is read whatever its extension.</p>
       </div>
       <div>
         <p class="font-mono text-xs text-ink-2 m-0 mb-2">one line per region, on stderr</p>
@@ -399,7 +402,7 @@ CLAUDE.md:58        exec untrusted  skipped; run `computed trust`</code></pre>
         <ul class="mt-6 grid gap-2 list-none p-0 m-0 text-[0.98rem]">
           <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 0</code><span>Nothing to report. Everything is fresh.</span></li>
           <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 1</code><span>The content said no. Drift, a written file, a refused edit, a failed command, an untrusted region.</span></li>
-          <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 2</code><span>The tool could not answer. A usage error, a parse error, a path outside the repository, an <code>inputs=</code> glob that matches nothing.</span></li>
+          <li class="grid grid-cols-[auto_1fr] gap-3"><code class="text-sm text-ink-2">exit 2</code><span>The tool could not answer. A usage error, a parse error, a path outside the repository, an <code>inputs=</code> glob that matches nothing. A region the tool cannot answer is skipped on its own; the rest of its file is still kept current.</span></li>
         </ul>
       </div>
     </div>
@@ -408,14 +411,14 @@ CLAUDE.md:58        exec untrusted  skipped; run `computed trust`</code></pre>
   <!-- ─────────────────────────── writes ─────────────────────────── -->
   <section class="mt-24 max-w-[42rem]" id="writes">
     <h2 class="text-2xl mb-3">How files are written</h2>
-    <p>Every write goes to a temporary file that is then renamed over the original, keeping its permissions. Nothing is written when the bytes would be identical, so running twice changes nothing and the file's modification time does not move. A file with one refused region is not written at all, even if other regions in it are merely stale. Other files in the same invocation still are.</p>
+    <p>Every write goes to a temporary file that is then renamed over the original, keeping its permissions. A symlink is written through, so <code>AGENTS.md</code> linked to <code>CLAUDE.md</code> stays a link. A file edited while its commands ran is not overwritten. When one file's <code>inputs=</code> read another, <code>run</code> renders again until both settle, so one run leaves <code>check</code> passing. Nothing is written when the bytes would be identical, so running twice changes nothing and the file's modification time does not move. A file with one refused region is not written at all, even if other regions in it are merely stale. Other files in the same invocation still are.</p>
     <p class="mt-3 text-ink-2">There is no watch command. Pre-commit runs <code>run</code> and CI runs <code>check</code>, and that has been enough so far. A watcher would sit on top of <code>run</code> and gets built when dogfooding shows agents reading stale regions between commits.</p>
   </section>
 
   <!-- ─────────────────────────── elsewhere ─────────────────────────── -->
   <section class="mt-24" id="elsewhere">
     <h2 class="text-2xl mb-3">Files that are not Markdown</h2>
-    <p class="max-w-[46rem]">Discovery walks <code>.md</code> files, but a path you name is read whatever its extension. So a region works today in an HTML page, a YAML issue template, a Rust source file, or anything else where a whole-line HTML comment is legal and harmless. What changes is which sink you can use.</p>
+    <p class="max-w-[46rem]">Discovery walks <code>.md</code> and <code>.markdown</code> files, but a path you name is read whatever its extension. So a region works today in an HTML page, a YAML issue template, a Rust source file, or anything else where a whole-line HTML comment is legal and harmless. What changes is which sink you can use.</p>
     <div class="mt-8 grid gap-6 md:grid-cols-2">
       <div class="rounded-lg border border-line bg-ground-2 p-5">
         <h3 class="text-lg font-medium mb-2">What ports</h3>

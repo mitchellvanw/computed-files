@@ -15,7 +15,7 @@ The marker grammar, the loaders and every attribute live in [`REFERENCE.md`](../
 
 ## 1. Discover
 
-Find the Markdown, then read it. `grep -rl '<!-- computed' --include='*.md' .` names the files that already have regions. Leave those regions alone and look at the prose around them.
+Find the Markdown, then read it, `.claude/` and `.github/` included. `grep -rl '<!-- computed' --include='*.md' .` names the files that already have regions. Leave those regions alone and look at the prose around them.
 
 A block is worth computing when the repository already knows its content and a person has copied it out by hand. Judge each candidate by what would make it wrong.
 
@@ -26,6 +26,7 @@ A block is worth computing when the repository already knows its content and a p
 | An index built from files, such as ADRs or migrations | A file is added or its title changes | `exec` with `inputs=` |
 | A table of contents | A heading changes | `exec` with `inputs=` |
 | A version, a count, a date stamp | Almost at once | `exec` |
+| A section copied between files, such as `CLAUDE.md` and `AGENTS.md` | One copy is edited and the other is not | `file src=` |
 | Anything a person decided | It does not. A person changes it on purpose | leave it alone |
 
 That last row is the one to get right. Prose, rationale, a hand-picked example and a table of judgements are not stale, they are edited. Computing them takes the decision away from the person making it.

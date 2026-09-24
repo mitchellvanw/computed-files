@@ -1,6 +1,6 @@
 # computed v0
 
-`computed` keeps marked regions of a markdown file current by computation. The document is a view; the truth lives in a directory listing or the output of a command. This is the specification for v0: the marker grammar, the two loaders, the freshness model, the hand-edit policy, the trust model, the command line, the crate layout, and the definition of milestone 1. Every decision here was made on a ticket and, where it is hard to reverse, recorded as an ADR under [`docs/adr/`](../adr/). The spec gists; the ADR argues. Vocabulary is [`CONTEXT.md`](../../CONTEXT.md), and this document uses its terms without redefining them.
+`computed` keeps marked regions of a markdown file current by computation. The document is a view; the truth lives in a directory listing or the output of a command. This is the specification for v0: the marker grammar, the three loaders, the freshness model, the hand-edit policy, the trust model, the command line, the crate layout, and the definition of milestone 1. Every decision here was made on a ticket and, where it is hard to reverse, recorded as an ADR under [`docs/adr/`](../adr/). The spec gists; the ADR argues. Vocabulary is [`CONTEXT.md`](../../CONTEXT.md), and this document uses its terms without redefining them.
 
 The first reader is an `/implement` session building milestone 1 against this repository's own `CLAUDE.md`. Anything the spec leaves open is listed at the end, with the reason it is open.
 
@@ -30,7 +30,7 @@ The prose around the markers is the author's. The body between them belongs to t
 
 ### Markers
 
-A marker is a whole line: optional leading whitespace, which is preserved, the comment, optional trailing whitespace, which is ignored. No other container is a marker: not a link, not inline code, not a fence. Markers inside CommonMark fenced code blocks (backtick or tilde, any length, with a matching closer) are ignored, so a document can show marker examples. Indented code blocks are not tracked in v0.
+A marker is a whole line: optional leading whitespace, which is preserved, the comment, optional trailing whitespace, which is ignored. No other container is a marker: not a link, not inline code, not a fence. Markers inside CommonMark fenced code blocks (backtick or tilde, any length, with a matching closer) are ignored, so a document can show marker examples. Indented code blocks are not tracked in v0. The comment end may touch the last token: `<!-- /computed-->` is a closer.
 
 The opener:
 
@@ -53,11 +53,11 @@ The closer:
 
 `in` is the input sum, `out` the output sum. Both present or neither. A closer with neither means the region is unrendered. A closer with one is a parse error.
 
-The body is the lines strictly between the marker lines. The tool writes what the sink produced and adds no blank lines of its own; the sink emits the blank lines CommonMark needs.
+The body is the lines strictly between the marker lines. The tool writes what the sink produced and adds no blank lines of its own; the sink emits the blank lines CommonMark needs. When the opener is indented, as inside a list item, every non-blank body line carries the same indentation, so the region stays inside its container. Every line the tool writes into a region ends as the opener's line does, so a CRLF file stays CRLF.
 
 ### Parse errors
 
-All hard, the file is not written, exit 2: unknown loader, unknown attribute, duplicate name, opener without closer, closer without opener, opener inside a body (nesting is not supported), one-sum closer, malformed sum, value containing `-->`.
+All hard, the file is not written, exit 2: unknown loader, unknown attribute, duplicate name, opener without closer, closer without opener, opener inside a body (nesting is not supported), one-sum closer, malformed sum, value containing `-->`, an empty entry in `inputs=` (a stray comma), `timeout=0`, `exec` without `cmd=`, `file` without `src=`.
 
 ### Why two sums?
 
@@ -73,7 +73,7 @@ Copy layout, a `.tmpl` rendered to the canonical path, was the research recommen
 
 ## Which loaders?
 
-Two: `tree` and `exec`. Modelled as `enum Loader { Tree(TreeArgs), Exec(ExecArgs) }`, a closed set, so an enum and not a trait. Both produce the same thing, `Loaded { text: String, snapshot: Vec<u8> }`: native loaders and commands are one kind of thing at the data level.
+Three: `tree`, `exec` and `file`. Modelled as `enum Loader { Tree(TreeArgs), Exec(ExecArgs), File(FileArgs) }`, a closed set, so an enum and not a trait. All produce the same thing, `Loaded { text: String, snapshot: Vec<u8> }`: native loaders and commands are one kind of thing at the data level.
 
 Common attributes: `name=`, `as=`, `lang=`. Each loader owns its own attribute set. Any other attribute is the grammar's unknown-attribute error.
 
@@ -81,11 +81,11 @@ Common attributes: `name=`, `as=`, `lang=`. Each loader owns its own attribute s
 
 Every relative path in a marker resolves against the template's directory, the region root, and an exec command runs with that directory as its working directory ([ADR 0004](../adr/0004-region-root-is-the-template-directory.md)). Neither the repository root nor the invocation directory: the first makes a nested file spell its own path back, the second makes the same file render differently from a hook, from CI and from a shell.
 
-`tree src=` and exec `inputs=` must resolve inside the repository root, or inside the region root when the file is not in a repository. A path that escapes is a hard error. This is a reproducibility rule, not a security fence: a region reading outside the repository renders differently on every machine.
+`tree src=`, `file src=` and exec `inputs=` must resolve inside the repository root, or inside the region root when the file is not in a repository. A path that escapes is a hard error. This is a reproducibility rule, not a security fence: a region reading outside the repository renders differently on every machine.
 
 ### `tree`
 
-- `src=` default `.`. `depth=` default unlimited, counted as `tree -L n` counts. Flags: `all` includes dotfiles, `dirs` lists directories only.
+- `src=` default `.`, and must be a directory. `depth=` default unlimited, counted as `tree -L n` counts. Flags: `all` includes dotfiles, `dirs` lists directories only.
 - Output in `tree`'s box-drawing style with a `.` root line. No sizes, mtimes or counts.
 - Gitignore-aware through the `ignore` crate, configured as the research settled ([ignore semantics](../research/ignore-gitignore-semantics.md)): `.hidden(true)`, `.ignore(false)`, `.git_ignore(true)`, `.parents(true)`, `.require_git(true)`, `.git_exclude(false)`, `.git_global(false)`, `.follow_links(false)`, byte-order sort by file name, the sequential walker. Per-clone and per-user exclude files are off because they would make the snapshot differ between machines. `tree --gitignore` is not git-exact and is not a byte-for-byte reference. The rules apply inside a repository without any flag, and not at all outside one; `gitignore` is not a flag ([ADR 0011](../adr/0011-gitignore-is-not-a-flag.md)).
 - One walk, byte order of names, directories and files interleaved. The rendered listing and the snapshot are the same sequence. A directory whose children are all ignored is still listed.
@@ -96,10 +96,10 @@ Every relative path in a marker resolves against the template's directory, the r
 
 - `cmd=` required. Run as `/bin/sh -c "<cmd>"`, never the login shell. stdin is closed.
 - Exactly one of `inputs=` or the `volatile` flag. Neither, or both, is a parse error.
-- `inputs=` is comma-separated globset syntax: `**`, `*`, `?`, `[..]`, no braces. Inside a repository, a wildcard component does not select a path the `.gitignore` files ignore, read as the `tree` loader reads them, and never selects `.git`; a literal component reaches what it names, ignored or not, so `target/*.json` selects files in an ignored `target/` and `**/*.json` does not. A directory the glob matches brings every file under it that its own rules do not ignore ([ADR 0012](../adr/0012-wildcards-in-inputs-do-not-reach-ignored-paths.md)). Expansion enters only the directories a leading run of the glob's components can match, so `*.md` reads the region root's listing and nothing below it, and a literal path reads its parent's. A file or directory deleted while expansion lists or reads it is left out, not an error. A glob that matches nothing is a hard error under `run` and under `check`, and says so when ignore rules are why. The template file itself is silently excluded from its own snapshot.
-- Snapshot with `inputs=`: for each matched file in byte-order sorted relative path, `path` `\0` decimal byte length `\0` content `\0`. `volatile`: an empty snapshot.
-- `timeout=` in seconds, default 30. Expiry kills the process group and counts as failure.
-- Environment: the inherited environment with `LC_ALL=C`, `LANGUAGE=` (empty) and `TZ=UTC` set unconditionally, plus `COMPUTED_FILE` (the template path), `COMPUTED_ROOT` (the repository root, unset outside one) and `COMPUTED_REGION` (name or `loader@line`). Nothing else is touched, `PATH` included. A command that wants a locale or zone sets it inside `cmd=` ([ADR 0009](../adr/0009-loader-text-is-normalised-and-exec-runs-pinned.md)).
+- `inputs=` is comma-separated globset syntax: `**`, `*`, `?`, `[..]`, no braces. Inside a repository, a wildcard component does not select a path the `.gitignore` files ignore, read as the `tree` loader reads them, and never selects `.git`; a literal component reaches what it names, ignored or not, so `target/*.json` selects files in an ignored `target/` and `**/*.json` does not. A directory the glob matches brings every file under it that its own rules do not ignore ([ADR 0012](../adr/0012-wildcards-in-inputs-do-not-reach-ignored-paths.md)). A trailing `/` names the directory the path without it names. Paths are matched as the glob spells them, so `docs/*.md` works when `docs` is a symlink. A symlink to a file is read through when its target stays inside the repository; a symlink to a directory is entered only when a literal component names it. A target outside the repository is an error when named and skipped when a wildcard reached it. Expansion enters only the directories a leading run of the glob's components can match, so `*.md` reads the region root's listing and nothing below it, and a literal path reads its parent's. A file or directory deleted while expansion lists or reads it is left out, not an error. A glob that matches nothing is a hard error under `run` and under `check`, and says so when ignore rules are why. The template file itself is silently excluded from its own snapshot.
+- Snapshot with `inputs=`: for each matched file in byte-order sorted relative path, `path` `\0` decimal byte length `\0` content `\0`, where the content has the `in=`/`out=` sums taken out of every closer line ([ADR 0014](../adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md)). `volatile`: an empty snapshot.
+- `timeout=` in seconds, at least 1, default 30. Expiry kills the process group and counts as failure. When the shell exits, the process group is killed too: the output is what the command printed before its shell was done, so a background job cannot hold the pipes open. A process that left the group and still holds them is a failure once the timeout has passed.
+- Environment: the inherited environment with `LC_ALL=C`, `LANGUAGE=` (empty) and `TZ=UTC` set unconditionally, plus `COMPUTED_FILE` (the template's absolute path, whatever directory the tool was invoked from), `COMPUTED_ROOT` (the repository root, unset outside one) and `COMPUTED_REGION` (name or `loader@line`). Nothing else is touched, `PATH` included. A command that wants a locale or zone sets it inside `cmd=` ([ADR 0009](../adr/0009-loader-text-is-normalised-and-exec-runs-pinned.md)).
 - stdout must be UTF-8; otherwise the loader failed.
 - Default sink `raw`.
 
@@ -107,9 +107,14 @@ Every relative path in a marker resolves against the template's directory, the r
 
 Non-zero exit, timeout, invalid UTF-8, or text that fails normalisation (next section): the previous body is kept, the sums are kept, the command's stderr is reported under the region's line, nothing is written into the region, and the run exits 1. Deleting an input does not blank a region; restoring it and running again repairs it.
 
-### Which loader is not here?
+### `file`
 
-`file`, a verbatim include that needs no trust, is wanted only if an untrusted repository turns out to need includes. This repository is trusted, so dogfooding cannot show that. It stays in the fog.
+A verbatim include that runs no command and needs no trust ([ADR 0015](../adr/0015-the-file-loader.md)).
+
+- `src=` required, a file inside the repository, not the template itself.
+- Text: the file's content with closer sums taken out; it must be UTF-8, otherwise the loader failed.
+- Snapshot: the one entry `inputs=src` would take.
+- Default sink `raw`. `as=fence lang=…` shows the file as code, markers included.
 
 ## What makes loader text deterministic?
 
@@ -117,13 +122,13 @@ The output sum is taken over body bytes, so anything that changes those bytes fo
 
 Normalisation, applied in the `sink` module to every loader's text before either sink shapes it, in order:
 
-1. Invalid UTF-8, any C0 control byte other than tab, LF and CR, or a line that would parse as a marker opener or closer: loader failure.
+1. Invalid UTF-8, or any C0 control byte other than tab, LF and CR: loader failure.
 2. CRLF and lone CR become LF.
 3. Trailing newlines are stripped. Trailing spaces and tabs on a line are kept: markdown gives them meaning and padded tables carry them. Empty output stays empty.
 
 The sink then owns the line structure. `fence` writes the opening fence with `lang=`, the text, the closing fence. `raw` writes a blank line, the text, a blank line. Every line is LF-terminated. Interior blank lines are untouched.
 
-One rule was added while assembling this spec, because the grammar skips markers inside fences and loader text can contain fence lines: after the sink has shaped the body, the region must parse back to the same body. `fence` guarantees this by choosing a backtick run one longer than the longest backtick run that starts a line of the text, minimum three. For `raw`, text whose fences are unbalanced would swallow the closer on the next parse; that is a loader failure, reported like rule 1. This keeps the invariant that a file the tool wrote always parses.
+One rule was added while assembling this spec, because the grammar skips markers inside fences and loader text can contain fence lines: after the sink has shaped the body, the region must parse back to the same body. `fence` guarantees this by choosing a backtick run one longer than the longest backtick run that starts a line of the text, minimum three. For `raw`, text whose fences are unbalanced would swallow the closer on the next parse; that is a loader failure, reported like rule 1, and so is a line that would parse as a marker unless a fence in the text holds it. `fence` holds every line, so marker examples can be shown that way. The invariant that a file the tool wrote always parses is then checked on the whole file before it is written, because a region's fence can close a fence the prose left open above it: when the rendered file does not parse back to the same regions, the file is not written, exit 2, and the error names the unclosed fence.
 
 A change to any normalisation rule bumps both loaders' format constants.
 
@@ -131,7 +136,7 @@ A change to any normalisation rule bumps both loaders' format constants.
 
 A region carries two sums in its closer. Both are SHA-256, stored as the full 64 lowercase hex characters ([ADR 0010](../adr/0010-sha-256-sums.md)).
 
-**Input sum.** SHA-256 over, in order: the domain line `computed-in/1\n`; the loader and its format constant, `<loader>/<n>\n`; the canonical opener line (single-space tokens, suffix stripped, indentation stripped) followed by `\n`; the snapshot bytes.
+**Input sum.** SHA-256 over, in order: the domain line `computed-in/1\n`; the loader and its format constant, `<loader>/<n>\n`, or `<loader>/<n> indent="<indent>"\n` for an indented opener, a tab written `\t`; the canonical opener line (single-space tokens, suffix stripped, indentation stripped) followed by `\n`; the snapshot bytes.
 
 **Output sum.** SHA-256 over the body bytes exactly as they sit between the marker lines, each line with its terminator. An empty body hashes empty.
 
@@ -152,14 +157,14 @@ A volatile region whose body does not match `out=` is `edited`. Volatile exempts
 
 **The cache.** `run` skips the loader of a fresh region. A loader therefore has two steps: `snapshot`, computed before any work and always run by both `run` and `check`, and `load`, run only when the region is stale, unrendered, or volatile. For `tree` both steps are one walk. Fresh regions are reproduced byte-for-byte from their raw lines: canonical spacing and the opener suffix appear the first time a region renders, so a clean `check` guarantees `run` is a no-op.
 
-**`check` never runs a loader** ([ADR 0006](../adr/0006-check-never-runs-a-loader.md)). It computes snapshots, compares both sums and reports states. So `check` is safe on an unvetted clone and cheap in a hook, and it cannot show the diff `run` would write. That diff lives on `run --dry-run`. The cost, accepted: a loader whose output changes without an input or format-constant change is invisible until `--force`.
+**`check` never runs a loader** ([ADR 0006](../adr/0006-check-never-runs-a-loader.md)). It computes snapshots, compares both sums and reports states. So `check` is safe on an unvetted clone and cheap in a hook, and it cannot show the diff `run` would write. That diff lives on `run --dry-run`. The cost, accepted: a loader whose output changes without an input or format-constant change is invisible until `run --force`, which renders fresh regions too.
 
 ## What happens to a hand edit?
 
 `run` refuses ([ADR 0005](../adr/0005-refuse-hand-edited-regions.md)). A region is edited when its body does not match `out=`. Only the body is subject to this test.
 
 - **Default.** The file is not written, the region is named (file, line, `name=` when present), and the invocation exits 1. There is no policy switch in v0.
-- **`--force`.** `run --force` overwrites every edited region in every file the invocation processes. Narrow the scope by passing paths. `check --force` is a usage error.
+- **`--force`.** `run --force` overwrites every edited region in every file the invocation processes, and renders fresh regions too, so output that moved without its inputs is caught up. Narrow the scope by passing paths or `--only`. `check --force` is a usage error.
 - **Per file.** A file with one edited region is left untouched in full, merely stale regions included. Other files in the same invocation are rendered and written. The exit code is 1 when any file was refused.
 - **Openers and closers never reach this policy.** An edited opener changes the input sum: the region is `stale` and re-renders. A closer missing both sums is `unrendered` and renders whatever the body contains. Any other closer damage is a parse error and nothing in the file is written.
 
@@ -183,19 +188,19 @@ An exec region runs only when the repository it sits in has been trusted on this
 
 ## What is the command line?
 
-Five commands. `--help` and `--version` come from clap. `-v` is global and shows the regions that are otherwise silent.
+Five commands. `--help` and `--version` come from clap. `-v` is global and shows the regions that are otherwise silent. `--format json` is global and prints one JSON document on stdout instead of the report and the diffs. `--only NAME`, repeatable, narrows `run`, `check` and `clean` to the regions with that name: the others are left as they are and neither refuse the file nor move the exit code. A name no file has is exit 2.
 
 ```
-computed run   [paths] [--force] [--dry-run] [--trust]
-computed check [paths]
-computed clean [paths] [--force] [--dry-run]
+computed run   [paths] [--force] [--dry-run] [--trust] [--only NAME]
+computed check [paths] [--only NAME]
+computed clean [paths] [--force] [--dry-run] [--only NAME]
 computed trust   [path]
 computed untrust [path]
 ```
 
 A flag a command does not take is a usage error: `check --force`, `check --trust`, `clean --trust`. No `-C`, no stdin, no `-`.
 
-**Discovery.** With no paths, walk the current directory with the same `ignore` settings as the tree loader and read only `.md` files. An explicit file is read whatever its extension. An explicit directory is walked. A file with no opener is skipped silently. A path that does not exist is a usage error. Files are processed in byte-order sorted path order.
+**Discovery.** With no paths, walk the current directory with the same `ignore` settings as the tree loader, dotfiles included (so `.claude/` and `.github/` are covered, and `.git` never is), and read `.md` and `.markdown` files. Symlinks found by the walk are skipped: the file they name is found in its own right. An explicit file is read whatever its extension; an explicit symlink is its target, resolved against the target's directory and written through, never replaced. Two paths to one file are processed once. A file with no marker is skipped whatever its encoding; a file with markers must be UTF-8. An explicit directory is walked. A file with no opener is skipped silently. A path that does not exist is a usage error. Files are processed in byte-order sorted path order.
 
 **Exit codes.**
 
@@ -203,11 +208,13 @@ A flag a command does not take is a usage error: `check --force`, `check --trust
 |---|---|---|
 | 0 | Nothing to report. | Everything fresh. |
 | 1 | The content said no. | Drift under `check`; a refused file, a loader failure or an untrusted region under `run`; a file `--dry-run` would have changed. |
-| 2 | The tool could not answer. | Usage error, marker parse error, path escaping the root, `inputs=` matching nothing, unreadable file. |
+| 2 | The tool could not answer. | Usage error, marker parse error, path escaping the root, `inputs=` matching nothing, unreadable file, a file that changed on disk while `run` computed it, templates that never settle. |
 
-The invocation exits with the highest tier any file hit. A tier-2 file is skipped whole; other files are still processed and written.
+The invocation exits with the highest tier any file or region hit. A parse error skips its file whole. A region the tool cannot answer, such as a hard loader error, skips only itself: it is reported `error` with the message beneath, its body and sums are kept, and the rest of its file is still rendered and written ([ADR 0013](../adr/0013-a-region-the-tool-cannot-answer-skips-only-itself.md)). Other files are still processed and written.
 
-**`run --dry-run`.** Renders everything `run` would, prints a unified diff per file that would change to stdout, writes nothing. Refused files print their refusal line and no diff. Exit code as `run`, plus 1 when any file would have changed. This is the only path that shows the pending diff.
+**Settling.** `run` writes a file only when it still holds the bytes it was read as, so an edit made while commands ran is not overwritten. After a pass over the files, `run` passes again over every file whose snapshots read a file it just wrote, until a pass writes nothing; one `run` leaves every file it touched fresh under `check`, whatever order they sort in. Files still changing after one pass per file feed each other with no fixed point, and are exit 2 ([ADR 0014](../adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md)).
+
+**`run --dry-run`.** Renders everything `run` would, prints a unified diff per file that would change to stdout, writes nothing. A refused file prints its refusal line and the diff `run --force` would apply, labelled `(run --force)`, so the hand edit can be kept before it is overwritten. Exit code as `run`, plus 1 when any file would have changed. This is the only path that shows the pending diff.
 
 **Reporting.** One line per region on stderr, columns `path:line`, name (blank when absent), loader, state, action:
 
@@ -217,7 +224,9 @@ CLAUDE.md:40 deps   exec edited     refused; run with --force
 CLAUDE.md:58        exec untrusted  skipped; run `computed trust`
 ```
 
-Fresh regions, and volatile regions under `check`, print only with `-v`. Nothing is printed and the exit is 0 when everything is fresh. Loader stderr is printed indented under the region's line. `check` uses the same shape without the action column. Diffs are the only thing on stdout. No colour and no machine-readable output in v0.
+Fresh regions, and volatile regions under `check`, print only with `-v`. Nothing is printed and the exit is 0 when everything is fresh. Loader stderr, or the message of a region in `error`, is printed indented under the region's line. A region reported identically by more than one pass is printed once. `check` uses the same shape without the action column. Diffs are the only thing on stdout. No colour in v0.
+
+**JSON.** `--format json` prints `{"exit": n, "files": [...]}` on stdout and nothing on stderr. Each file with something to say has `path`, `error` (`{line, message}` or null, `line` null for the file as a whole), `regions` (every region, silent ones included: `line`, `name`, `loader`, `state`, `action` as a key such as `written` or `would-write`, or null under `check`, and `message`), and `diff` (the `--dry-run` diff or null).
 
 **`clean`.** Empties every region body and strips both sums from the closer, leaving the region unrendered with its opener line unchanged. Markers stay, so the next `run` rebuilds the region. Runs no loader and needs no trust. Honours the hand-edit policy: an edited region refuses the file, `--force` overrides. Takes paths and `--dry-run` like `run`.
 
@@ -252,22 +261,22 @@ exec computed run
 
 ## How is the crate laid out?
 
-Milestone 1 replaces `computed-proto` in place with one package, `computed`, edition 2021. `src/lib.rs` holds every module; `src/main.rs` calls `computed::cli::main()`. The prototype modules are deleted; what survives of them is already recorded as decisions ([ADR 0008](../adr/0008-render-is-pure-behind-a-loaders-seam.md)).
+Milestone 1 replaces `computed-proto` in place with one package, `computed`, edition 2024, Rust 1.88 as the declared minimum. `src/lib.rs` holds every module; `src/main.rs` calls `computed::cli::main()`. The prototype modules are deleted; what survives of them is already recorded as decisions ([ADR 0008](../adr/0008-render-is-pure-behind-a-loaders-seam.md)).
 
 Dependencies: `clap`, `ignore`, `globset`, `sha2`, `tempfile`, `anyhow` (cli only), `similar`, `toml`, `serde`, `wait-timeout`, `libc`. No `regex`: the opener tokeniser is hand-written because of the quoting rules. Dev: `assert_cmd`, `tempfile`. No snapshot-testing crate.
 
 Eight modules:
 
 - **`marker`.** Parses a file into `File { segments }`, each `Segment::Prose(String)` or `Segment::Region(Region)`. `Region` carries `line`, `indent`, `raw_opener`, `raw_closer`, `body` as the bytes sit, the closer's `in`/`out` sums, and the parsed `Opener { loader, flags, attrs, name, sink, lang }`. `Opener::canonical()` gives the single-space form without suffix or indent. `serialise(&File) -> String` is the inverse. Parse errors are `ParseError { line, message }`, all tier 2.
-- **`loader`.** `enum Loader { Tree(TreeArgs), Exec(ExecArgs) }` built from an `Opener`; `format_constant() -> u32`; the production `Loaders` adapter. Resolves `src=` and `inputs=` against a per-file `Ctx { template, region_root, repo_root: Option<PathBuf> }` and makes the escape check there, the only place marker paths are resolved. Derives the three `COMPUTED_*` variables. `LoadError::Hard(String)` is tier 2 (escape, empty glob, unreadable input); `LoadError::Failed { stderr }` is tier 1 (exit status, timeout, bad UTF-8, failed normalisation).
+- **`loader`.** `enum Loader { Tree(TreeArgs), Exec(ExecArgs), File(FileArgs) }` built from an `Opener`; `format_constant() -> u32`; the production `Loaders` adapter. Resolves `src=` and `inputs=` against a per-file `Ctx { template, region_root, repo_root: Option<PathBuf> }` and makes the escape check there, the only place marker paths are resolved. Derives the three `COMPUTED_*` variables. Records the canonical files every snapshot read, which `cli` uses to settle. `LoadError::Hard(String)` is tier 2 for its region (escape, empty glob, unreadable input); `LoadError::Failed { stderr }` is tier 1 (exit status, timeout, bad UTF-8, failed normalisation).
 - **`sink`.** `raw` and `fence`, pure: `Loaded` text in, body out. Normalisation and the parse-back check sit beside them.
-- **`render`.** `file(parsed: &File, mode: Mode, trusted: bool, loaders: &mut dyn Loaders) -> Rendered`. Pure, no I/O. `Mode { Run { force }, DryRun { force }, Check, Clean { force } }`. `Loaders` has two methods: `snapshot(&Region) -> Result<Option<Vec<u8>>, LoadError>`, where `None` is volatile, and `load(&Region) -> Result<Loaded, LoadError>`. `Rendered { Written { text, regions }, Unchanged { regions }, Refused { regions }, Error { line, message } }`. `render` owns the sums as a private `render::sum`, the freshness cache, the states, the refuse rule and its per-file consequence, the untrusted skip, loader failure keeping the body, and `clean`. Fresh regions are emitted from their raw lines. Per region it returns `RegionReport { line, name: Option<String>, loader, state, action, stderr: Option<String> }`.
-- **`fs`.** `walk(root, WalkOpts { depth, all, dirs }) -> impl Iterator<Item = Entry>` with the `ignore` settings in exactly one place, used by discovery and by `tree`; `Ignores`, the same `.gitignore` rules matched path by path for `inputs=` expansion, with a test that a `**` expansion selects exactly the files the walk lists; `repo_root(path) -> Option<PathBuf>`, walking up for `.git` and canonicalising; `write(path, text)` through temp and rename, no-op when unchanged.
+- **`render`.** `file(parsed: &File, mode: Mode, trusted: bool, loaders: &mut dyn Loaders) -> Rendered`. Pure, no I/O. `file_where` takes a selection too, for `--only`. `Mode { Run { force }, DryRun { force }, Check, Clean { force, dry_run } }`. `Loaders` has two methods: `snapshot(&Region) -> Result<Option<Vec<u8>>, LoadError>`, where `None` is volatile, and `load(&Region) -> Result<Loaded, LoadError>`. `Rendered { Written { text, regions }, Unchanged { regions }, Refused { regions }, Error { line, message } }`. `render` owns the sums as a private `render::sum`, the freshness cache, the states, the refuse rule and its per-file consequence, the untrusted skip, loader failure and hard errors keeping the body, the body's indentation and line endings, the whole-file parse-back check, and `clean`. Fresh regions are emitted from their raw lines. Per region it returns `RegionReport { line, name: Option<String>, loader, state, action, stderr: Option<String> }`.
+- **`fs`.** `walk(root, WalkOpts { depth, all, dirs }) -> impl Iterator<Item = Entry>` with the `ignore` settings in exactly one place, used by discovery and by `tree`; `Ignores`, the same `.gitignore` rules matched path by path for `inputs=` expansion, with a test that a `**` expansion selects exactly the files the walk lists; `repo_root(path) -> Option<PathBuf>`, walking up for `.git` and canonicalising; `write(path, text)` through temp and rename, no-op when unchanged, writing through a symlink rather than replacing it; `replace(path, old, new)`, the same, only while the file still holds `old`.
 - **`trust`.** The `trust.toml` store under `XDG_CONFIG_HOME`, store path injectable; `grant`, `revoke`, `is_trusted(root)`. Uses `fs::repo_root`.
-- **`report`.** The stderr line per region, loader stderr indented beneath; the unified diff on stdout from old and new text via `similar`, only for `--dry-run`.
-- **`cli`.** clap definitions, discovery, per-file `Ctx` and trust resolution, the mapping from `Rendered` to a write and an exit tier. The only module using `anyhow`.
+- **`report`.** The stderr line per region, loader stderr indented beneath; the unified diff on stdout from old and new text via `similar`, only for `--dry-run`; the `--format json` document, written by hand.
+- **`cli`.** clap definitions, discovery, per-file `Ctx` and trust resolution, the mapping from `Rendered` to a write and an exit tier, and the passes that settle templates reading each other. The only module using `anyhow`.
 
-Why a `Loaders` trait when the loader set is an enum? They are different things. The loader set is closed, so it is an enum until a third variant earns a trait. `Loaders` is a seam: it has two adapters from the first commit, the production enum and a table-driven fake, which is the bar for a seam being real.
+Why a `Loaders` trait when the loader set is an enum? They are different things. The loader set is closed, so it is an enum; `file`, the third variant, did not change that. `Loaders` is a seam: it has two adapters from the first commit, the production enum and a table-driven fake, which is the bar for a seam being real.
 
 ### Tests
 
@@ -322,16 +331,16 @@ The prose around them is whatever the repository wants agents to read. The tree 
 - `computed run --dry-run` after touching an input prints a unified diff to stdout, writes nothing, exits 1.
 - `cargo test` passes and the `render` golden files contain the sum vectors.
 
-**Not in milestone 1**, by decision: `watch` (milestone 2 or later, not scheduled), copy layout, a `file` loader, sinks beyond `raw` and `fence`, configuration files, colour or machine-readable reporting, Windows.
+**Not in milestone 1**, by decision: `watch` (milestone 2 or later, not scheduled), copy layout, sinks beyond `raw` and `fence`, configuration files, colour, Windows. The `file` loader and JSON reporting came after milestone 1.
 
 ## What is still open?
 
 Nothing here blocks milestone 1. Each item is in scope for v0 and waits on something dogfooding will show.
 
 - **Sinks beyond `raw` and `fence`.** Whether a native table sink is needed once duckdb and sqlite3 produce markdown tables through `exec`, and whether sinks emit prettier range-ignore comments.
-- **A `file` loader** as a trust-free include tier. Wanted only if an untrusted repository needs includes.
 - **Configuration.** A `computed.toml`, or conventions only. Trust is settled outside the repository, so this hangs on file discovery alone.
-- **Reporting.** Colour, machine-readable output for CI, and whether a refused region prints a diff of its edited body.
+- **Reporting.** Colour.
+- **Blockquotes.** A marker inside `>` is prose; regions do not nest in quote containers.
 - **A second dogfood repository**, if one is named.
 
 Out of scope for v0, and returning only if the destination is redrawn: copy layout, symlink layouts, file formats other than markdown, image sinks, nesting, regions that read other regions, Windows, Elixir.
@@ -350,3 +359,8 @@ Out of scope for v0, and returning only if the destination is redrawn: copy layo
 | [0008](../adr/0008-render-is-pure-behind-a-loaders-seam.md) | Render is pure behind a `Loaders` seam. |
 | [0009](../adr/0009-loader-text-is-normalised-and-exec-runs-pinned.md) | Loader text is normalised and exec runs in a pinned environment. |
 | [0010](../adr/0010-sha-256-sums.md) | Sums are full SHA-256. |
+| [0011](../adr/0011-gitignore-is-not-a-flag.md) | The tree loader honours `.gitignore` without a flag. |
+| [0012](../adr/0012-wildcards-in-inputs-do-not-reach-ignored-paths.md) | Wildcards in `inputs=` do not reach ignored paths. |
+| [0013](../adr/0013-a-region-the-tool-cannot-answer-skips-only-itself.md) | A region the tool cannot answer skips only itself. |
+| [0014](../adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md) | Snapshots ignore closer sums, and `run` settles templates that read each other. |
+| [0015](../adr/0015-the-file-loader.md) | The `file` loader. |
