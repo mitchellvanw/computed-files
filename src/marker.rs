@@ -213,6 +213,12 @@ const GRAMMAR: &[LoaderGrammar] = &[
         flags: &["log", "tags", "contributors"],
         sink: Sink::Raw,
     },
+    LoaderGrammar {
+        name: "remote",
+        attrs: &["url", "sha256", "timeout"],
+        flags: &[],
+        sink: Sink::Raw,
+    },
 ];
 
 const COMMON_ATTRS: &[&str] = &["name", "as", "lang"];
@@ -730,6 +736,7 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
         },
         "symbol" => crate::symbol::validate(opener).map_err(|m| error(line, m)),
         "git" => crate::git::validate(opener).map_err(|m| error(line, m)),
+        "remote" => crate::remote::validate(opener).map_err(|m| error(line, m)),
         _ => Ok(()),
     }
 }

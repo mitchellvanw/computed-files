@@ -75,6 +75,16 @@ enum Cmd {
         #[arg(long, value_name = "NAME")]
         only: Vec<String>,
     },
+    /// Fetch every remote region's url and pin its SHA-256 in the opener.
+    Update {
+        paths: Vec<PathBuf>,
+        /// Print a unified diff per file that would change; write nothing.
+        #[arg(long)]
+        dry_run: bool,
+        /// Only the regions with this name; repeat for more.
+        #[arg(long, value_name = "NAME")]
+        only: Vec<String>,
+    },
     /// Trust the repository containing PATH (default: the current directory).
     Trust { path: Option<PathBuf> },
     /// Remove the grant for the repository containing PATH.
@@ -144,6 +154,17 @@ fn dispatch(cli: Cli) -> Result<u8> {
             };
             process(paths, &job(mode, false, only))
         }
+        Cmd::Update {
+            paths,
+            dry_run,
+            only,
+        } => Ok(crate::update::run(
+            &discover(paths)?,
+            *dry_run,
+            only,
+            cli.verbose,
+            cli.format == Format::Json,
+        )),
         Cmd::Trust { path } => {
             let root = trust::root_for(path.as_deref().unwrap_or(Path::new(".")))?;
             let recorded = Store::at(Store::default_path()?).grant(&root)?;

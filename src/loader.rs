@@ -28,6 +28,7 @@ pub fn format_constant(loader: &str) -> u32 {
         "file" => 1,
         "symbol" => 1,
         "git" => 1,
+        "remote" => 1,
         other => panic!("unknown loader {other:?} reached the format table"),
     }
 }
@@ -135,6 +136,7 @@ pub enum Loader {
     File(FileArgs),
     Symbol(crate::symbol::SymbolArgs),
     Git(crate::git::GitArgs),
+    Remote(crate::remote::RemoteArgs),
 }
 
 impl Loader {
@@ -189,6 +191,9 @@ impl Loader {
                 opener,
             )?)),
             "git" => Ok(Loader::Git(crate::git::GitArgs::from_opener(opener)?)),
+            "remote" => Ok(Loader::Remote(crate::remote::RemoteArgs::from_opener(
+                opener,
+            )?)),
             other => Err(hard(format!("unknown loader {other:?}"))),
         }
     }
@@ -200,6 +205,7 @@ impl Loader {
             Loader::File(_) => format_constant("file"),
             Loader::Symbol(_) => format_constant("symbol"),
             Loader::Git(_) => format_constant("git"),
+            Loader::Remote(_) => format_constant("remote"),
         }
     }
 }
@@ -301,6 +307,7 @@ impl Loaders for Production {
                 crate::symbol::load(&self.ctx, &args, &mut self.read)?.snapshot,
             )),
             Loader::Git(args) => Ok(Some(crate::git::load(&self.ctx, &args)?.snapshot)),
+            Loader::Remote(args) => Ok(Some(crate::remote::snapshot(&args))),
         }
     }
 
@@ -318,6 +325,7 @@ impl Loaders for Production {
             Loader::File(args) => self.file(&args),
             Loader::Symbol(args) => crate::symbol::load(&self.ctx, &args, &mut self.read),
             Loader::Git(args) => crate::git::load(&self.ctx, &args),
+            Loader::Remote(args) => crate::remote::load(&args),
         }
     }
 }
