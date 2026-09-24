@@ -142,7 +142,7 @@ pub fn json(files: &[FileJson<'_>], exit: u8) -> String {
     out
 }
 
-fn optional(s: Option<&str>) -> String {
+pub(crate) fn optional(s: Option<&str>) -> String {
     s.map_or("null".to_string(), string)
 }
 

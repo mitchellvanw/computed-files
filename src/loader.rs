@@ -54,9 +54,11 @@ use globset::GlobMatcher;
 use crate::config;
 use crate::fs::{self, Ignores, WalkOpts};
 use crate::index::{self, Title};
+use crate::launch::Wrap;
 use crate::marker::{self, File, Opener, Region};
 use crate::project::{self, Projection};
 use crate::render::Loaders;
+use crate::sandbox::Sandbox;
 use crate::toc;
 
 /// Per-file context every marker path is resolved against.
@@ -86,7 +88,7 @@ impl Ctx {
     }
 
     /// The directory marker paths must stay inside, canonical.
-    fn bound(&self) -> Result<PathBuf, LoadError> {
+    pub fn bound(&self) -> Result<PathBuf, LoadError> {
         match &self.repo_root {
             Some(r) => Ok(r.clone()),
             None => self
@@ -161,6 +163,8 @@ pub struct ExecArgs {
     /// Comma-separated globs, or `None` when volatile.
     pub inputs: Option<Vec<String>>,
     pub timeout: Duration,
+    /// Run inside a sandbox that allows reading only the declared inputs.
+    pub sandbox: bool,
 }
 
 /// The closed set of loaders, built from an opener.
@@ -217,10 +221,14 @@ impl Loader {
                         hard(format!("timeout={t}: expected seconds as a whole number"))
                     })?,
                 };
+                if opener.flag("sandbox") && inputs.is_none() {
+                    return Err(hard("sandbox needs inputs="));
+                }
                 Ok(Loader::Exec(ExecArgs {
                     cmd,
                     inputs,
                     timeout: Duration::from_secs(timeout),
+                    sandbox: opener.flag("sandbox"),
                 }))
             }
             "file" => Ok(Loader::File(FileArgs {
@@ -298,6 +306,7 @@ pub struct Production {
     /// Per region line, why its `use` recipe did not expand.
     unexpanded: BTreeMap<usize, String>,
     allowed: crate::allow::Allowed,
+    wrap: Option<Box<Wrap>>,
 }
 
 impl Production {
@@ -308,6 +317,7 @@ impl Production {
             read: BTreeSet::new(),
             unexpanded: BTreeMap::new(),
             allowed: crate::allow::Allowed::default(),
+            wrap: None,
         }
     }
 
@@ -353,6 +363,12 @@ impl Production {
     /// The url prefixes a `remote` region may fetch from; none by default.
     pub fn allowing(mut self, allowed: crate::allow::Allowed) -> Production {
         self.allowed = allowed;
+        self
+    }
+
+    /// Every exec command this adapter runs is started through `wrap`.
+    pub fn with_wrap(mut self, wrap: Box<Wrap>) -> Production {
+        self.wrap = Some(wrap);
         self
     }
 
@@ -530,7 +546,12 @@ impl Loaders for Production {
                     None => Vec::new(),
                     Some(globs) => inputs_snapshot(&self.ctx, globs, &mut self.read)?,
                 };
-                let text = exec(&self.ctx, &args, &self.region_name(region))?;
+                let text = exec(
+                    &self.ctx,
+                    &args,
+                    &self.region_name(region),
+                    self.wrap.as_deref(),
+                )?;
                 Ok(Loaded { text, snapshot })
             }
             Loader::File(args) => self.file(&args),
@@ -872,6 +893,26 @@ fn inputs_snapshot(
     globs: &[String],
     read: &mut BTreeSet<PathBuf>,
 ) -> Result<Vec<u8>, LoadError> {
+    content_snapshot(inputs(ctx, globs)?, read)
+}
+
+/// The files `inputs=` selects: the entry's key, as the snapshot spells it,
+/// in byte order, to canonical path. A projected entry names its literal
+/// path; a sandbox lets the command read that file, and trace counts it as
+/// declared.
+pub fn input_files(ctx: &Ctx, globs: &[String]) -> Result<BTreeMap<Vec<u8>, PathBuf>, LoadError> {
+    Ok(inputs(ctx, globs)?
+        .into_iter()
+        .map(|(key, (file, _))| (key, file))
+        .collect())
+}
+
+/// Files by snapshot key, each with the projection taken of it, if any.
+type Selected = BTreeMap<Vec<u8>, (PathBuf, Option<Projection>)>;
+
+/// Every `inputs=` entry resolved: plain globs expanded, projected entries
+/// checked, each keyed as the snapshot spells it.
+fn inputs(ctx: &Ctx, globs: &[String]) -> Result<Selected, LoadError> {
     let mut plain = Vec::new();
     let mut matched: BTreeMap<Vec<u8>, (PathBuf, Option<Projection>)> = BTreeMap::new();
     for entry in globs {
@@ -905,7 +946,7 @@ fn inputs_snapshot(
                 .map(|(rel, file)| (rel, (file, None))),
         );
     }
-    content_snapshot(matched, read)
+    Ok(matched)
 }
 
 /// The files a list of globs selects, keyed by their path from the region
@@ -966,7 +1007,7 @@ fn expand(
 /// not when what it says does, and two templates that read each other would
 /// otherwise never settle.
 fn content_snapshot(
-    matched: BTreeMap<Vec<u8>, (PathBuf, Option<Projection>)>,
+    matched: Selected,
     read: &mut BTreeSet<PathBuf>,
 ) -> Result<Vec<u8>, LoadError> {
     let mut out = Vec::new();
@@ -1023,10 +1064,28 @@ pub fn entries(mut snapshot: &[u8]) -> Option<Vec<(&[u8], &[u8])>> {
     Some(out)
 }
 
-/// Runs `cmd` in the region root; a non-zero exit or stdout that is not
-/// UTF-8 is a failure, as is anything [`shell`] fails on.
-fn exec(ctx: &Ctx, args: &ExecArgs, region_name: &str) -> Result<String, LoadError> {
-    let run = shell(&args.cmd, &Place::of(ctx), args.timeout, region_name)?;
+/// Runs `cmd` in the region root, in a sandbox that reads only its inputs
+/// when the region says `sandbox`; a non-zero exit or stdout that is not
+/// UTF-8 is a failure, as is anything [`shell`] fails on. `wrap` may put a
+/// tracer or another environment around the shell.
+pub fn exec(
+    ctx: &Ctx,
+    args: &ExecArgs,
+    region_name: &str,
+    wrap: Option<&Wrap>,
+) -> Result<String, LoadError> {
+    let sandbox = match (&args.inputs, args.sandbox) {
+        (Some(globs), true) => Some(Sandbox::new(ctx, &input_files(ctx, globs)?)?),
+        _ => None,
+    };
+    let run = shell(
+        &args.cmd,
+        &Place::of(ctx),
+        args.timeout,
+        region_name,
+        wrap,
+        sandbox.as_ref(),
+    )?;
     if !run.status.success() {
         return Err(run.failed(match run.status.code() {
             Some(c) => format!("exit status {c}"),
@@ -1087,21 +1146,22 @@ fn failure(reason: String, stderr: &str) -> LoadError {
 /// the script printed before its shell was done, and a background job it
 /// left behind cannot hold the pipes open. A process that left the group
 /// and still holds them is a failure once the timeout has passed, and so is
-/// the timeout itself.
+/// the timeout itself. `wrap` may put a tracer or another environment
+/// around the shell; `sandbox`, when the region asks for one, goes around
+/// the result, so no wrap can take it off.
 pub(crate) fn shell(
     script: &str,
     place: &Place,
     timeout: Duration,
     region_name: &str,
+    wrap: Option<&Wrap>,
+    sandbox: Option<&Sandbox>,
 ) -> Result<Shell, LoadError> {
     let mut command = Command::new("/bin/sh");
     command
         .arg("-c")
         .arg(script)
         .current_dir(&place.dir)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
         .env("LC_ALL", "C")
         .env("LANGUAGE", "")
         .env("TZ", "UTC")
@@ -1111,9 +1171,24 @@ pub(crate) fn shell(
         Some(root) => command.env("COMPUTED_ROOT", root),
         None => command.env_remove("COMPUTED_ROOT"),
     };
+    if let Some(wrap) = wrap {
+        command = wrap(command)?;
+    }
+    if let Some(sandbox) = sandbox {
+        command = sandbox.apply(command)?;
+    }
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
     std::os::unix::process::CommandExt::process_group(&mut command, 0);
     let deadline = Instant::now() + timeout;
-    let mut child = command.spawn().map_err(|e| hard(format!("/bin/sh: {e}")))?;
+    let mut child = command.spawn().map_err(|e| {
+        hard(format!(
+            "{}: {e}",
+            Path::new(command.get_program()).display()
+        ))
+    })?;
     let (tx, rx) = mpsc::channel();
     let pipes: [Box<dyn Read + Send>; 2] = [
         Box::new(child.stdout.take().expect("piped")),

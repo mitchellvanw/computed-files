@@ -134,7 +134,7 @@ pub fn run(ctx: &Ctx, args: &TranscriptArgs, region_name: &str) -> Result<String
         None => None,
     };
     let script = script(&args.steps, &canonical(capture.path())?, ceiling.as_deref());
-    let shell = loader::shell(&script, &place, args.timeout, region_name)?;
+    let shell = loader::shell(&script, &place, args.timeout, region_name, None, None)?;
     let mut text = String::new();
     for (i, step) in args.steps.iter().enumerate() {
         let n = i + 1;

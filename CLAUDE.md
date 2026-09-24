@@ -47,12 +47,14 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── allow.rs
 │   ├── cli.rs
 │   ├── config.rs
+│   ├── doctor.rs
 │   ├── dupes.rs
 │   ├── fs.rs
 │   ├── git.rs
 │   ├── graph.rs
 │   ├── guard.rs
 │   ├── index.rs
+│   ├── launch.rs
 │   ├── lib.rs
 │   ├── loader.rs
 │   ├── lsp.rs
@@ -63,12 +65,14 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── remote.rs
 │   ├── render.rs
 │   ├── report.rs
+│   ├── sandbox.rs
 │   ├── sink.rs
 │   ├── stats.rs
 │   ├── survey.rs
 │   ├── symbol.rs
 │   ├── table.rs
 │   ├── toc.rs
+│   ├── trace.rs
 │   ├── transcript.rs
 │   ├── truncate.rs
 │   ├── trust.rs
@@ -79,7 +83,9 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── adopt.rs
     ├── affected.rs
     ├── cli.rs
+    ├── doctor.rs
     ├── dupes.rs
+    ├── exec_sandbox.rs
     ├── file_slice.rs
     ├── fixtures
     ├── guard.rs
@@ -98,12 +104,13 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── symbol.rs
     ├── table.rs
     ├── toc.rs
+    ├── trace.rs
     ├── transcript.rs
     ├── value.rs
     ├── watch.rs
     └── why.rs
 ```
-<!-- /computed in=c77e7de023a58c6da595f40e56ed7978e5cc6bb805edf9cfff529830b2b13473 out=7c26edc2446abd5c771acef766fb6c8057b1155d7d63d5fd7b2f6d17a62d812a -->
+<!-- /computed in=34b6b3659887aaac05bd9087ad0ec4f7d58ac8d26038cf3688c7cf0726ca43d5 out=51f71397645e174c40e2b360d7caaa80ba30219c387f8b00e2ea0d3954edff90 -->
 
 ## Decisions
 
