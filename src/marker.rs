@@ -394,7 +394,7 @@ pub fn parse(text: &str) -> Result<File, ParseError> {
                             return Err(error(
                                 l.number,
                                 "opener inside a body: nesting is not supported",
-                            ))
+                            ));
                         }
                         Kind::Closer { content } => break (l, parse_closer(l.number, content)?),
                     }
@@ -438,7 +438,12 @@ fn tokenise(line: usize, content: &str) -> Result<Vec<Token>, ParseError> {
         if word == "|" {
             let rest: String = chars[i..].iter().collect();
             if rest.trim_matches([' ', '\t']) != OPENER_SUFFIX.trim_start_matches("| ") {
-                return Err(error(line, format!("unexpected text after |: only the suffix {OPENER_SUFFIX:?} may follow the attributes")));
+                return Err(error(
+                    line,
+                    format!(
+                        "unexpected text after |: only the suffix {OPENER_SUFFIX:?} may follow the attributes"
+                    ),
+                ));
             }
             break;
         }
@@ -501,7 +506,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
             return Err(error(
                 line,
                 format!("missing loader: the first token is {k}="),
-            ))
+            ));
         }
         None => return Err(error(line, "missing loader")),
     };
@@ -545,7 +550,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
                         return Err(error(
                             line,
                             format!("unknown attribute {k}= for loader {loader}"),
-                        ))
+                        ));
                     }
                 }
             }
@@ -582,10 +587,10 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
             }
             match (opener.attr("inputs").is_some(), opener.flag("volatile")) {
                 (true, true) => {
-                    return Err(error(line, "exec takes inputs= or volatile, not both"))
+                    return Err(error(line, "exec takes inputs= or volatile, not both"));
                 }
                 (false, false) => {
-                    return Err(error(line, "exec needs inputs= or the volatile flag"))
+                    return Err(error(line, "exec needs inputs= or the volatile flag"));
                 }
                 _ => {}
             }
@@ -820,30 +825,122 @@ mod tests {
     #[test]
     fn every_grammar_error_is_reported_with_its_line() {
         let cases: &[(&str, usize, &str)] = &[
-            ("<!-- computed csv src=a -->\n<!-- /computed -->\n", 1, "unknown loader"),
-            ("<!-- computed tree bogus=1 -->\n<!-- /computed -->\n", 1, "unknown attribute"),
-            ("<!-- computed tree bogus -->\n<!-- /computed -->\n", 1, "unknown flag"),
-            ("<!-- computed tree src=. src=. -->\n<!-- /computed -->\n", 1, "duplicate attribute"),
-            ("<!-- computed -->\n<!-- /computed -->\n", 1, "missing loader"),
-            ("<!-- computed tree name=a -->\n<!-- /computed -->\n<!-- computed tree name=a -->\n<!-- /computed -->\n", 3, "duplicate name"),
-            ("x\n<!-- computed tree -->\nbody\n", 2, "opener without closer"),
+            (
+                "<!-- computed csv src=a -->\n<!-- /computed -->\n",
+                1,
+                "unknown loader",
+            ),
+            (
+                "<!-- computed tree bogus=1 -->\n<!-- /computed -->\n",
+                1,
+                "unknown attribute",
+            ),
+            (
+                "<!-- computed tree bogus -->\n<!-- /computed -->\n",
+                1,
+                "unknown flag",
+            ),
+            (
+                "<!-- computed tree src=. src=. -->\n<!-- /computed -->\n",
+                1,
+                "duplicate attribute",
+            ),
+            (
+                "<!-- computed -->\n<!-- /computed -->\n",
+                1,
+                "missing loader",
+            ),
+            (
+                "<!-- computed tree name=a -->\n<!-- /computed -->\n<!-- computed tree name=a -->\n<!-- /computed -->\n",
+                3,
+                "duplicate name",
+            ),
+            (
+                "x\n<!-- computed tree -->\nbody\n",
+                2,
+                "opener without closer",
+            ),
             ("x\n<!-- /computed -->\n", 2, "closer without opener"),
-            ("<!-- computed tree -->\n<!-- computed tree -->\n<!-- /computed -->\n", 2, "opener inside a body"),
-            ("<!-- computed tree -->\n<!-- /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 -->\n", 2, "one sum"),
-            ("<!-- computed tree -->\n<!-- /computed in=9f3a out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->\n", 2, "malformed sum"),
-            ("<!-- computed tree -->\n<!-- /computed in=9f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->\n", 2, "malformed sum"),
-            ("<!-- computed tree -->\n<!-- /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f6g out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->\n", 2, "malformed sum"),
-            ("<!-- computed tree -->\n<!-- /computed extra=1 -->\n", 2, "unknown attribute"),
-            ("<!-- computed exec cmd=\"a --> b\" volatile -->\n<!-- /computed -->\n", 1, "-->"),
-            ("<!-- computed exec cmd=\"unterminated volatile -->\n<!-- /computed -->\n", 1, "unterminated"),
-            ("<!-- computed tree as=table -->\n<!-- /computed -->\n", 1, "unknown sink"),
-            ("<!-- computed tree src=.\n<!-- /computed -->\n", 1, "unterminated marker"),
-            ("<!-- computed tree | whatever -->\n<!-- /computed -->\n", 1, "after |"),
-            ("<!-- computed tree depth=two -->\n<!-- /computed -->\n", 1, "depth=two"),
-            ("<!-- computed exec inputs=a -->\n<!-- /computed -->\n", 1, "cmd="),
-            ("<!-- computed exec cmd=x -->\n<!-- /computed -->\n", 1, "volatile"),
-            ("<!-- computed exec cmd=x inputs=a volatile -->\n<!-- /computed -->\n", 1, "not both"),
-            ("<!-- computed exec cmd=x volatile timeout=1s -->\n<!-- /computed -->\n", 1, "timeout=1s"),
+            (
+                "<!-- computed tree -->\n<!-- computed tree -->\n<!-- /computed -->\n",
+                2,
+                "opener inside a body",
+            ),
+            (
+                "<!-- computed tree -->\n<!-- /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 -->\n",
+                2,
+                "one sum",
+            ),
+            (
+                "<!-- computed tree -->\n<!-- /computed in=9f3a out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->\n",
+                2,
+                "malformed sum",
+            ),
+            (
+                "<!-- computed tree -->\n<!-- /computed in=9f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->\n",
+                2,
+                "malformed sum",
+            ),
+            (
+                "<!-- computed tree -->\n<!-- /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f6g out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715 -->\n",
+                2,
+                "malformed sum",
+            ),
+            (
+                "<!-- computed tree -->\n<!-- /computed extra=1 -->\n",
+                2,
+                "unknown attribute",
+            ),
+            (
+                "<!-- computed exec cmd=\"a --> b\" volatile -->\n<!-- /computed -->\n",
+                1,
+                "-->",
+            ),
+            (
+                "<!-- computed exec cmd=\"unterminated volatile -->\n<!-- /computed -->\n",
+                1,
+                "unterminated",
+            ),
+            (
+                "<!-- computed tree as=table -->\n<!-- /computed -->\n",
+                1,
+                "unknown sink",
+            ),
+            (
+                "<!-- computed tree src=.\n<!-- /computed -->\n",
+                1,
+                "unterminated marker",
+            ),
+            (
+                "<!-- computed tree | whatever -->\n<!-- /computed -->\n",
+                1,
+                "after |",
+            ),
+            (
+                "<!-- computed tree depth=two -->\n<!-- /computed -->\n",
+                1,
+                "depth=two",
+            ),
+            (
+                "<!-- computed exec inputs=a -->\n<!-- /computed -->\n",
+                1,
+                "cmd=",
+            ),
+            (
+                "<!-- computed exec cmd=x -->\n<!-- /computed -->\n",
+                1,
+                "volatile",
+            ),
+            (
+                "<!-- computed exec cmd=x inputs=a volatile -->\n<!-- /computed -->\n",
+                1,
+                "not both",
+            ),
+            (
+                "<!-- computed exec cmd=x volatile timeout=1s -->\n<!-- /computed -->\n",
+                1,
+                "timeout=1s",
+            ),
         ];
         for (text, line, needle) in cases {
             let e = err(text);

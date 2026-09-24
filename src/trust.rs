@@ -170,9 +170,11 @@ mod tests {
         let link = dir.path().join("link");
         std::os::unix::fs::symlink(repo.path(), &link).unwrap();
         store.grant(&root_for(&link).unwrap()).unwrap();
-        assert!(store
-            .is_trusted(&repo.path().canonicalize().unwrap())
-            .unwrap());
+        assert!(
+            store
+                .is_trusted(&repo.path().canonicalize().unwrap())
+                .unwrap()
+        );
         let other = tempfile::tempdir().unwrap();
         assert!(!store.is_trusted(other.path()).unwrap());
     }

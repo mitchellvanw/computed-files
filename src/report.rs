@@ -40,12 +40,11 @@ pub fn regions(path: &Path, rendered: &Rendered, mode: Mode, verbose: bool) -> S
             r.loader,
             state_of(r)
         );
-        if let Some(action) = r.action {
-            let action = action.to_string();
-            if !action.is_empty() {
-                line.push(' ');
-                line.push_str(&action);
-            }
+        if let Some(action) = r.action.map(|a| a.to_string())
+            && !action.is_empty()
+        {
+            line.push(' ');
+            line.push_str(&action);
         }
         writeln!(out, "{}", line.trim_end()).unwrap();
         if let Some(stderr) = &r.stderr {

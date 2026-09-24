@@ -32,7 +32,7 @@ pub struct Entry {
 /// honoured only inside a git repository, no per-clone or per-user exclude
 /// files, no `.ignore`, no symlinks followed, byte-order names. The root
 /// itself is not yielded; `.git` never is.
-pub fn walk(root: &Path, opts: WalkOpts) -> impl Iterator<Item = Entry> {
+pub fn walk(root: &Path, opts: WalkOpts) -> impl Iterator<Item = Entry> + use<> {
     let mut b = ignore::WalkBuilder::new(root);
     b.hidden(!opts.all)
         .ignore(false)

@@ -324,13 +324,13 @@ pub fn file(parsed: &File, mode: Mode, trusted: bool, loaders: &mut dyn Loaders)
                 return Rendered::Error {
                     line: region.line,
                     message,
-                }
+                };
             }
             Err(LoadError::Failed { stderr }) => {
                 return Rendered::Error {
                     line: region.line,
                     message: stderr,
-                }
+                };
             }
         };
         states.push(state_of(region, snapshot.as_deref()));
@@ -383,7 +383,7 @@ pub fn file(parsed: &File, mode: Mode, trusted: bool, loaders: &mut dyn Loaders)
                     return Rendered::Error {
                         line: region.line,
                         message,
-                    }
+                    };
                 }
             },
             Mode::Check => unreachable!("check returned above"),
