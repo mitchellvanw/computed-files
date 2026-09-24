@@ -254,3 +254,127 @@ fn expansion_records_computed_toml_as_read_so_run_settles_on_it() {
     assert_eq!(r.opener.loader, "file");
     assert_eq!(r.opener.attr("src"), Some("part.md"));
 }
+
+#[test]
+fn a_value_recipe_reads_one_key() {
+    let repo = Repo::new(
+        "[recipe.version]\nloader = \"value\"\nsrc = \"Cargo.toml\"\nkey = \"package.version\"\n",
+    );
+    repo.write(
+        "Cargo.toml",
+        "[package]\nname = \"x\"\nversion = \"1.2.3\"\n",
+    );
+    repo.write(
+        "doc.md",
+        "<!-- computed use recipe=version -->\n<!-- /computed -->\n",
+    );
+    let out = repo.cmd(&["run"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(
+        repo.read("doc.md").contains("\n1.2.3\n"),
+        "{}",
+        repo.read("doc.md")
+    );
+    assert_eq!(repo.cmd(&["check"]).status.code(), Some(0));
+    repo.write(
+        "Cargo.toml",
+        "[package]\nname = \"y\"\nversion = \"1.2.3\"\n",
+    );
+    assert_eq!(
+        repo.cmd(&["check"]).status.code(),
+        Some(0),
+        "only the key counts"
+    );
+    repo.write("Cargo.toml", "[package]\nversion = \"2.0.0\"\n");
+    assert_eq!(stderr(&repo.cmd(&["check"])), "doc.md:1  value stale\n");
+}
+
+#[test]
+fn an_index_recipe_lists_its_globs_with_titles() {
+    let repo = Repo::new(
+        "[recipe.docs]\nloader = \"index\"\nsrc = \"docs/*.md\"\ntitle = \"h1\"\nmax-lines = 1\n",
+    );
+    repo.write("docs/a.md", "# Alpha\n");
+    repo.write("docs/b.md", "# Beta\n");
+    repo.write(
+        "index.md",
+        "<!-- computed use recipe=docs name=i -->\n<!-- /computed -->\n",
+    );
+    let out = repo.cmd(&["run"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    let text = repo.read("index.md");
+    assert!(
+        text.contains("\n- [Alpha](docs/a.md)\n… 2 more lines\n"),
+        "{text}"
+    );
+    assert_eq!(repo.cmd(&["check"]).status.code(), Some(0));
+    repo.write("docs/b.md", "# Bravo\n");
+    assert_eq!(stderr(&repo.cmd(&["check"])), "index.md:1 i index stale\n");
+}
+
+#[test]
+fn a_table_recipe_carries_delim_and_a_region_may_override_it() {
+    let repo = Repo::new(
+        "[recipe.deps]\nloader = \"file\"\nsrc = \"deps.tsv\"\nas = \"table\"\ndelim = \"tab\"\n",
+    );
+    repo.write("deps.tsv", "crate\tversion\nclap\t4\n");
+    repo.write("deps.csv", "crate,version\nclap,4\n");
+    repo.write(
+        "a.md",
+        "<!-- computed use recipe=deps -->\n<!-- /computed -->\n",
+    );
+    let out = repo.cmd(&["run"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(
+        repo.read("a.md")
+            .contains("| crate | version |\n| ----- | ------- |\n| clap  | 4       |\n"),
+        "{}",
+        repo.read("a.md")
+    );
+    // The region's `delim=` replaces the recipe's, as any common attribute does.
+    repo.write(
+        "computed.toml",
+        "[recipe.deps]\nloader = \"file\"\nsrc = \"deps.csv\"\nas = \"table\"\ndelim = \"tab\"\n",
+    );
+    repo.write(
+        "b.md",
+        "<!-- computed use recipe=deps delim=comma -->\n<!-- /computed -->\n",
+    );
+    let out = repo.cmd(&["run", "b.md"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(
+        repo.read("b.md").contains("| clap  | 4       |\n"),
+        "{}",
+        repo.read("b.md")
+    );
+    // Without a table to shape, `delim=` is still refused.
+    repo.write(
+        "computed.toml",
+        "[recipe.deps]\nloader = \"file\"\nsrc = \"deps.csv\"\n",
+    );
+    let out = repo.cmd(&["check", "b.md"]);
+    assert_eq!(out.status.code(), Some(2));
+    assert!(
+        stderr(&out).contains("applies only with as=table"),
+        "{}",
+        stderr(&out)
+    );
+}
+
+#[test]
+fn a_toc_recipe_lists_the_using_templates_headings() {
+    let repo = Repo::new("[recipe.contents]\nloader = \"toc\"\nmax = 2\n");
+    repo.write(
+        "doc.md",
+        "# Doc\n\n<!-- computed use recipe=contents -->\n<!-- /computed -->\n\n## One\n\n## Two\n",
+    );
+    let out = repo.cmd(&["run"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(
+        repo.read("doc.md")
+            .contains("\n- [One](#one)\n- [Two](#two)\n"),
+        "{}",
+        repo.read("doc.md")
+    );
+    assert_eq!(repo.cmd(&["run"]).status.code(), Some(0));
+}

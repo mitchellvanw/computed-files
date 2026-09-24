@@ -122,3 +122,56 @@ fn the_output_sum_is_over_the_cut_body_so_check_finds_it_fresh() {
     let r = render::file(&file, Mode::Check, false, &mut Fake("one\ntwo\n"));
     assert_eq!(r.regions()[0].state, State::Fresh);
 }
+
+#[test]
+fn a_table_keeps_its_header_and_puts_the_note_after_it() {
+    let r = run(
+        "<!-- computed exec cmd=x inputs=x as=table max-lines=1 -->",
+        "name,n\nlong-name,1\nb,2\nc,3\n",
+    );
+    assert_eq!(
+        body(&r),
+        "\n| name      | n   |\n| --------- | --- |\n| long-name | 1   |\n\n… 2 more lines\n\n"
+    );
+    // Widths come from the rows kept.
+    let r = run(
+        "<!-- computed exec cmd=x inputs=x as=table from=jsonl max-lines=1 -->",
+        "{\"k\": \"a\"}\n\n{\"k\": \"much longer\"}\n",
+    );
+    assert_eq!(body(&r), "\n| k   |\n| --- |\n| a   |\n\n… 1 more line\n\n");
+}
+
+#[test]
+fn a_table_within_the_limit_is_untouched_and_a_bad_row_past_it_still_fails() {
+    let text = "a,b\n1,2\n\"two\nlines\",3\n";
+    let capped = body(&run(
+        "<!-- computed exec cmd=x inputs=x as=table max-lines=2 -->",
+        text,
+    ));
+    let plain = body(&run("<!-- computed exec cmd=x inputs=x as=table -->", text));
+    assert_eq!(capped, plain);
+    assert!(capped.contains("| two<br>lines | 3   |"), "{capped}");
+    let r = run(
+        "<!-- computed exec cmd=x inputs=x as=table max-lines=1 -->",
+        "a,b\n1,2\n3\n",
+    );
+    let Rendered::Unchanged { regions } = &r else {
+        panic!("{r:?}")
+    };
+    assert_eq!(regions[0].action, Some(Action::Failed));
+}
+
+#[test]
+fn a_cut_table_is_fresh_under_check() {
+    let text = "a\n1\n2\n";
+    let r = run(
+        "<!-- computed exec cmd=x inputs=x as=table max-lines=1 -->",
+        text,
+    );
+    let Rendered::Written { text: written, .. } = &r else {
+        panic!()
+    };
+    let file = marker::parse(written).unwrap();
+    let r = render::file(&file, Mode::Check, false, &mut Fake(text));
+    assert_eq!(r.regions()[0].state, State::Fresh);
+}

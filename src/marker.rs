@@ -135,10 +135,15 @@ impl Opener {
         self.flags.iter().any(|f| f == flag)
     }
 
-    /// The common attributes as written, in order.
+    /// The common attributes as written, in order, with the table sink's
+    /// `delim=` and `from=` unless the loader owns an attribute of that name.
     pub fn common_attrs(&self) -> impl Iterator<Item = (&str, &str)> {
         self.tokens.iter().filter_map(|t| match t {
-            Token::Attr(k, v) if is_common(k) => Some((k.as_str(), v.as_str())),
+            Token::Attr(k, v)
+                if is_common(k) || (SINK_ATTRS.contains(&k.as_str()) && self.attr(k).is_none()) =>
+            {
+                Some((k.as_str(), v.as_str()))
+            }
             _ => None,
         })
     }
@@ -266,6 +271,9 @@ const GRAMMAR: &[LoaderGrammar] = &[
 ];
 
 const COMMON_ATTRS: &[&str] = &["name", "as", "lang", "on-stale", "max-lines"];
+
+/// The attributes that shape `as=table`, which any loader takes with it.
+pub const SINK_ATTRS: &[&str] = &["delim", "from"];
 
 /// Whether `key` is an attribute every loader takes.
 pub fn is_common(key: &str) -> bool {
@@ -732,7 +740,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
                         };
                     }
                     _ if grammar.attrs.contains(&k.as_str()) => attrs.push((k.clone(), v.clone())),
-                    "delim" | "from" => table.push((k, v)),
+                    k if SINK_ATTRS.contains(&k) => table.push((k, v)),
                     _ => {
                         return Err(error(
                             line,
@@ -750,6 +758,9 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
                 TableFrom::parse(attr("delim"), attr("from")).map_err(|e| error(line, e))?,
             );
         }
+        // A `use` region may set them for its recipe's table; the
+        // expansion is checked as a whole.
+        (_, Some(_)) if loader == "use" => {}
         (_, Some((k, _))) => {
             return Err(error(
                 line,

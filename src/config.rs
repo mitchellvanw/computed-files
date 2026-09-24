@@ -18,9 +18,10 @@ use crate::marker::{self, File, Opener, Segment};
 
 pub const FILE_NAME: &str = "computed.toml";
 
-/// The common attributes a recipe may set; a region's own override them.
-/// `name=` is per file, so only a region gives it.
-const RECIPE_COMMON: &[&str] = &["as", "lang", "on-stale", "max-lines"];
+/// The common attributes a recipe may set, the table sink's `delim=` and
+/// `from=` among them; a region's own override them. `name=` is per file,
+/// so only a region gives it.
+const RECIPE_COMMON: &[&str] = &["as", "lang", "on-stale", "max-lines", "delim", "from"];
 
 /// A parsed, validated `computed.toml`.
 #[derive(Debug, Clone, PartialEq, Eq)]
