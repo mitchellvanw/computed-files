@@ -1,6 +1,6 @@
 # computed
 
-`computed` keeps marked regions of a markdown file current by computation. This file is the dogfood target: the two regions below are owned by the tool, everything else is hand-written.
+`computed` keeps marked regions of Markdown and code files current by computation. This file is the dogfood target: the two regions below are owned by the tool, everything else is hand-written.
 
 Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the design. Decisions that are hard to reverse live under `docs/adr/`.
 

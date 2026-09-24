@@ -22,7 +22,7 @@ use crate::{fs, report};
 #[command(
     name = "computed",
     version,
-    about = "Keeps marked regions of a markdown file current by computation"
+    about = "Keeps marked regions of Markdown and code files current by computation"
 )]
 struct Cli {
     /// Show the regions that are otherwise silent.
