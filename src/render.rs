@@ -314,6 +314,12 @@ fn warned(region: &Region, state: State) -> Option<Action> {
     (state == State::Stale && region.opener.on_stale == OnStale::Warn).then_some(Action::Warn)
 }
 
+/// Whether a loader runs a repository-controlled command, and so renders
+/// only in a trusted clone. A `use` region is asked by its expansion.
+pub fn needs_trust(loader: &str) -> bool {
+    matches!(loader, "exec" | "transcript")
+}
+
 /// A region's state against a snapshot of its inputs, `None` when volatile.
 pub fn state(region: &Region, snapshot: Option<&[u8]>) -> State {
     state_of(region, snapshot)
@@ -619,7 +625,7 @@ fn render(
     if state == State::Fresh && !force {
         return kept(Action::Fresh, None);
     }
-    if matches!(region.opener.loader.as_str(), "exec" | "transcript") && !trusted {
+    if needs_trust(&region.opener.loader) && !trusted {
         return kept(Action::Untrusted, None);
     }
     let loaded = match loaders.load(region) {

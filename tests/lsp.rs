@@ -24,7 +24,8 @@ impl Client {
         let (client, server) = Connection::memory();
         let store = tempfile::tempdir().unwrap();
         let path = store.path().join("trust.toml");
-        let handle = std::thread::spawn(move || lsp::serve(&server, Store::at(path)));
+        let allow = computed::allow::Store::at(store.path().join("remote.toml"));
+        let handle = std::thread::spawn(move || lsp::serve(&server, Store::at(path), allow));
         let mut c = Client {
             conn: client,
             server: Some(handle),
@@ -371,5 +372,87 @@ fn a_use_region_is_checked_hovered_and_run_as_its_recipe() {
         "{text}"
     );
     assert!(text.contains("└── main.rs"), "{text}");
+    c.stop();
+}
+
+mod sandbox;
+
+/// `computed.run` on `path`: the message shown and the text the editor is
+/// asked to apply, if any.
+fn run_command(c: &mut Client, path: &Path) -> (String, Option<String>) {
+    c.next += 1;
+    let id = RequestId::from(c.next);
+    c.conn
+        .sender
+        .send(
+            Request::new(
+                id.clone(),
+                "workspace/executeCommand".into(),
+                json!({"command": lsp::RUN, "arguments": [uri(path)]}),
+            )
+            .into(),
+        )
+        .unwrap();
+    let (mut shown, mut edit) = (String::new(), None);
+    loop {
+        match c.recv() {
+            Message::Response(r) if r.id == id => return (shown, edit),
+            Message::Notification(n) if n.method == "window/showMessage" => {
+                shown = n.params["message"].as_str().unwrap().to_string();
+            }
+            Message::Request(r) if r.method == "workspace/applyEdit" => {
+                edit = Some(
+                    r.params["edit"]["changes"][uri(path)][0]["newText"]
+                        .as_str()
+                        .unwrap()
+                        .to_string(),
+                );
+                c.conn
+                    .sender
+                    .send(Response::new_ok(r.id, json!({"applied": true})).into())
+                    .unwrap();
+            }
+            _ => {}
+        }
+    }
+}
+
+#[test]
+fn run_fetches_a_remote_region_only_under_the_allowlist() {
+    let (_dir, notes) = repo();
+    let base = sandbox::serve("fetched\n");
+    let template = format!(
+        "<!-- computed remote url={base}/doc.md sha256={} name=doc -->\n<!-- /computed -->\n",
+        sandbox::pin("fetched\n")
+    );
+    fs::write(&notes, &template).unwrap();
+    let (client, server) = Connection::memory();
+    let store = tempfile::tempdir().unwrap();
+    let trust = Store::at(store.path().join("trust.toml"));
+    let allow = computed::allow::Store::at(store.path().join("remote.toml"));
+    let handle = std::thread::spawn(move || lsp::serve(&server, trust, allow));
+    let mut c = Client {
+        conn: client,
+        server: Some(handle),
+        next: 0,
+        _store: tempfile::tempdir().unwrap(),
+    };
+    c.request("initialize", json!({"capabilities": {}}));
+    c.notify("initialized", json!({}));
+    open(&c, &notes, &template);
+
+    let (shown, edit) = run_command(&mut c, &notes);
+    assert!(
+        shown.contains("doc skipped; run `computed allow`"),
+        "{shown}"
+    );
+    assert!(edit.is_none_or(|t| !t.contains("fetched")));
+
+    computed::allow::Store::at(store.path().join("remote.toml"))
+        .allow(&format!("{base}/"))
+        .unwrap();
+    let (shown, edit) = run_command(&mut c, &notes);
+    assert!(shown.contains("doc written"), "{shown}");
+    assert!(edit.unwrap().contains("\nfetched\n"));
     c.stop();
 }

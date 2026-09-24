@@ -378,3 +378,54 @@ fn a_toc_recipe_lists_the_using_templates_headings() {
     );
     assert_eq!(repo.cmd(&["run"]).status.code(), Some(0));
 }
+
+#[test]
+fn a_symbol_recipe_takes_the_loaders_default_sink_and_lang() {
+    let repo = Repo::new(
+        "[recipe.sig]\nloader = \"symbol\"\nsrc = \"lib.rs\"\nitem = \"add\"\npart = \"signature\"\n",
+    );
+    repo.write(
+        "lib.rs",
+        "/// Adds.\npub fn add(a: u32, b: u32) -> u32 {\n    a + b\n}\n",
+    );
+    repo.write(
+        "doc.md",
+        "<!-- computed use recipe=sig -->\n<!-- /computed -->\n",
+    );
+    let out = repo.cmd(&["run"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(
+        repo.read("doc.md")
+            .contains("\n```rust\npub fn add(a: u32, b: u32) -> u32\n```\n"),
+        "{}",
+        repo.read("doc.md")
+    );
+    assert_eq!(repo.cmd(&["check"]).status.code(), Some(0));
+}
+
+#[test]
+fn a_transcript_recipe_needs_trust_and_honours_max_lines() {
+    let repo = Repo::new(
+        "[recipe.session]\nloader = \"transcript\"\nsteps = \"echo one ;; echo two ;; echo three\"\ninputs = \"part.md\"\nmax-lines = 3\n",
+    );
+    repo.write(
+        "doc.md",
+        "<!-- computed use recipe=session name=s -->\n<!-- /computed -->\n",
+    );
+    let out = repo.cmd(&["run"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        stderr(&out),
+        "doc.md:1 s transcript untrusted skipped; run `computed trust`\n"
+    );
+    assert!(!repo.read("doc.md").contains("one"));
+    let out = repo.cmd(&["run", "--trust"]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(
+        repo.read("doc.md")
+            .contains("\n```console\n$ echo one\none\n$ echo two\n… 3 more lines\n```\n"),
+        "{}",
+        repo.read("doc.md")
+    );
+    assert_eq!(repo.cmd(&["check"]).status.code(), Some(0));
+}

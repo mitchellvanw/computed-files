@@ -5,13 +5,20 @@
 //! or already gone still answers, what its opener says it would read: the
 //! directory a tree lists, down to its depth and past dotfiles only with
 //! `all`; the paths an `inputs=` or `index` glob matches or lies under, the
-//! literal path of a projected input; a `file` or `value` region's `src=`;
-//! a `toc`'s own template; and a `use` region's `computed.toml`.
+//! literal path of a projected input, as exec's so a transcript's; a
+//! `file`, `value` or `symbol` region's `src=`; a `toc`'s own template; and
+//! a `use` region's `computed.toml`.
+//!
+//! A `git log` or `git contributors` region lists history, not files: a
+//! path at or under its `src=` reaches it, because the commit that changes
+//! the path adds to that history. `git tags` and `remote` read nothing a
+//! path names, so no path reaches them.
 
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use crate::git::Query;
 use crate::loader::{Loader, Production};
 use crate::marker::Region;
 use crate::render::Loaders as _;
@@ -33,6 +40,10 @@ pub struct Reach {
     pub own: Option<PathBuf>,
     /// The `computed.toml` a `use` region's recipe comes from.
     pub recipe: Option<PathBuf>,
+    /// A `git` region's history: what it lists, and the path it follows.
+    pub history: Option<(String, Option<PathBuf>)>,
+    /// A `remote` region's url.
+    pub url: Option<String>,
 }
 
 /// The directory a tree lists and what bounds the listing.
@@ -56,6 +67,8 @@ pub fn reach(template: &Template, region: &Region, loaders: &mut Production) -> 
         src: None,
         own: None,
         recipe: None,
+        history: None,
+        url: None,
         root,
     };
     if region.opener.recipe().is_some() || region.opener.loader == "use" {
@@ -75,7 +88,26 @@ pub fn reach(template: &Template, region: &Region, loaders: &mut Production) -> 
         Ok(Loader::File(args)) => reach.src = Some(at(&args.src)),
         Ok(Loader::Value(args)) => reach.src = Some(at(&args.src)),
         Ok(Loader::Toc(_)) => reach.own = Some(survey::anchor(&template.file)),
-        _ => {}
+        Ok(Loader::Symbol(args)) => reach.src = Some(at(&args.src)),
+        Ok(Loader::Transcript(args)) => reach.globs = args.inputs.unwrap_or_default(),
+        Ok(Loader::Git(args)) => {
+            reach.history = Some(match args.query {
+                Query::Log { src, .. } => {
+                    let src = at(&src);
+                    (format!("git log {}", survey::display(&src)), Some(src))
+                }
+                Query::Contributors { src } => {
+                    let src = at(&src);
+                    (
+                        format!("git contributors {}", survey::display(&src)),
+                        Some(src),
+                    )
+                }
+                Query::Tags { .. } => ("git tags".to_string(), None),
+            });
+        }
+        Ok(Loader::Remote(args)) => reach.url = Some(args.url),
+        Err(_) => {}
     }
     reach
 }
@@ -90,6 +122,11 @@ impl Reach {
             || [&self.src, &self.own, &self.recipe]
                 .iter()
                 .any(|p| p.as_deref().is_some_and(within))
+        {
+            return true;
+        }
+        if let Some((_, Some(src))) = &self.history
+            && (src.starts_with(path) || path.starts_with(src))
         {
             return true;
         }

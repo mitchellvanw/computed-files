@@ -375,14 +375,14 @@ fn drift(shown: &Path, file: &Path, text: &str) -> Option<String> {
             }
             let exec = regions
                 .iter()
-                .any(|r| r.loader == "exec" && r.state.drifted());
+                .any(|r| render::needs_trust(&r.loader) && r.state.drifted());
             let mut out = format!(
                 "computed: regions in {} are not fresh:\n{lines}Run `computed run {}` to render them",
                 shown.display(),
                 shown.display()
             );
             out.push_str(if exec {
-                " (an exec region runs only in a trusted clone: `computed trust`, or `--trust` once)."
+                " (exec and transcript regions run only in a trusted clone: `computed trust`, or `--trust` once)."
             } else {
                 "."
             });

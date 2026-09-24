@@ -290,3 +290,44 @@ fn graph_draws_the_new_loaders_and_recipes() {
         .to_string();
     assert!(text.contains(&format!("{toc} --> t0")), "{text}");
 }
+
+#[test]
+fn g2_loaders_are_affected_by_their_sources_and_history_and_drawn() {
+    let dir = tempfile::tempdir().unwrap();
+    let r = dir.path();
+    fs::create_dir_all(r.join(".git")).unwrap();
+    fs::create_dir_all(r.join("docs")).unwrap();
+    fs::write(r.join("lib.rs"), "pub fn f() {}\n").unwrap();
+    fs::write(r.join("docs/a.md"), "# A\n").unwrap();
+    fs::write(
+        r.join("README.md"),
+        "<!-- computed symbol src=lib.rs item=f name=sym -->\n<!-- /computed -->\n\n\
+         <!-- computed git log src=docs name=log -->\n<!-- /computed -->\n\n\
+         <!-- computed git tags name=tags -->\n<!-- /computed -->\n\n\
+         <!-- computed remote url=https://example.com/a.md name=far -->\n<!-- /computed -->\n\n\
+         <!-- computed transcript steps=\"cat docs/a.md\" inputs=\"docs/*.md\" name=session -->\n<!-- /computed -->\n",
+    )
+    .unwrap();
+    assert_eq!(listed(r, &["lib.rs"]), ["README.md:1 sym"]);
+    assert_eq!(
+        listed(r, &["docs/new.md"]),
+        ["README.md:4 log", "README.md:13 session"],
+        "a commit adding a path under src= adds to its history"
+    );
+    assert_eq!(
+        listed(r, &["docs"]),
+        ["README.md:4 log", "README.md:13 session"]
+    );
+    assert!(listed(r, &["README.md", "other.md"]).is_empty());
+
+    let text = stdout(&computed(r, &["graph"]));
+    for needle in [
+        "[/\"lib.rs\"/]",
+        "[/\"git log docs\"/]",
+        "[/\"git tags\"/]",
+        "[/\"https://example.com/a.md\"/]",
+        "[/\"docs/*.md\"/]",
+    ] {
+        assert!(text.contains(needle), "{needle}\n{text}");
+    }
+}

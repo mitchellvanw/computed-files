@@ -2,11 +2,15 @@
 //! SHA-256 of what came back into the opener's `sha256=`, the rest of the
 //! line as it was. It renders nothing: the moved pin changes the opener,
 //! which makes the region stale, and the next `run` fetches and renders it.
+//! A `use` region whose recipe is a remote is fetched and compared, and a
+//! moved pin reported for the recipe in `computed.toml`, not written.
 
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use crate::allow::Allowed;
+use crate::config;
+use crate::loader::Ctx;
 use crate::marker::{self, Region, Segment};
 use crate::remote::{self, RemoteArgs};
 use crate::render::{Action, Mode, RegionReport, State};
@@ -115,9 +119,14 @@ fn file(path: &Path, dry_run: bool, only: &[String], allowed: &Allowed) -> Outco
         Ok(p) => p,
         Err(e) => return error(Some(e.line), e.message),
     };
+    // A `use` region whose recipe is a remote is checked through its
+    // expansion; its pin is in computed.toml, which update does not write.
+    let mut expanded = parsed.clone();
+    let ctx = Ctx::for_template(path);
+    let recipes = config::expand(&mut expanded, &ctx.region_root, ctx.repo_root.as_deref());
     let mut outcome = Outcome::default();
-    for segment in &mut parsed.segments {
-        let Segment::Region(region) = segment else {
+    for (segment, expansion) in parsed.segments.iter_mut().zip(&expanded.segments) {
+        let (Segment::Region(region), Segment::Region(expansion)) = (segment, expansion) else {
             continue;
         };
         outcome.names.extend(region.opener.name.clone());
@@ -127,10 +136,17 @@ fn file(path: &Path, dry_run: bool, only: &[String], allowed: &Allowed) -> Outco
                 .name
                 .as_ref()
                 .is_some_and(|n| only.contains(n));
-        if region.opener.loader != "remote" || !selected {
+        let recipe = region.opener.loader == "use"
+            && expansion.opener.loader == "remote"
+            && !recipes.errors.contains_key(&region.line);
+        if !(region.opener.loader == "remote" || recipe) || !selected {
             continue;
         }
-        let report = pin_region(region, dry_run, allowed);
+        let report = if recipe {
+            recipe_pin(expansion, allowed)
+        } else {
+            pin_region(region, dry_run, allowed)
+        };
         outcome.tier = outcome.tier.max(match report.action {
             Some(Action::Error) => 2,
             Some(Action::Written | Action::WouldWrite | Action::Disallowed) => 1,
@@ -203,6 +219,46 @@ fn pin_region(region: &mut Region, dry_run: bool, allowed: &Allowed) -> RegionRe
         Action::Written
     };
     report(State::Stale, action, Some(message))
+}
+
+/// Fetches the url of a region its recipe made a remote and says whether
+/// the recipe's pin still matches. A pin that moved is an error naming the
+/// new one: it lives in `computed.toml`, which update does not write.
+fn recipe_pin(region: &Region, allowed: &Allowed) -> RegionReport {
+    let report = |state, action, message: Option<String>| RegionReport {
+        line: region.line,
+        name: region.opener.name.clone(),
+        loader: region.opener.loader.clone(),
+        state,
+        action: Some(action),
+        stderr: message,
+    };
+    let args = match RemoteArgs::from_opener(&region.opener) {
+        Ok(args) => args,
+        Err(e) => return report(State::Error, Action::Error, Some(format!("{e:?}"))),
+    };
+    if !allowed.allows(&args.url) {
+        return report(
+            State::Fresh,
+            Action::Disallowed,
+            Some(remote::not_allowed(&args.url)),
+        );
+    }
+    let got = match remote::fetch(&args.url, args.timeout, allowed) {
+        Ok(body) => remote::digest(&body),
+        Err(e) => return report(State::Error, Action::Error, Some(e)),
+    };
+    if args.sha256.as_deref() == Some(got.as_str()) {
+        return report(State::Fresh, Action::Fresh, None);
+    }
+    report(
+        State::Stale,
+        Action::Error,
+        Some(format!(
+            "the pin is sha256= in [recipe.{}] of computed.toml, which update does not write; set it to {got}",
+            region.opener.recipe().unwrap_or_default()
+        )),
+    )
 }
 
 /// The opener line with its `sha256=` value replaced by `pin`, or, with

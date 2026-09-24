@@ -125,6 +125,9 @@ enum Cmd {
         /// Treat every file as trusted for this invocation without writing the store.
         #[arg(long)]
         trust: bool,
+        /// Allow fetching under this url prefix for this invocation without writing the allowlist; repeat for more.
+        #[arg(long, value_name = "PREFIX")]
+        allow: Vec<String>,
     },
     /// Serve the language server protocol on stdin and stdout.
     Lsp,
@@ -317,9 +320,21 @@ fn dispatch(cli: Cli) -> Result<u8> {
             *hook,
             cli.format == Format::Json,
         )?),
-        Cmd::Watch { paths, trust } => {
-            let job = job(Mode::Run { force: false }, *trust, &[]);
+        Cmd::Watch {
+            paths,
+            trust,
+            allow,
+        } => {
+            let store = allow::Store::at(allow::Store::default_path()?);
+            // Read before the first pass, so a malformed allowlist stops
+            // the watch, and again on every pass, as a run would read it.
+            store.allowed(allow)?;
             let pass = || {
+                let allowed = store.allowed(allow).map_err(|e| e.to_string())?;
+                let job = Job {
+                    allowed: Some(&allowed),
+                    ..job(Mode::Run { force: false }, *trust, &[])
+                };
                 let s = settle(paths, &job).map_err(|e| format!("{e:#}"))?;
                 Ok(crate::watch::Pass {
                     files: s.files,

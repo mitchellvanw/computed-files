@@ -4,8 +4,9 @@
 //! edge: `run` passes over it again once the other is written.
 //!
 //! An input is drawn as the opener names it, so a glob stays one node: a
-//! tree's `src=` directory, an `inputs=` glob, a file's `src=`, and, for any
-//! other loader, the files its snapshot read.
+//! tree's `src=` directory, an `inputs=` glob, a file's `src=`, a `git`
+//! region's history, a `remote` region's url, and, for any other loader,
+//! the files its snapshot read.
 
 use std::collections::HashMap;
 use std::fmt::Write as _;
@@ -193,7 +194,7 @@ fn named_inputs(reach: &Reach) -> Vec<(String, Option<PathBuf>)> {
                 )
             })
             .collect()
-    } else if reach.own.is_some() {
+    } else if reach.own.is_some() || reach.history.is_some() || reach.url.is_some() {
         Vec::new()
     } else {
         reach
@@ -203,6 +204,12 @@ fn named_inputs(reach: &Reach) -> Vec<(String, Option<PathBuf>)> {
             .map(|f| (survey::display(f), Some(f.clone())))
             .collect()
     };
+    if let Some((label, _)) = &reach.history {
+        inputs.push((label.clone(), None));
+    }
+    if let Some(url) = &reach.url {
+        inputs.push((url.clone(), None));
+    }
     if let Some(recipe) = &reach.recipe {
         inputs.push((survey::display(recipe), Some(recipe.clone())));
     }

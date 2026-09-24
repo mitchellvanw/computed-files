@@ -106,3 +106,36 @@ pub fn hard(result: Result<impl std::fmt::Debug, LoadError>) -> String {
         other => panic!("expected a hard error, got {other:?}"),
     }
 }
+
+/// A server on 127.0.0.1 that answers every GET with `body`; its base url.
+/// No test reaches the internet.
+pub fn serve(body: &'static str) -> String {
+    use std::io::{BufRead, BufReader, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { continue };
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut line = String::new();
+            while reader.read_line(&mut line).unwrap_or(0) > 0 && line != "\r\n" {
+                line.clear();
+            }
+            let _ = write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+        }
+    });
+    base
+}
+
+/// The SHA-256 of `text` as a `sha256=` pin spells it.
+pub fn pin(text: &str) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}

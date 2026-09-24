@@ -114,3 +114,37 @@ fn watch_renders_on_change_and_stops_on_ctrl_c() {
         "its own write does not run it again: {err}"
     );
 }
+
+mod sandbox;
+
+#[test]
+fn watch_takes_allow_for_remote_regions() {
+    let dir = tempfile::tempdir().unwrap();
+    let r = dir.path();
+    fs::create_dir_all(r.join(".git")).unwrap();
+    let base = sandbox::serve("fetched\n");
+    let notes = r.join("NOTES.md");
+    fs::write(
+        &notes,
+        format!(
+            "<!-- computed remote url={base}/doc.md sha256={} name=doc -->\n<!-- /computed -->\n",
+            sandbox::pin("fetched\n")
+        ),
+    )
+    .unwrap();
+    let config = tempfile::tempdir().unwrap();
+    let prefix = format!("{base}/");
+    let watching = Watching(Some(
+        Command::cargo_bin("computed")
+            .unwrap()
+            .current_dir(r)
+            .env("XDG_CONFIG_HOME", config.path())
+            .args(["watch", "--allow", &prefix])
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    ));
+    eventually("the allowed fetch", || read(&notes).contains("\nfetched\n"));
+    assert_eq!(watching.interrupt().status.code(), Some(0));
+}

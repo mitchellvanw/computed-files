@@ -28,6 +28,12 @@ inputs:
       for repositories whose pull requests you would run the commands of
       anyway. `check` never runs a command and ignores it.
     default: "false"
+  allow:
+    description: >-
+      Space-separated url prefixes `remote` regions may fetch under during
+      `suggest` (`computed run --allow`), for this run only; the runner keeps
+      no allowlist. `check` never fetches and ignores it.
+    default: ""
   token:
     description: The token `gh` downloads the release and posts comments with.
     default: ${{ github.token }}
@@ -51,5 +57,6 @@ runs:
         INPUT_COMMAND: ${{ inputs.command }}
         INPUT_PATHS: ${{ inputs.paths }}
         INPUT_TRUST: ${{ inputs.trust }}
+        INPUT_ALLOW: ${{ inputs.allow }}
         GH_TOKEN: ${{ inputs.token }}
       run: sh "$GITHUB_ACTION_PATH/scripts/action/run.sh"

@@ -11,10 +11,11 @@
 #            the step summary. Exits as computed does, so drift fails the job.
 #
 # Environment: INPUT_COMMAND, INPUT_PATHS (space-separated), INPUT_TRUST
-# (`true` passes --trust to run), GH_TOKEN, and the runner's GITHUB_*
-# variables. Needs computed and jq, and gh for the comments.
+# (`true` passes --trust to run), INPUT_ALLOW (space-separated url
+# prefixes, each passed to run as --allow), GH_TOKEN, and the runner's
+# GITHUB_* variables. Needs computed and jq, and gh for the comments.
 set -eu
-# INPUT_PATHS is split on spaces and never globbed.
+# INPUT_PATHS and INPUT_ALLOW are split on spaces and never globbed.
 set -f
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -72,9 +73,13 @@ trust=
 if [ "${INPUT_TRUST:-false}" = true ]; then
   trust=--trust
 fi
+allow=
+for prefix in ${INPUT_ALLOW:-}; do
+  allow="$allow --allow $prefix"
+done
 set +e
 # shellcheck disable=SC2086
-computed --format json run --dry-run $trust $paths >"$work/run.json"
+computed --format json run --dry-run $trust $allow $paths >"$work/run.json"
 status=$?
 set -e
 

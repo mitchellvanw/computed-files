@@ -47,7 +47,7 @@ computed clean    [paths] [--force] [--dry-run] [--only NAME]
 computed trust    [path]
 computed untrust  [path]
 ```
-<!-- /computed in=f4ddd1be8eac012b64c36ad86a0651a63e749c0f4a1977bb2f8476b57dad1a6f out=62ff5182e2b4af5b172cf45e30590aaa5dcef60420b115ecccbdd28ed4392ec9 -->
+<!-- /computed in=4e604a378894b7a9332ff2deaaead70420aa3db4dc813b90a85ca0d2480ceeb4 out=62ff5182e2b4af5b172cf45e30590aaa5dcef60420b115ecccbdd28ed4392ec9 -->
 
 With no paths, the current directory is walked with the tree loader's ignore settings, dot-directories such as `.claude/` included, and every `.md` and `.markdown` file is read. An explicit file is read whatever its extension. `run --dry-run` prints the diff `run` would write and writes nothing. `--only NAME` narrows a command to the regions with that name. `--format json` prints one JSON document on stdout instead of the report.
 

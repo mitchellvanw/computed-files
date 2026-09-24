@@ -27,6 +27,7 @@ use lsp_types::{
     TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Uri, WorkspaceEdit,
 };
 
+use crate::allow;
 use crate::guard;
 use crate::loader::{Ctx, Production};
 use crate::marker::{self, Region, Segment};
@@ -43,14 +44,17 @@ const HOVER_INPUTS: usize = 10;
 pub fn main() -> Result<u8, String> {
     let (conn, io) = Connection::stdio();
     let store = Store::at(Store::default_path().map_err(|e| e.to_string())?);
-    serve(&conn, store)?;
+    let allow = allow::Store::at(allow::Store::default_path().map_err(|e| e.to_string())?);
+    serve(&conn, store, allow)?;
     drop(conn);
     io.join().map_err(|e| e.to_string())?;
     Ok(0)
 }
 
-/// Initialises and answers `conn` until the client shuts down.
-pub fn serve(conn: &Connection, store: Store) -> Result<(), String> {
+/// Initialises and answers `conn` until the client shuts down. `store`
+/// holds the trust grants and `allow` the url prefixes `remote` regions may
+/// fetch under, both read as `run` reads them.
+pub fn serve(conn: &Connection, store: Store, allow: allow::Store) -> Result<(), String> {
     let capabilities = ServerCapabilities {
         text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
@@ -68,6 +72,7 @@ pub fn serve(conn: &Connection, store: Store) -> Result<(), String> {
     let mut server = Server {
         conn,
         store,
+        allow,
         docs: HashMap::new(),
         next_id: 0,
     };
@@ -98,6 +103,7 @@ struct Doc {
 struct Server<'c> {
     conn: &'c Connection,
     store: Store,
+    allow: allow::Store,
     docs: HashMap<String, Doc>,
     next_id: u64,
 }
@@ -323,10 +329,10 @@ impl Server<'_> {
                 let source = guard::source(d.region);
                 let (severity, message) = match report.state {
                     State::Fresh | State::Volatile => return None,
-                    s if report.loader == "exec" && !trusted && s != State::Error => (
+                    s if render::needs_trust(&report.loader) && !trusted && s != State::Error => (
                         DiagnosticSeverity::INFORMATION,
                         format!(
-                            "untrusted: {s}, and this clone does not run exec regions; `computed trust` lets it ({source})"
+                            "untrusted: {s}, and this clone does not run exec or transcript regions; `computed trust` lets it ({source})"
                         ),
                     ),
                     State::Stale => (
@@ -508,7 +514,14 @@ impl Server<'_> {
             }
         };
         let trusted = self.trusted(&doc.path);
-        let mut loaders = Production::for_file(&doc.path, &mut parsed);
+        let allowed = match self.allow.allowed(&[]) {
+            Ok(a) => a,
+            Err(e) => {
+                self.show(MessageType::ERROR, format!("computed: {e}"));
+                return;
+            }
+        };
+        let mut loaders = Production::for_file(&doc.path, &mut parsed).allowing(allowed);
         let rendered = render::file(&parsed, Mode::Run { force: false }, trusted, &mut loaders);
         let name = doc
             .path

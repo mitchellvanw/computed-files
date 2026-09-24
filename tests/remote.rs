@@ -304,3 +304,53 @@ fn a_url_off_the_allowlist_is_skipped_and_a_redirect_must_be_allowed_too() {
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(stderr(&out), format!("computed: {allow} was not allowed\n"));
 }
+
+#[test]
+fn a_remote_recipe_runs_and_update_names_the_pin_it_cannot_write() {
+    let server = Server::start();
+    server.put("/spec.md", "One.\n");
+    let dir = tempfile::tempdir().unwrap();
+    let r = dir.path();
+    fs::create_dir(r.join(".git")).unwrap();
+    let url = format!("{}/spec.md", server.base);
+    let recipe = |pin: &str| {
+        fs::write(
+            r.join("computed.toml"),
+            format!("[recipe.spec]\nloader = \"remote\"\nurl = \"{url}\"\nsha256 = \"{pin}\"\n"),
+        )
+        .unwrap();
+    };
+    recipe(&digest("One.\n"));
+    let readme = r.join("README.md");
+    let template = "<!-- computed use recipe=spec name=spec -->\n<!-- /computed -->\n";
+    fs::write(&readme, template).unwrap();
+    let allow = format!("{}/", server.base);
+
+    let out = computed(r, &["run"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(stderr(&out).contains("spec remote"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("computed allow"), "{}", stderr(&out));
+    let out = computed(r, &["run", "--allow", &allow]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert!(fs::read_to_string(&readme).unwrap().contains("\nOne.\n"));
+
+    let out = computed(r, &["update", "--allow", &allow]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    server.put("/spec.md", "Two.\n");
+    let before = fs::read_to_string(&readme).unwrap();
+    let out = computed(r, &["update", "--allow", &allow]);
+    assert_eq!(out.status.code(), Some(2), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains(&format!(
+            "[recipe.spec] of computed.toml, which update does not write; set it to {}",
+            digest("Two.\n")
+        )),
+        "{}",
+        stderr(&out)
+    );
+    assert_eq!(
+        fs::read_to_string(&readme).unwrap(),
+        before,
+        "nothing written"
+    );
+}
