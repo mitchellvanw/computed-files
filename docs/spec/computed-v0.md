@@ -506,7 +506,7 @@ Milestone 1 was done when this repository dogfooded itself: a `CLAUDE.md` at the
 
 ## Decisions
 
-<!-- computed index src="docs/adr/*.md" name=adrs -->
+<!-- computed index src=docs/adr/*.md name=adrs -->
 <!-- /computed -->
 ````
 

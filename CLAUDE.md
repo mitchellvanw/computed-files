@@ -115,7 +115,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 
 ## Decisions
 
-<!-- computed exec cmd=scripts/adr-index.sh inputs=docs/adr/*.md,scripts/adr-index.sh name=adrs | do not edit; run computed -->
+<!-- computed index src=docs/adr/*.md name=adrs | do not edit; run computed -->
 
 - [Rust for the prototype](docs/adr/0001-rust-for-the-prototype.md)
 - [Two sums in the closer](docs/adr/0002-two-sum-closer.md)
@@ -143,4 +143,4 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 - [The merge driver merges by structure and leaves a region both sides re-rendered unrendered](docs/adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md)
 - [The Claude Code guard refuses an edit to a region before it lands](docs/adr/0025-the-guard-refuses-an-edit-before-it-lands.md)
 
-<!-- /computed in=28758c2a4380ca4770246c30e4614849da043167a43212d4f5a9541311193496 out=fa9e6d48384ba65b1e77ebce943b38b872f2ea088545155b478bf15993829755 -->
+<!-- /computed in=d620c03695928af311145a87f4e46eba0bc57b62c10c0132b37f665d805de117 out=fa9e6d48384ba65b1e77ebce943b38b872f2ea088545155b478bf15993829755 -->

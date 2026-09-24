@@ -363,7 +363,7 @@ discover-regions  Find hand-written blocks in a repository's Markdown that go
 
 { g: "Serving both", n: 31, f: "CLAUDE.md", who: "both", l: "index", shipped: true,
   t: "The index of decisions",
-  m: O + `index src="docs/adr/*.md" name=adrs` + C,
+  m: O + "index src=docs/adr/*.md name=adrs" + C,
   d: `Already running in this repository's <code>CLAUDE.md</code>. It began as an exec region over a shell script and became one <code>index</code> line, which needs no trust. <code>adr-log</code> is the prior art and uses the same marker shape, with no check mode; <code>adr generate toc</code> only prints to stdout and leaves a human to place it.`,
   xk: "live",
   x: `- [Rust for the prototype](docs/adr/0001-rust-for-the-prototype.md)
