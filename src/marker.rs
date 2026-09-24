@@ -71,8 +71,8 @@ pub enum OnStale {
 }
 
 /// The parsed opener. `attrs` holds the loader's own attributes in the order
-/// written; the common attributes `name=`, `as=`, `lang=` and `on-stale=`
-/// are lifted out.
+/// written; the common attributes `name=`, `as=`, `lang=`, `on-stale=` and
+/// `max-lines=` are lifted out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Opener {
     pub loader: String,
@@ -82,6 +82,8 @@ pub struct Opener {
     pub sink: Sink,
     pub lang: String,
     pub on_stale: OnStale,
+    /// The most lines of loader text the sink shapes; the rest is one note.
+    pub max_lines: Option<usize>,
     /// Every token as written, in order, for the canonical form.
     tokens: Vec<Token>,
 }
@@ -213,7 +215,7 @@ const GRAMMAR: &[LoaderGrammar] = &[
     },
 ];
 
-const COMMON_ATTRS: &[&str] = &["name", "as", "lang", "on-stale"];
+const COMMON_ATTRS: &[&str] = &["name", "as", "lang", "on-stale", "max-lines"];
 
 /// One physical line of the file with its terminator.
 struct Line<'a> {
@@ -607,6 +609,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
     let mut sink = grammar.sink;
     let mut lang = String::new();
     let mut on_stale = OnStale::Fail;
+    let mut max_lines = None;
     let mut seen: Vec<&str> = Vec::new();
     for t in iter {
         match t {
@@ -645,6 +648,20 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
                             }
                         };
                     }
+                    "max-lines" => {
+                        max_lines = match v.parse::<usize>() {
+                            Ok(0) => {
+                                return Err(error(line, "max-lines=0: expected at least 1 line"));
+                            }
+                            Ok(n) => Some(n),
+                            Err(_) => {
+                                return Err(error(
+                                    line,
+                                    format!("max-lines={v}: expected a whole number"),
+                                ));
+                            }
+                        };
+                    }
                     _ if grammar.attrs.contains(&k.as_str()) => attrs.push((k.clone(), v.clone())),
                     _ => {
                         return Err(error(
@@ -665,6 +682,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
         sink,
         lang,
         on_stale,
+        max_lines,
         tokens,
     };
     validate(line, &opener)?;

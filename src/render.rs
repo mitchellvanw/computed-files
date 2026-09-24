@@ -9,6 +9,7 @@ use std::fmt;
 use crate::loader::{self, LoadError, Loaded};
 use crate::marker::{self, File, OnStale, Region, Segment, Sums};
 use crate::sink;
+use crate::truncate;
 
 /// The seam between `render` and the loaders. `snapshot` costs nothing
 /// dangerous and always runs; `load` may run a command and runs only when
@@ -603,11 +604,11 @@ fn render(
         Err(LoadError::Failed { stderr }) => return kept(Action::Failed, Some(stderr)),
         Err(LoadError::Hard(message)) => return kept(Action::Error, Some(message)),
     };
-    let body = match sink::body(
-        region.opener.sink,
-        &region.opener.lang,
-        loaded.text.as_bytes(),
-    ) {
+    let text = match truncate::apply(&region.opener, &loaded.text) {
+        Ok(t) => t,
+        Err(message) => return kept(Action::Failed, Some(message)),
+    };
+    let body = match sink::body(region.opener.sink, &region.opener.lang, text.as_bytes()) {
         Ok(b) => shape(region, &b),
         Err(message) => return kept(Action::Failed, Some(message)),
     };

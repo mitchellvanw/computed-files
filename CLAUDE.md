@@ -48,14 +48,16 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── render.rs
 │   ├── report.rs
 │   ├── sink.rs
+│   ├── truncate.rs
 │   └── trust.rs
 └── tests
     ├── cli.rs
     ├── fixtures
+    ├── max_lines.rs
     ├── on_stale.rs
     └── render.rs
 ```
-<!-- /computed in=27b6bbc79afbb4ad7eb8b5f0b25b8a9690bb611e994373644ed9016512807f60 out=7f80e957b4fc6a574c0abd3ab0e52c3f9266f37679dbba634279104c55b92322 -->
+<!-- /computed in=77416faad1e2bd33363db20ed53341612eb052baa5303ecaf7abef0832ed3f5f out=f3730c1439f1b410dd5294bd5a0b4c31a6995d3697dcb3454c0052a33ed7c8f1 -->
 
 ## Decisions
 
