@@ -10,6 +10,7 @@ pub mod cli;
 pub mod fs;
 pub mod loader;
 pub mod marker;
+pub mod project;
 pub mod render;
 pub mod report;
 pub mod sink;

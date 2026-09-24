@@ -344,6 +344,12 @@ fn fenced_lines(lines: &[Line<'_>]) -> Vec<bool> {
     fenced
 }
 
+/// Which lines of `text`, split at LF, sit inside a fenced code block as
+/// the parser reads it, fence lines included.
+pub fn fenced(text: &str) -> Vec<bool> {
+    fenced_lines(&lines(text))
+}
+
 /// Whether a line, on its own, would parse as an opener or a closer.
 pub fn is_marker(text: &str) -> bool {
     let line = Line {

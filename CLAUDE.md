@@ -45,6 +45,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── loader.rs
 │   ├── main.rs
 │   ├── marker.rs
+│   ├── project.rs
 │   ├── render.rs
 │   ├── report.rs
 │   ├── sink.rs
@@ -54,7 +55,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── fixtures
     └── render.rs
 ```
-<!-- /computed in=78aaac611c004a503bdd9b79b7ca352f8deef8b6dbc7b64285c2328a03fbdf4a out=4a04076276ffdfc5c22d7758125ddec3abb18caf6c3ea1df4c4bcc964d6198d1 -->
+<!-- /computed in=62e8bc3629482a3c44ade834ce861120146e49cd38f456d9e7e391f440e7d0b9 out=f75680df338d0496cc6a8b948c98b7ed470cdc1a81ad0bb2f50192fe9246dccd -->
 
 ## Decisions
 

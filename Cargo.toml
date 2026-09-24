@@ -28,11 +28,13 @@ globset = "0.4.20"
 ignore = "0.4.33"
 libc = "0.2.189"
 serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
 sha2 = "0.11.0"
 similar = "3.2.0"
 tempfile = "3.27.0"
 toml = "1.1.5"
 wait-timeout = "0.2.1"
+yaml-rust2 = { version = "0.13.0", default-features = false }
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
