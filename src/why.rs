@@ -153,7 +153,10 @@ fn answer(
         }
     };
     let recorded = &region.sums.as_ref().expect("a rendered region").input;
-    let found = match baseline(repo, region, recorded, state == State::Edited) {
+    // A git region's input is the history itself, which no commit's tree
+    // holds: its render is found, not reproduced.
+    let history = region.opener.loader == "git";
+    let found = match baseline(repo, region, recorded, state == State::Edited || history) {
         Ok(found) => found,
         Err(m) => {
             note(&mut text, &m);
@@ -188,6 +191,16 @@ fn answer(
                 base.short, base.date, base.subject
             )
             .unwrap();
+            edited(&mut text, state, &base.region, region, verbose);
+        }
+        Found::Held(base) if history => {
+            writeln!(
+                text,
+                "    rendered in {} {} {}\n    its input is the repository's history, which no commit's tree holds: commits or tags made since then changed it",
+                base.short, base.date, base.subject
+            )
+            .unwrap();
+            opener(&mut text, &base.region, region);
             edited(&mut text, state, &base.region, region, verbose);
         }
         Found::Held(base) => {

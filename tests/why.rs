@@ -353,3 +353,30 @@ fn a_use_region_is_explained_through_the_recipe_of_its_commit() {
         "{text}"
     );
 }
+
+#[test]
+fn a_git_region_is_explained_by_the_history_since_its_render() {
+    let dir = tempfile::tempdir().unwrap();
+    let d = dir.path();
+    git(d, &["init", "-q", "-b", "main"]);
+    git(d, &["config", "user.name", "Test"]);
+    git(d, &["config", "user.email", "test@example.com"]);
+    fs::write(d.join("a.txt"), "a\n").unwrap();
+    commit(d, "First");
+    fs::write(
+        d.join("LOG.md"),
+        "<!-- computed git log n=1 name=log -->\n<!-- /computed -->\n",
+    )
+    .unwrap();
+    assert_eq!(computed(d, &["run"]).status.code(), Some(1));
+    let rendered = commit(d, "Render the log");
+    fs::write(d.join("a.txt"), "b\n").unwrap();
+    commit(d, "Change a");
+    let out = computed(d, &["why", "LOG.md"]);
+    assert_eq!(out.status.code(), Some(0), "{}", stdout(&out));
+    let text = stdout(&out);
+    assert!(text.starts_with("LOG.md:1 log git stale\n"), "{text}");
+    assert!(text.contains(&format!("rendered in {rendered} ")), "{text}");
+    assert!(text.contains("the repository's history"), "{text}");
+    assert!(!text.contains("never committed"), "{text}");
+}
