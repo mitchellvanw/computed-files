@@ -56,6 +56,7 @@ fn the_body_is_a_table_between_blank_lines_and_parses_back() {
     let body = sink::body(
         Sink::Table(TableFrom::Delimited(b',')),
         "",
+        None,
         b"name,note\r\ncomputed,\"<!-- /computed -->\"\r\n```,x\r\n",
     )
     .unwrap();
@@ -63,7 +64,7 @@ fn the_body_is_a_table_between_blank_lines_and_parses_back() {
         body,
         "\n| name     | note               |\n| -------- | ------------------ |\n| computed | <!-- /computed --> |\n| ```      | x                  |\n\n"
     );
-    let e = sink::body(Sink::Table(TableFrom::Jsonl), "", b"[1]\n").unwrap_err();
+    let e = sink::body(Sink::Table(TableFrom::Jsonl), "", None, b"[1]\n").unwrap_err();
     assert!(e.contains("not a JSON object"), "{e}");
 }
 

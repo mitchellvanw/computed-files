@@ -79,6 +79,9 @@ enum Cmd {
     Trust { path: Option<PathBuf> },
     /// Remove the grant for the repository containing PATH.
     Untrust { path: Option<PathBuf> },
+    /// Count every region's lines, bytes and estimated tokens, and the share
+    /// of each file that is computed, without running a loader.
+    Stats { paths: Vec<PathBuf> },
 }
 
 /// Runs the command line and returns the exit code.
@@ -160,6 +163,10 @@ fn dispatch(cli: Cli) -> Result<u8> {
             }
             Ok(0)
         }
+        Cmd::Stats { paths } => Ok(crate::stats::run(
+            &discover(paths)?,
+            cli.format == Format::Json,
+        )),
     }
 }
 
@@ -428,7 +435,7 @@ fn try_process_file(path: &Path, job: &Job<'_>, store: &Store) -> Result<Outcome
     if !text.contains("<!--") {
         return Ok(Outcome::default());
     }
-    let parsed = match marker::parse(&text) {
+    let mut parsed = match marker::parse(&text) {
         Ok(p) => p,
         Err(e) => return Ok(Outcome::error(Some(e.line), e.message)),
     };
@@ -463,6 +470,7 @@ fn try_process_file(path: &Path, job: &Job<'_>, store: &Store) -> Result<Outcome
         job.only.is_empty() || r.opener.name.as_ref().is_some_and(|n| job.only.contains(n))
     };
     let mut loaders = Production::new(ctx);
+    loaders.expand_recipes(&mut parsed);
     let rendered = render::file_where(&parsed, job.mode, trusted, &select, &mut loaders);
     let mut outcome = Outcome {
         tier: rendered.tier(),

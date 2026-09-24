@@ -7,7 +7,7 @@
 use std::fmt;
 
 use crate::loader::{self, LoadError, Loaded};
-use crate::marker::{self, File, Region, Segment, Sums};
+use crate::marker::{self, File, OnStale, Region, Segment, Sums};
 use crate::sink;
 
 /// The seam between `render` and the loaders. `snapshot` costs nothing
@@ -97,6 +97,9 @@ pub enum Action {
     Error,
     Cleaned,
     WouldClean,
+    /// Under `check`: a stale region whose opener says `on-stale=warn`,
+    /// reported without failing.
+    Warn,
 }
 
 impl fmt::Display for Action {
@@ -112,6 +115,7 @@ impl fmt::Display for Action {
             Action::Error => "skipped; body kept",
             Action::Cleaned => "cleaned",
             Action::WouldClean => "would clean",
+            Action::Warn => "warn",
         })
     }
 }
@@ -130,6 +134,7 @@ impl Action {
             Action::Error => "error",
             Action::Cleaned => "cleaned",
             Action::WouldClean => "would-clean",
+            Action::Warn => "warn",
         }
     }
 }
@@ -299,6 +304,12 @@ fn state_of(region: &Region, snapshot: Option<&[u8]>) -> State {
     }
 }
 
+/// The action `check` gives a region: `warn` for one that is only stale and
+/// says `on-stale=warn`, else none. Every other drift still fails.
+fn warned(region: &Region, state: State) -> Option<Action> {
+    (state == State::Stale && region.opener.on_stale == OnStale::Warn).then_some(Action::Warn)
+}
+
 /// The state `clean` can know without a snapshot: only the body is tested.
 fn body_state(region: &Region) -> State {
     match &region.sums {
@@ -421,7 +432,7 @@ pub fn file_where(
             .iter()
             .zip(&states)
             .filter_map(|(r, s)| match s.as_ref()? {
-                Ok(s) => Some(report(r, *s, None, None)),
+                Ok(s) => Some(report(r, *s, warned(r, *s), None)),
                 Err(m) => Some(errored(r, m)),
             })
             .collect();
@@ -595,6 +606,7 @@ fn render(
     let body = match sink::body(
         region.opener.sink,
         &region.opener.lang,
+        region.opener.max_lines,
         loaded.text.as_bytes(),
     ) {
         Ok(b) => shape(region, &b),

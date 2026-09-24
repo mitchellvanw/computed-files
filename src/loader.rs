@@ -29,6 +29,7 @@ pub fn format_constant(loader: &str) -> u32 {
         "value" => 1,
         "index" => 1,
         "toc" => 1,
+        "use" => 1,
         other => panic!("unknown loader {other:?} reached the format table"),
     }
 }
@@ -43,9 +44,10 @@ use std::time::{Duration, Instant};
 
 use globset::GlobMatcher;
 
+use crate::config;
 use crate::fs::{self, Ignores, WalkOpts};
 use crate::index::{self, Title};
-use crate::marker::{self, Opener, Region};
+use crate::marker::{self, File, Opener, Region};
 use crate::project::{self, Projection};
 use crate::render::Loaders;
 use crate::toc;
@@ -241,6 +243,10 @@ impl Loader {
                     toc::levels(opener.attr("min"), opener.attr("max")).map_err(hard)?;
                 Ok(Loader::Toc(TocArgs { min, max }))
             }
+            "use" => Err(hard(format!(
+                "recipe={}: the recipe was not expanded",
+                opener.attr("recipe").unwrap_or_default()
+            ))),
             other => Err(hard(format!("unknown loader {other:?}"))),
         }
     }
@@ -264,6 +270,8 @@ pub struct Production {
     ctx: Ctx,
     walks: HashMap<String, Loaded>,
     read: BTreeSet<PathBuf>,
+    /// Per region line, why its `use` recipe did not expand.
+    unexpanded: BTreeMap<usize, String>,
 }
 
 impl Production {
@@ -272,6 +280,25 @@ impl Production {
             ctx,
             walks: HashMap::new(),
             read: BTreeSet::new(),
+            unexpanded: BTreeMap::new(),
+        }
+    }
+
+    /// Expands every `use` region of `file` into the opener its recipe
+    /// names ([`config::expand`]) and records `computed.toml` as read. A
+    /// region whose recipe does not expand keeps its `use` opener, and its
+    /// snapshot is the hard error that says why.
+    pub fn expand_recipes(&mut self, file: &mut File) {
+        let expansion = config::expand(file, &self.ctx.region_root, self.ctx.repo_root.as_deref());
+        self.read.extend(expansion.read);
+        self.unexpanded.extend(expansion.errors);
+    }
+
+    /// The region's loader, or why its recipe did not expand.
+    fn loader(&self, region: &Region) -> Result<Loader, LoadError> {
+        match self.unexpanded.get(&region.line) {
+            Some(message) => Err(hard(message.clone())),
+            None => Loader::from_opener(&region.opener),
         }
     }
 
@@ -412,7 +439,7 @@ impl Production {
 
 impl Loaders for Production {
     fn snapshot(&mut self, region: &Region) -> Result<Option<Vec<u8>>, LoadError> {
-        match Loader::from_opener(&region.opener)? {
+        match self.loader(region)? {
             Loader::Tree(args) => Ok(Some(self.tree(region, &args)?.snapshot)),
             Loader::Exec(ExecArgs { inputs: None, .. }) => Ok(None),
             Loader::Exec(ExecArgs {
@@ -427,7 +454,7 @@ impl Loaders for Production {
     }
 
     fn load(&mut self, region: &Region) -> Result<Loaded, LoadError> {
-        match Loader::from_opener(&region.opener)? {
+        match self.loader(region)? {
             Loader::Tree(args) => self.tree(region, &args),
             Loader::Exec(args) => {
                 let snapshot = match &args.inputs {

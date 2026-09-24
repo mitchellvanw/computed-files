@@ -40,6 +40,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   └── site-install.sh
 ├── src
 │   ├── cli.rs
+│   ├── config.rs
 │   ├── fs.rs
 │   ├── index.rs
 │   ├── lib.rs
@@ -50,22 +51,28 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── render.rs
 │   ├── report.rs
 │   ├── sink.rs
+│   ├── stats.rs
 │   ├── table.rs
 │   ├── toc.rs
+│   ├── truncate.rs
 │   └── trust.rs
 └── tests
     ├── cli.rs
     ├── file_slice.rs
     ├── fixtures
     ├── index.rs
+    ├── max_lines.rs
+    ├── on_stale.rs
     ├── projected_inputs.rs
+    ├── recipes.rs
     ├── render.rs
     ├── sandbox
+    ├── stats.rs
     ├── table.rs
     ├── toc.rs
     └── value.rs
 ```
-<!-- /computed in=b9e9f174d706a53ada32934ba5c6f76e15395fcc39f3f9cc7dd1e211503d6c7c out=013ae7326bea46d942eb5a55cfc569aae5f6420a3e287bb4255b2c5f280a729b -->
+<!-- /computed in=14410064f03d3628479a6048042c0df13ee8830e0924a7a4465fb5e474c62a66 out=99c256b99ef146195e345da33eb5bec7a556ecce2b6160ecac8e283e243b61fc -->
 
 ## Decisions
 

@@ -37,6 +37,12 @@ impl TableFrom {
 /// header row, a row whose field count differs from the header's, or a
 /// JSON line that is not an object is an error.
 pub fn table(text: &str, from: TableFrom) -> Result<String, String> {
+    Ok(shape(&rows(text, from)?))
+}
+
+/// The text's rows, header first, each as many fields as the header. The
+/// errors are `table`'s.
+pub fn rows(text: &str, from: TableFrom) -> Result<Vec<Vec<String>>, String> {
     let rows = match from {
         TableFrom::Delimited(delim) => delimited(text, delim)?,
         TableFrom::Jsonl => jsonl(text)?,
@@ -57,11 +63,17 @@ pub fn table(text: &str, from: TableFrom) -> Result<String, String> {
             header.len()
         ));
     }
+    Ok(rows)
+}
+
+/// Rows `rows` has checked, as the table's lines: the header, the delimiter
+/// row, then the data rows, padded to the widest cell of each column.
+pub fn shape(rows: &[Vec<String>]) -> String {
     let rows: Vec<Vec<String>> = rows
         .iter()
         .map(|r| r.iter().map(|c| cell(c)).collect())
         .collect();
-    let widths: Vec<usize> = (0..header.len())
+    let widths: Vec<usize> = (0..rows[0].len())
         .map(|c| {
             rows.iter()
                 .map(|r| r[c].chars().count())
@@ -81,7 +93,7 @@ pub fn table(text: &str, from: TableFrom) -> Result<String, String> {
     let mut out = vec![line(rows[0].clone())];
     out.push(line(widths.iter().map(|&w| "-".repeat(w)).collect()));
     out.extend(rows[1..].iter().cloned().map(line));
-    Ok(out.join("\n"))
+    out.join("\n")
 }
 
 /// A field as a table cell. A cell is one line, so a newline inside a

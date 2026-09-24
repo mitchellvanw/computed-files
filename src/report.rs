@@ -124,13 +124,14 @@ pub fn json(files: &[FileJson<'_>], exit: u8) -> String {
             }
             write!(
                 out,
-                "{{\"line\":{},\"name\":{},\"loader\":{},\"state\":{},\"action\":{},\"message\":{}}}",
+                "{{\"line\":{},\"name\":{},\"loader\":{},\"state\":{},\"action\":{},\"message\":{},\"severity\":{}}}",
                 r.line,
                 optional(r.name.as_deref()),
                 string(&r.loader),
                 string(&r.state.to_string()),
-                optional(r.action.map(Action::key)),
+                optional(r.action.filter(|&a| a != Action::Warn).map(Action::key)),
                 optional(r.stderr.as_deref()),
+                optional((r.action == Some(Action::Warn)).then_some("warn")),
             )
             .unwrap();
         }
@@ -145,7 +146,7 @@ fn optional(s: Option<&str>) -> String {
 }
 
 /// A JSON string literal.
-fn string(s: &str) -> String {
+pub(crate) fn string(s: &str) -> String {
     let mut out = String::from("\"");
     for c in s.chars() {
         match c {
@@ -188,7 +189,7 @@ mod tests {
         );
         assert_eq!(
             doc,
-            "{\"exit\":1,\"files\":[{\"path\":\"d.md\",\"error\":null,\"regions\":[{\"line\":3,\"name\":\"a\\\"b\",\"loader\":\"exec\",\"state\":\"stale\",\"action\":\"failed\",\"message\":\"x\\n\\ty\\u0001\"}],\"diff\":null}]}\n"
+            "{\"exit\":1,\"files\":[{\"path\":\"d.md\",\"error\":null,\"regions\":[{\"line\":3,\"name\":\"a\\\"b\",\"loader\":\"exec\",\"state\":\"stale\",\"action\":\"failed\",\"message\":\"x\\n\\ty\\u0001\",\"severity\":null}],\"diff\":null}]}\n"
         );
     }
 }

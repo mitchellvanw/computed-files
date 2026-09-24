@@ -67,9 +67,18 @@ impl Sink {
     }
 }
 
+/// What `check` makes of a region that is only stale: drift that fails, or,
+/// with `on-stale=warn`, a line that does not raise the exit code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OnStale {
+    Fail,
+    Warn,
+}
+
 /// The parsed opener. `attrs` holds the loader's own attributes in the order
-/// written; the common attributes `name=`, `as=` and `lang=` are lifted out,
-/// and so are `delim=` and `from=`, which shape `as=table` into `sink`.
+/// written; the common attributes `name=`, `as=`, `lang=`, `on-stale=` and
+/// `max-lines=` are lifted out, and so are `delim=` and `from=`, which shape
+/// `as=table` into `sink`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Opener {
     pub loader: String,
@@ -78,6 +87,12 @@ pub struct Opener {
     pub name: Option<String>,
     pub sink: Sink,
     pub lang: String,
+    pub on_stale: OnStale,
+    /// The most lines of loader text the sink shapes; the rest is one note.
+    pub max_lines: Option<usize>,
+    /// The canonical form of the `use` opener this one was expanded from,
+    /// which is what the file shows; `None` for an opener as written.
+    written: Option<String>,
     /// Every token as written, in order, for the canonical form.
     tokens: Vec<Token>,
 }
@@ -119,6 +134,21 @@ impl Opener {
     pub fn flag(&self, flag: &str) -> bool {
         self.flags.iter().any(|f| f == flag)
     }
+
+    /// The common attributes as written, in order.
+    pub fn common_attrs(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.tokens.iter().filter_map(|t| match t {
+            Token::Attr(k, v) if is_common(k) => Some((k.as_str(), v.as_str())),
+            _ => None,
+        })
+    }
+
+    /// This opener standing in for the `use` opener `written`: the file
+    /// keeps showing `written`, and everything else reads this one.
+    pub fn expanded_from(mut self, written: &Opener) -> Opener {
+        self.written = Some(written.canonical());
+        self
+    }
 }
 
 /// The suffix the tool writes after the attributes of a rendered opener.
@@ -126,7 +156,7 @@ pub const OPENER_SUFFIX: &str = "| do not edit; run computed";
 
 /// The rendered opener line: canonical form with the suffix, without indent.
 pub fn rendered_opener(opener: &Opener) -> String {
-    let c = opener.canonical();
+    let c = opener.written.clone().unwrap_or_else(|| opener.canonical());
     let stem = c
         .strip_suffix(" -->")
         .expect("canonical opener ends with -->");
@@ -141,7 +171,9 @@ pub fn rendered_closer(sums: Option<&Sums>) -> String {
     }
 }
 
-fn quote(v: &str) -> String {
+/// A value as the canonical form writes it: double-quoted when it is empty
+/// or holds whitespace, `>` or `"`.
+pub fn quote(v: &str) -> String {
     let needs = v.is_empty()
         || v.chars()
             .any(|c| c == ' ' || c == '\t' || c == '>' || c == '"');
@@ -225,9 +257,20 @@ const GRAMMAR: &[LoaderGrammar] = &[
         flags: &[],
         sink: Sink::Raw,
     },
+    LoaderGrammar {
+        name: "use",
+        attrs: &["recipe"],
+        flags: &[],
+        sink: Sink::Raw,
+    },
 ];
 
-const COMMON_ATTRS: &[&str] = &["name", "as", "lang"];
+const COMMON_ATTRS: &[&str] = &["name", "as", "lang", "on-stale", "max-lines"];
+
+/// Whether `key` is an attribute every loader takes.
+pub fn is_common(key: &str) -> bool {
+    COMMON_ATTRS.contains(&key)
+}
 
 /// One physical line of the file with its terminator.
 struct Line<'a> {
@@ -605,6 +648,12 @@ fn tokenise(line: usize, content: &str) -> Result<Vec<Token>, ParseError> {
     Ok(tokens)
 }
 
+/// Parses an opener's content, what sits between `<!-- computed` and `-->`,
+/// for an opener built rather than read, such as a recipe's expansion.
+pub fn opener(line: usize, content: &str) -> Result<Opener, ParseError> {
+    parse_opener(line, content)
+}
+
 fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
     let tokens = tokenise(line, content)?;
     let mut iter = tokens.iter();
@@ -626,6 +675,8 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
     let mut name = None;
     let mut sink = grammar.sink;
     let mut lang = String::new();
+    let mut on_stale = OnStale::Fail;
+    let mut max_lines = None;
     let mut seen: Vec<&str> = Vec::new();
     // `delim=` and `from=`, which only `as=table` takes.
     let mut table: Vec<(&str, &str)> = Vec::new();
@@ -655,6 +706,31 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
                             .ok_or_else(|| error(line, format!("unknown sink {v:?}")))?;
                     }
                     "lang" => lang = v.clone(),
+                    "on-stale" => {
+                        on_stale = match v.as_str() {
+                            "warn" => OnStale::Warn,
+                            _ => {
+                                return Err(error(
+                                    line,
+                                    format!("on-stale={v}: the only value is warn"),
+                                ));
+                            }
+                        };
+                    }
+                    "max-lines" => {
+                        max_lines = match v.parse::<usize>() {
+                            Ok(0) => {
+                                return Err(error(line, "max-lines=0: expected at least 1 line"));
+                            }
+                            Ok(n) => Some(n),
+                            Err(_) => {
+                                return Err(error(
+                                    line,
+                                    format!("max-lines={v}: expected a whole number"),
+                                ));
+                            }
+                        };
+                    }
                     _ if grammar.attrs.contains(&k.as_str()) => attrs.push((k.clone(), v.clone())),
                     "delim" | "from" => table.push((k, v)),
                     _ => {
@@ -692,6 +768,9 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
         name,
         sink,
         lang,
+        on_stale,
+        max_lines,
+        written: None,
         tokens,
     };
     validate(line, &opener)?;
@@ -785,6 +864,10 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
         "toc" => crate::toc::levels(opener.attr("min"), opener.attr("max"))
             .map(|_| ())
             .map_err(|e| error(line, e)),
+        "use" => match opener.attr("recipe") {
+            None => Err(error(line, "use needs recipe=")),
+            Some(_) => Ok(()),
+        },
         _ => Ok(()),
     }
 }

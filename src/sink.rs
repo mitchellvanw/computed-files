@@ -3,6 +3,7 @@
 
 use crate::marker::{self, Sink};
 use crate::table;
+use crate::truncate;
 
 /// Normalises loader output before a sink shapes it: invalid UTF-8 or a C0
 /// control other than tab, LF and CR is a failure; CRLF and lone CR become
@@ -57,12 +58,25 @@ pub fn fence(text: &str, lang: &str) -> String {
     out
 }
 
-/// Normalises, shapes with the sink, and checks the body parses back to
-/// itself between markers. An error is a loader failure. A line that would
-/// parse as a marker fails a `raw` body unless a fence in the text holds it;
-/// `fence` holds every line, so marker examples can be shown that way.
-pub fn body(sink: Sink, lang: &str, bytes: &[u8]) -> Result<String, String> {
-    let text = normalise(bytes)?;
+/// Normalises, cuts to `max_lines` (`max-lines=`), shapes with the sink,
+/// and checks the body parses back to itself between markers. An error is a
+/// loader failure. A line that would parse as a marker fails a `raw` body
+/// unless a fence in the text holds it; `fence` holds every line, so marker
+/// examples can be shown that way.
+///
+/// `raw` and `fence` cut the text by lines, the note its last line. `table`
+/// cuts its data rows, keeping the header, and puts the note after the
+/// table as a paragraph of its own.
+pub fn body(
+    sink: Sink,
+    lang: &str,
+    max_lines: Option<usize>,
+    bytes: &[u8],
+) -> Result<String, String> {
+    let mut text = normalise(bytes)?;
+    if let (Some(max), Sink::Raw | Sink::Fence) = (max_lines, sink) {
+        text = truncate::lines(&text, max);
+    }
     let body = match sink {
         Sink::Raw => {
             if let Some(line) = marker::unfenced_marker_line(&text) {
@@ -78,7 +92,16 @@ pub fn body(sink: Sink, lang: &str, bytes: &[u8]) -> Result<String, String> {
             raw(&text)
         }
         Sink::Fence => fence(&text, lang),
-        Sink::Table(from) => raw(&table::table(&text, from)?),
+        Sink::Table(from) => {
+            let mut rows = table::rows(&text, from)?;
+            let note = max_lines.and_then(|max| truncate::rows(&mut rows, max));
+            let mut body = raw(&table::shape(&rows));
+            if let Some(note) = note {
+                body.push_str(&note);
+                body.push_str("\n\n");
+            }
+            body
+        }
     };
     let probe = format!("<!-- computed exec cmd=x volatile -->\n{body}<!-- /computed -->\n");
     match marker::parse(&probe) {
@@ -150,13 +173,16 @@ mod tests {
 
     #[test]
     fn body_shapes_and_parses_back() {
-        assert_eq!(body(Sink::Fence, "", b".\n").unwrap(), "```\n.\n```\n");
         assert_eq!(
-            body(Sink::Raw, "", b"| a |\n|---|\n").unwrap(),
+            body(Sink::Fence, "", None, b".\n").unwrap(),
+            "```\n.\n```\n"
+        );
+        assert_eq!(
+            body(Sink::Raw, "", None, b"| a |\n|---|\n").unwrap(),
             "\n| a |\n|---|\n\n"
         );
         assert_eq!(
-            body(Sink::Raw, "", b"```\ncode\n```\n").unwrap(),
+            body(Sink::Raw, "", None, b"```\ncode\n```\n").unwrap(),
             "\n```\ncode\n```\n\n"
         );
     }
@@ -167,15 +193,16 @@ mod tests {
             &b"x\n<!-- computed tree -->\n"[..],
             b"x\n  <!-- /computed -->\n",
         ] {
-            let e = body(Sink::Raw, "", text).unwrap_err();
+            let e = body(Sink::Raw, "", None, text).unwrap_err();
             assert!(e.contains("marker"), "{e}");
         }
         let example = b"```\n<!-- computed tree -->\n<!-- /computed -->\n```\n";
-        assert!(body(Sink::Raw, "", example).is_ok());
+        assert!(body(Sink::Raw, "", None, example).is_ok());
         assert_eq!(
             body(
                 Sink::Fence,
                 "markdown",
+                None,
                 b"<!-- computed tree -->\n<!-- /computed -->\n"
             )
             .unwrap(),
@@ -185,8 +212,8 @@ mod tests {
 
     #[test]
     fn raw_text_with_an_unbalanced_fence_is_a_loader_failure() {
-        let e = body(Sink::Raw, "", b"```\nnever closed\n").unwrap_err();
+        let e = body(Sink::Raw, "", None, b"```\nnever closed\n").unwrap_err();
         assert!(e.contains("fence"), "{e}");
-        assert!(body(Sink::Fence, "", b"```\nnever closed\n").is_ok());
+        assert!(body(Sink::Fence, "", None, b"```\nnever closed\n").is_ok());
     }
 }
