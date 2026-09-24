@@ -29,10 +29,12 @@ pub fn format_constant(loader: &str) -> u32 {
 }
 
 use std::collections::{BTreeMap, HashMap};
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Duration;
+
+use globset::GlobMatcher;
 
 use crate::fs::{self, WalkOpts};
 use crate::marker::{Opener, Region};
@@ -291,19 +293,148 @@ fn tree(src: &Path, opts: WalkOpts) -> Loaded {
     Loaded { text, snapshot }
 }
 
-/// Every file under `dir`, recursively, byte-order sorted, no ignore rules.
-fn files_under(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
-    let mut entries: Vec<_> = std::fs::read_dir(dir)?.collect::<Result<_, _>>()?;
-    entries.sort_by_key(|e| e.file_name());
-    for e in entries {
-        let ft = e.file_type()?;
-        if ft.is_dir() {
-            files_under(&e.path(), out)?;
-        } else if ft.is_file() {
-            out.push(e.path());
+/// One `inputs=` glob, compiled whole to decide what it selects and split at
+/// `/` to decide which directories could hold a selection, so expansion
+/// enters only those.
+struct InputGlob {
+    whole: GlobMatcher,
+    parts: Vec<Part>,
+}
+
+/// One `/`-separated component of an [`InputGlob`].
+enum Part {
+    /// `**`, or a component that does not compile alone. Either may span any
+    /// run of directories, so nothing below it is pruned.
+    Any,
+    One(GlobMatcher),
+}
+
+impl InputGlob {
+    fn new(glob: &str) -> Result<InputGlob, globset::Error> {
+        let parts = glob
+            .split('/')
+            .filter(|c| !c.is_empty())
+            .map(|c| match c {
+                "**" => Part::Any,
+                c => compile(c).map_or(Part::Any, Part::One),
+            })
+            .collect();
+        Ok(InputGlob {
+            whole: compile(glob)?,
+            parts,
+        })
+    }
+
+    fn matches(&self, rel: &Path) -> bool {
+        self.whole.is_match(rel)
+    }
+
+    /// Whether a path strictly below `dir` could match: some way of reading
+    /// `dir`'s components against the leading parts leaves a part over.
+    fn may_contain(&self, dir: &Path) -> bool {
+        let n = self.parts.len();
+        let mut live = vec![false; n + 1];
+        live[0] = true;
+        self.skip_any(&mut live);
+        for comp in dir.components() {
+            let mut next = vec![false; n + 1];
+            for (i, part) in self.parts.iter().enumerate().filter(|&(i, _)| live[i]) {
+                match part {
+                    Part::Any => next[i] = true,
+                    Part::One(m) if m.is_match(comp.as_os_str()) => next[i + 1] = true,
+                    Part::One(_) => {}
+                }
+            }
+            self.skip_any(&mut next);
+            live = next;
+        }
+        live[..n].contains(&true)
+    }
+
+    /// A live `**` may also match no directory at all.
+    fn skip_any(&self, live: &mut [bool]) {
+        for (i, part) in self.parts.iter().enumerate() {
+            if live[i] && matches!(part, Part::Any) {
+                live[i + 1] = true;
+            }
+        }
+    }
+}
+
+fn compile(glob: &str) -> Result<GlobMatcher, globset::Error> {
+    Ok(globset::GlobBuilder::new(glob)
+        .literal_separator(true)
+        .build()?
+        .compile_matcher())
+}
+
+/// What expansion takes below a directory.
+#[derive(Clone, Copy)]
+enum Select<'g> {
+    /// Every file: a matched directory means every file under it.
+    Everything,
+    Matching(&'g InputGlob),
+}
+
+impl<'g> Select<'g> {
+    fn takes(self, rel: &Path) -> bool {
+        match self {
+            Select::Everything => true,
+            Select::Matching(g) => g.matches(rel),
+        }
+    }
+
+    /// The selection below the directory `rel`, `None` when nothing at or
+    /// under it can be taken and the walk need not enter it.
+    fn enter(self, rel: &Path) -> Option<Select<'g>> {
+        match self {
+            _ if self.takes(rel) => Some(Select::Everything),
+            Select::Matching(g) if g.may_contain(rel) => Some(self),
+            _ => None,
+        }
+    }
+}
+
+/// Appends `(relative, path)` for each file under `dir` that `select` takes,
+/// not following symlinks. A directory or file that vanishes while it is
+/// listed, as build output does, is skipped: it is not there to snapshot.
+fn expand(
+    select: Select<'_>,
+    dir: &Path,
+    rel: &Path,
+    out: &mut Vec<(PathBuf, PathBuf)>,
+) -> io::Result<()> {
+    let at = |e: io::Error| io::Error::new(e.kind(), format!("{}: {e}", dir.display()));
+    let Some(listing) = present(std::fs::read_dir(dir)).map_err(at)? else {
+        return Ok(());
+    };
+    for entry in listing {
+        let Some(entry) = present(entry).map_err(at)? else {
+            continue;
+        };
+        let Some(kind) = present(entry.file_type()).map_err(at)? else {
+            continue;
+        };
+        let path = entry.path();
+        let rel = rel.join(entry.file_name());
+        if kind.is_dir() {
+            if let Some(below) = select.enter(&rel) {
+                expand(below, &path, &rel, out)?;
+            }
+        } else if kind.is_file() && select.takes(&rel) {
+            out.push((rel, path));
         }
     }
     Ok(())
+}
+
+/// `None` for a path that no longer exists.
+fn present<T>(result: io::Result<T>) -> io::Result<Option<T>> {
+    match result {
+        Ok(v) => Ok(Some(v)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 /// The literal directory a glob starts in, before its first wildcard.
@@ -331,49 +462,47 @@ fn glob_prefix(glob: &str) -> PathBuf {
 /// file under it; the template itself is excluded.
 fn inputs_snapshot(ctx: &Ctx, globs: &[String]) -> Result<Vec<u8>, LoadError> {
     let template = ctx.template.canonicalize().ok();
+    let region_root = ctx
+        .region_root
+        .canonicalize()
+        .map_err(|e| hard(format!("region root: {e}")))?;
     let mut matched: BTreeMap<Vec<u8>, PathBuf> = BTreeMap::new();
     for glob in globs {
         let glob = glob.trim();
-        let matcher = globset::GlobBuilder::new(glob)
-            .literal_separator(true)
-            .build()
-            .map_err(|e| hard(format!("inputs={glob}: {e}")))?
-            .compile_matcher();
+        let input = InputGlob::new(glob).map_err(|e| hard(format!("inputs={glob}: {e}")))?;
         let prefix = glob_prefix(glob);
         if !ctx.region_root.join(&prefix).exists() {
             return Err(hard(format!("inputs={glob} matches nothing")));
         }
         let dir = ctx.resolve("inputs=", &prefix)?;
+        let rel = relative(&region_root, &dir);
         let mut files = Vec::new();
-        files_under(&dir, &mut files)
-            .map_err(|e| hard(format!("inputs={glob}: {}: {e}", dir.display())))?;
-        let region_root = ctx
-            .region_root
-            .canonicalize()
-            .map_err(|e| hard(format!("region root: {e}")))?;
-        let mut any = false;
-        for file in files {
-            let rel = relative(&region_root, &file);
-            let hit = rel
-                .ancestors()
-                .any(|a| !a.as_os_str().is_empty() && matcher.is_match(a));
-            if !hit {
-                continue;
-            }
-            any = true;
-            if template.as_ref() == Some(&file) {
-                continue;
-            }
-            matched.insert(rel.to_string_lossy().as_bytes().to_vec(), file);
+        if let Some(select) = Select::Matching(&input).enter(&rel) {
+            expand(select, &dir, &rel, &mut files)
+                .map_err(|e| hard(format!("inputs={glob}: {e}")))?;
         }
-        if !any {
+        if files.is_empty() {
             return Err(hard(format!("inputs={glob} matches nothing")));
         }
+        for (rel, file) in files {
+            if template.as_ref() != Some(&file) {
+                matched.insert(rel.to_string_lossy().as_bytes().to_vec(), file);
+            }
+        }
     }
+    content_snapshot(matched)
+}
+
+/// The snapshot bytes over the matched files. A file deleted since
+/// expansion listed it is left out, as if the listing had missed it.
+fn content_snapshot(matched: BTreeMap<Vec<u8>, PathBuf>) -> Result<Vec<u8>, LoadError> {
     let mut out = Vec::new();
     for (rel, file) in matched {
-        let content =
-            std::fs::read(&file).map_err(|e| hard(format!("inputs: {}: {e}", file.display())))?;
+        let Some(content) = present(std::fs::read(&file))
+            .map_err(|e| hard(format!("inputs: {}: {e}", file.display())))?
+        else {
+            continue;
+        };
         out.extend_from_slice(&rel);
         out.push(0);
         out.extend_from_slice(content.len().to_string().as_bytes());
@@ -566,6 +695,97 @@ mod tests {
         assert!(matches!(p.snapshot(&r), Err(LoadError::Hard(m)) if m.contains("matches nothing")));
         let r = region("<!-- computed exec cmd=true inputs=../*.md -->");
         assert!(matches!(p.snapshot(&r), Err(LoadError::Hard(m)) if m.contains("escapes")));
+    }
+
+    #[test]
+    fn inputs_enter_only_directories_that_could_hold_a_match() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = repo();
+        // A directory the walk cannot read stands in for a build churning
+        // under an ignored worktree: entering it fails, so pruning shows.
+        let locked = dir.path().join("target/locked");
+        fs::create_dir(&locked).unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        let observable = fs::read_dir(&locked).is_err();
+        let mut p = Production::new(ctx(dir.path(), "CLAUDE.md"));
+        let got: Vec<_> = [
+            ".gitignore",
+            ".git*",
+            "*.md",
+            "src",
+            "docs/*/0001.md",
+            "t*/bin",
+            "**/*.md",
+        ]
+        .map(|glob| {
+            p.snapshot(&region(&format!(
+                "<!-- computed exec cmd=true inputs={glob} -->"
+            )))
+        })
+        .into();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        if !observable {
+            return;
+        }
+        for (i, snap) in got[..6].iter().enumerate() {
+            assert!(snap.is_ok(), "glob {i}: {snap:?}");
+        }
+        assert!(
+            matches!(&got[6], Err(LoadError::Hard(m)) if m.contains("target/locked")),
+            "a `**` walk reads every directory, and its error names the one that failed: {:?}",
+            got[6]
+        );
+    }
+
+    #[test]
+    fn a_glob_may_contain_only_what_its_leading_components_allow() {
+        let may = |glob: &str, dir: &str| InputGlob::new(glob).unwrap().may_contain(Path::new(dir));
+        assert!(may("*.md", ""));
+        assert!(!may("*.md", "docs"));
+        assert!(!may("seams.toml", ".claude"));
+        assert!(may("docs/*/x.md", "docs/adr"));
+        assert!(!may("docs/*/x.md", "docs/adr/deep"));
+        assert!(!may("docs/*/x.md", "src"));
+        assert!(may("docs/**/x.md", "docs/a/b/c"));
+        assert!(!may("docs/**/x.md", "src/a"));
+        assert!(may("**/x.md", ".claude/worktrees/a/target"));
+        assert!(may("a/**/**/b", "a"));
+        assert!(!may("a/**/**/b", "b"));
+        assert!(may("../src/*.rs", ".."));
+        assert!(!may("../src/*.rs", "../docs"));
+        assert!(may("[ab]/*", "a"));
+        assert!(!may("[ab]/*", "c"));
+    }
+
+    #[test]
+    fn inputs_reach_outside_the_region_root_within_the_repository() {
+        let dir = repo();
+        let mut p = Production::new(ctx(dir.path(), "docs/guide.md"));
+        let r = region("<!-- computed exec cmd=true inputs=../src/*.rs,adr/0002.md -->");
+        assert_eq!(
+            p.snapshot(&r).unwrap().unwrap(),
+            b"../src/main.rs 0  adr/0002.md 6 # Two
+ "
+        );
+    }
+
+    #[test]
+    fn a_path_that_vanishes_during_expansion_is_skipped() {
+        let dir = repo();
+        let mut out = Vec::new();
+        expand(
+            Select::Everything,
+            &dir.path().join("gone"),
+            Path::new("gone"),
+            &mut out,
+        )
+        .unwrap();
+        assert!(out.is_empty());
+        let matched = BTreeMap::from([
+            (b"CLAUDE.md".to_vec(), dir.path().join("CLAUDE.md")),
+            (b"gone.md".to_vec(), dir.path().join("gone.md")),
+        ]);
+        assert_eq!(content_snapshot(matched).unwrap(), b"CLAUDE.md 0  ");
     }
 
     #[test]
