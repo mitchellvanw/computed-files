@@ -44,9 +44,12 @@ impl Url {
         let (host, port) = match authority.strip_prefix('[') {
             Some(v6) => {
                 let (host, after) = v6.split_once(']').ok_or_else(|| bad("unclosed ["))?;
+                if !after.is_empty() && !after.starts_with(':') {
+                    return Err(bad("text after the ] of an IPv6 host"));
+                }
                 (format!("[{host}]"), after.strip_prefix(':'))
             }
-            None => match authority.rsplit_once(':') {
+            None => match authority.split_once(':') {
                 Some((host, port)) => (host.to_string(), Some(port)),
                 None => (authority.to_string(), None),
             },
@@ -71,6 +74,11 @@ impl Url {
         if prefix && path_end < tail.len() {
             return Err(bad("a prefix has no query or fragment"));
         }
+        if ambiguous(&tail[..path_end]) {
+            return Err(bad(
+                "servers read this path differently: it holds //, a \\, an encoded / or \\, or a segment that starts with .. and goes on",
+            ));
+        }
         Ok(Url {
             scheme,
             host: host.to_ascii_lowercase(),
@@ -88,6 +96,20 @@ impl fmt::Display for Url {
         }
         f.write_str(&self.path)
     }
+}
+
+/// Whether servers disagree on what `path` names, so that no prefix can be
+/// judged to cover it: an empty segment (`//`, which some merge before
+/// resolving `..`), a `\` or an encoded `/` or `\` (which some read as a
+/// separator), or a segment that starts with `..` and goes on (`..;`, which
+/// some cut at the `;`).
+fn ambiguous(path: &str) -> bool {
+    let path = path.to_ascii_lowercase().replace("%2e", ".");
+    path.contains("//")
+        || path.contains('\\')
+        || path.contains("%2f")
+        || path.contains("%5c")
+        || path.split('/').any(|s| s.starts_with("..") && s != "..")
 }
 
 /// The path a server would serve: `%2e` read as `.`, then `.` and `..`
@@ -166,16 +188,13 @@ impl Allowed {
     }
 }
 
-/// The prefix to suggest for `url`: its origin and the directory it sits in.
-pub fn suggestion(url: &str) -> String {
-    match Url::parse(url, false) {
-        Ok(mut u) => {
-            let dir = u.path.rfind('/').map_or(0, |i| i + 1);
-            u.path.truncate(dir);
-            u.to_string()
-        }
-        Err(_) => url.to_string(),
-    }
+/// The prefix to suggest for `url`: its origin and the directory it sits
+/// in. `Err` says why no prefix can cover it.
+pub fn suggestion(url: &str) -> Result<String, String> {
+    let mut u = Url::parse(url, false)?;
+    let dir = u.path.rfind('/').map_or(0, |i| i + 1);
+    u.path.truncate(dir);
+    Ok(u.to_string())
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -292,6 +311,18 @@ mod tests {
             ("http://127.0.0.1:8080/", "http://127.0.0.1:8080/a", true),
             ("http://127.0.0.1:8080/", "http://127.0.0.1:9090/a", false),
             ("http://[::1]:9/", "http://[::1]:9/a", true),
+            // Paths servers read differently are covered by nothing.
+            ("https://h/org/", "https://h/org//../secret", false),
+            ("https://h/org/", "https://h/org/..%2fsecret", false),
+            ("https://h/org/", "https://h/org/..%2Fsecret", false),
+            ("https://h/org/", "https://h/org/..%5csecret", false),
+            ("https://h/org/", "https://h/org/..\\secret", false),
+            ("https://h/org/", "https://h/org/..;/secret", false),
+            ("https://h/org/", "https://h/org/%2e%2e;/secret", false),
+            ("https://h/org/", "https://h/org/a..b/x", true),
+            // The authority is one host and at most one port.
+            ("http://[::1]/", "http://[::1]evil.example/x", false),
+            ("http://127.0.0.1:9/", "http://127.0.0.1:9:80/x", false),
         ];
         for (prefix, url, want) in table {
             assert_eq!(covers(prefix, url), want, "{prefix} covers {url}");
@@ -319,6 +350,9 @@ mod tests {
             ("https:///a", "no host"),
             ("https://h:x/", "port"),
             ("https://u@h/", "credentials"),
+            ("https://h/a//b/", "servers read"),
+            ("https://[::1]x/", "after the ]"),
+            ("https://h:1:2/", "port"),
         ] {
             let e = Prefix::parse(bad).unwrap_err();
             assert!(e.contains(why), "{bad}: {e}");
@@ -328,10 +362,15 @@ mod tests {
     #[test]
     fn the_suggestion_is_the_origin_and_directory() {
         assert_eq!(
-            suggestion("https://Raw.Example/org/repo/main/README.md?x=1"),
+            suggestion("https://Raw.Example/org/repo/main/README.md?x=1").unwrap(),
             "https://raw.example/org/repo/main/"
         );
-        assert_eq!(suggestion("https://h"), "https://h/");
+        assert_eq!(suggestion("https://h").unwrap(), "https://h/");
+        assert!(
+            suggestion("https://u@h/x")
+                .unwrap_err()
+                .contains("credentials")
+        );
     }
 
     #[test]

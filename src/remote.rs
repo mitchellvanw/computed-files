@@ -139,10 +139,14 @@ pub fn load(args: &RemoteArgs, allowed: &Allowed) -> Result<Loaded, LoadError> {
 
 /// Why a url is skipped, and the prefix that would allow it.
 pub fn not_allowed(url: &str) -> String {
-    let prefix = allow::suggestion(url);
-    format!(
-        "{url} is not on this machine's allowlist; `computed allow {prefix}` allows it, or `--allow {prefix}` for one invocation"
-    )
+    match allow::suggestion(url) {
+        Ok(prefix) => format!(
+            "{url} is not on this machine's allowlist; `computed allow {prefix}` allows it, or `--allow {prefix}` for one invocation"
+        ),
+        Err(why) => {
+            format!("{url} is not on this machine's allowlist, and no prefix can allow it: {why}")
+        }
+    }
 }
 
 /// The body at `url`, up to [`LIMIT`] bytes, within `timeout` in all. A
@@ -198,7 +202,14 @@ pub fn fetch(url: &str, timeout: Duration, allowed: &Allowed) -> Result<Vec<u8>,
 
 /// A `Location` resolved against the url it came from.
 fn join(base: &str, location: &str) -> String {
-    if location.contains("://") {
+    // Absolute when a scheme comes first, not when `://` sits in a query.
+    let absolute = location.split_once("://").is_some_and(|(scheme, _)| {
+        !scheme.is_empty()
+            && scheme
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"+-.".contains(&b))
+    });
+    if absolute {
         return location.to_string();
     }
     let (scheme, rest) = base.split_once("://").unwrap_or(("https", base));
@@ -304,6 +315,9 @@ mod tests {
             ("/x", "https://h/x"),
             ("c.md", "https://h/a/c.md"),
             ("../c.md", "https://h/a/../c.md"),
+            ("/ok?next=https://g/", "https://h/ok?next=https://g/"),
+            ("c.md#see://x", "https://h/a/c.md#see://x"),
+            ("HTTPS://g/x", "HTTPS://g/x"),
         ] {
             assert_eq!(join(base, location), want, "{location}");
         }
