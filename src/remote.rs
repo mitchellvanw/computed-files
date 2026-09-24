@@ -2,16 +2,22 @@
 //! SHA-256 of its bytes in the opener. The snapshot is the url and the pin,
 //! so `check` never touches the network; `run` fetches, and a body that no
 //! longer matches the pin is a loader failure. `computed update` moves pins.
+//! Every url fetched, redirects included, must be on this machine's
+//! allowlist (`crate::allow`).
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
 
+use crate::allow::{self, Allowed};
 use crate::loader::{LoadError, Loaded};
 use crate::marker::Opener;
 
 /// The most a fetched document may weigh.
 const LIMIT: u64 = 10 * 1024 * 1024;
+
+/// The most redirects one fetch follows.
+const REDIRECTS: usize = 10;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteArgs {
@@ -43,7 +49,11 @@ pub fn validate(opener: &Opener) -> Result<(), String> {
     let Some(url) = opener.attr("url") else {
         return Err("remote needs url=".to_string());
     };
-    allowed(url)?;
+    if !scheme_ok(url) {
+        return Err(format!(
+            "url={url}: expected https://, or http:// to localhost"
+        ));
+    }
     if let Some(pin) = opener.attr("sha256")
         && !is_digest(pin)
     {
@@ -61,23 +71,19 @@ pub fn validate(opener: &Opener) -> Result<(), String> {
 
 /// `https://` anywhere, and plain `http://` only to this machine, where a
 /// test or a local server can stand in.
-fn allowed(url: &str) -> Result<(), String> {
+fn scheme_ok(url: &str) -> bool {
     if url.starts_with("https://") {
-        return Ok(());
+        return true;
     }
-    if let Some(rest) = url.strip_prefix("http://") {
-        let host = rest.split(['/', '?', '#']).next().unwrap_or("");
-        let host = match host.strip_prefix('[') {
-            Some(v6) => v6.split(']').next().unwrap_or(""),
-            None => host.split(':').next().unwrap_or(""),
-        };
-        if matches!(host, "localhost" | "127.0.0.1" | "::1") {
-            return Ok(());
-        }
-    }
-    Err(format!(
-        "url={url}: expected https://, or http:// to localhost"
-    ))
+    let Some(rest) = url.strip_prefix("http://") else {
+        return false;
+    };
+    let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+    let host = match host.strip_prefix('[') {
+        Some(v6) => v6.split(']').next().unwrap_or(""),
+        None => host.split(':').next().unwrap_or(""),
+    };
+    matches!(host, "localhost" | "127.0.0.1" | "::1")
 }
 
 fn is_digest(s: &str) -> bool {
@@ -103,17 +109,21 @@ pub fn snapshot(args: &RemoteArgs) -> Vec<u8> {
     out
 }
 
-/// Fetches the url and checks the body against the pin. An unpinned
-/// region, a failed fetch, a body that does not match the pin or is not
-/// UTF-8: each is a loader failure, and the previous body is kept.
-pub fn load(args: &RemoteArgs) -> Result<Loaded, LoadError> {
+/// Fetches the url and checks the body against the pin. A url the
+/// allowlist does not cover is not fetched. An unpinned region, a failed
+/// fetch, a body that does not match the pin or is not UTF-8: each is a
+/// loader failure, and the previous body is kept.
+pub fn load(args: &RemoteArgs, allowed: &Allowed) -> Result<Loaded, LoadError> {
     let failed = |stderr: String| LoadError::Failed { stderr };
+    if !allowed.allows(&args.url) {
+        return Err(LoadError::NotAllowed(not_allowed(&args.url)));
+    }
     let Some(pin) = &args.sha256 else {
         return Err(failed(
             "no sha256= pin; run `computed update` to fetch the url and pin it".to_string(),
         ));
     };
-    let body = fetch(&args.url, args.timeout).map_err(failed)?;
+    let body = fetch(&args.url, args.timeout, allowed).map_err(failed)?;
     let got = digest(&body);
     if &got != pin {
         return Err(failed(format!(
@@ -127,22 +137,84 @@ pub fn load(args: &RemoteArgs) -> Result<Loaded, LoadError> {
     })
 }
 
-/// The body at `url`, redirects followed, up to [`LIMIT`] bytes. A status
-/// other than 2xx is an error. An `https://` url never follows a redirect
-/// to plain `http://`.
-pub fn fetch(url: &str, timeout: Duration) -> Result<Vec<u8>, String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .timeout_global(Some(timeout))
-        .https_only(url.starts_with("https://"))
-        .build()
-        .into();
-    let mut response = agent.get(url).call().map_err(|e| format!("{url}: {e}"))?;
-    response
-        .body_mut()
-        .with_config()
-        .limit(LIMIT)
-        .read_to_vec()
-        .map_err(|e| format!("{url}: {e}"))
+/// Why a url is skipped, and the prefix that would allow it.
+pub fn not_allowed(url: &str) -> String {
+    let prefix = allow::suggestion(url);
+    format!(
+        "{url} is not on this machine's allowlist; `computed allow {prefix}` allows it, or `--allow {prefix}` for one invocation"
+    )
+}
+
+/// The body at `url`, up to [`LIMIT`] bytes, within `timeout` in all. A
+/// redirect is followed only to a url the allowlist covers and the scheme
+/// rule permits, at most [`REDIRECTS`] of them; a status other than 2xx is
+/// an error. `url` itself must already be allowed.
+pub fn fetch(url: &str, timeout: Duration, allowed: &Allowed) -> Result<Vec<u8>, String> {
+    let deadline = Instant::now() + timeout;
+    let mut url = url.to_string();
+    for _ in 0..=REDIRECTS {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(format!("{url}: timed out after {}s", timeout.as_secs()));
+        }
+        let agent: ureq::Agent = ureq::Agent::config_builder()
+            .timeout_global(Some(left))
+            .max_redirects(0)
+            .http_status_as_error(false)
+            .build()
+            .into();
+        let mut response = agent.get(&url).call().map_err(|e| format!("{url}: {e}"))?;
+        let status = response.status();
+        if status.is_redirection() {
+            let location = response
+                .headers()
+                .get("location")
+                .and_then(|l| l.to_str().ok())
+                .ok_or_else(|| format!("{url}: {status} without a Location"))?;
+            let next = join(&url, location);
+            if !scheme_ok(&next) {
+                return Err(format!(
+                    "{url} redirects to {next}: expected https://, or http:// to localhost"
+                ));
+            }
+            if !allowed.allows(&next) {
+                return Err(format!("{url} redirects to {}", not_allowed(&next)));
+            }
+            url = next;
+            continue;
+        }
+        if !status.is_success() {
+            return Err(format!("{url}: {status}"));
+        }
+        return response
+            .body_mut()
+            .with_config()
+            .limit(LIMIT)
+            .read_to_vec()
+            .map_err(|e| format!("{url}: {e}"));
+    }
+    Err(format!("{url}: more than {REDIRECTS} redirects"))
+}
+
+/// A `Location` resolved against the url it came from.
+fn join(base: &str, location: &str) -> String {
+    if location.contains("://") {
+        return location.to_string();
+    }
+    let (scheme, rest) = base.split_once("://").unwrap_or(("https", base));
+    if let Some(authority_path) = location.strip_prefix("//") {
+        return format!("{scheme}://{authority_path}");
+    }
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let origin = &base[..scheme.len() + 3 + authority_end];
+    if location.starts_with('/') {
+        return format!("{origin}{location}");
+    }
+    let path = &rest[authority_end..];
+    let path = &path[..path.find(['?', '#']).unwrap_or(path.len())];
+    let dir = &path[..path.rfind('/').map_or(0, |i| i + 1)];
+    let dir = if dir.is_empty() { "/" } else { dir };
+    format!("{origin}{dir}{location}")
 }
 
 #[cfg(test)]
@@ -205,12 +277,36 @@ mod tests {
     }
 
     #[test]
-    fn an_unpinned_region_fails_without_fetching() {
+    fn an_unpinned_or_disallowed_region_fails_without_fetching() {
         let args =
-            RemoteArgs::from_opener(&opener("url=https://example.invalid/x").unwrap()).unwrap();
+            RemoteArgs::from_opener(&opener("url=https://example.invalid/a/x").unwrap()).unwrap();
+        assert_eq!(
+            load(&args, &Allowed::default()),
+            Err(LoadError::NotAllowed(
+                "https://example.invalid/a/x is not on this machine's allowlist; `computed allow https://example.invalid/a/` allows it, or `--allow https://example.invalid/a/` for one invocation".to_string()
+            ))
+        );
+        let allowed = Allowed::new(vec![
+            allow::Prefix::parse("https://example.invalid/").unwrap(),
+        ]);
         assert!(matches!(
-            load(&args),
+            load(&args, &allowed),
             Err(LoadError::Failed { stderr }) if stderr.contains("computed update")
         ));
+    }
+
+    #[test]
+    fn a_location_resolves_against_the_url_it_came_from() {
+        let base = "https://h/a/b.md?q=1";
+        for (location, want) in [
+            ("https://g/x", "https://g/x"),
+            ("//g/x", "https://g/x"),
+            ("/x", "https://h/x"),
+            ("c.md", "https://h/a/c.md"),
+            ("../c.md", "https://h/a/../c.md"),
+        ] {
+            assert_eq!(join(base, location), want, "{location}");
+        }
+        assert_eq!(join("http://127.0.0.1:9", "x"), "http://127.0.0.1:9/x");
     }
 }

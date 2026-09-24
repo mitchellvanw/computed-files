@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 
+use crate::allow::{self, Allowed};
 use crate::loader::{Ctx, Production};
 use crate::marker::{self, Region};
 use crate::render::{self, Action, Mode, RegionReport, Rendered};
@@ -56,6 +57,9 @@ enum Cmd {
         /// Only the regions with this name; repeat for more.
         #[arg(long, value_name = "NAME")]
         only: Vec<String>,
+        /// Allow fetching under this url prefix for this invocation without writing the allowlist; repeat for more.
+        #[arg(long, value_name = "PREFIX")]
+        allow: Vec<String>,
     },
     /// Report every region's state without running a loader.
     Check {
@@ -84,7 +88,14 @@ enum Cmd {
         /// Only the regions with this name; repeat for more.
         #[arg(long, value_name = "NAME")]
         only: Vec<String>,
+        /// Allow fetching under this url prefix for this invocation without writing the allowlist; repeat for more.
+        #[arg(long, value_name = "PREFIX")]
+        allow: Vec<String>,
     },
+    /// Allow remote regions to fetch under PREFIX on this machine; with no PREFIX, list the allowlist.
+    Allow { prefix: Option<String> },
+    /// Remove PREFIX from the allowlist.
+    Disallow { prefix: String },
     /// Trust the repository containing PATH (default: the current directory).
     Trust { path: Option<PathBuf> },
     /// Remove the grant for the repository containing PATH.
@@ -116,6 +127,8 @@ struct Job<'a> {
     only: &'a [String],
     verbose: bool,
     format: Format,
+    /// The url prefixes `remote` regions may fetch under; `run` only.
+    allowed: Option<&'a Allowed>,
 }
 
 fn dispatch(cli: Cli) -> Result<u8> {
@@ -125,6 +138,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
         only,
         verbose: cli.verbose,
         format: cli.format,
+        allowed: None,
     };
     match &cli.command {
         Cmd::Run {
@@ -133,13 +147,19 @@ fn dispatch(cli: Cli) -> Result<u8> {
             dry_run,
             trust,
             only,
+            allow,
         } => {
             let mode = if *dry_run {
                 Mode::DryRun { force: *force }
             } else {
                 Mode::Run { force: *force }
             };
-            process(paths, &job(mode, *trust, only))
+            let allowed = allow::Store::at(allow::Store::default_path()?).allowed(allow)?;
+            let job = Job {
+                allowed: Some(&allowed),
+                ..job(mode, *trust, only)
+            };
+            process(paths, &job)
         }
         Cmd::Check { paths, only } => process(paths, &job(Mode::Check, false, only)),
         Cmd::Clean {
@@ -158,13 +178,34 @@ fn dispatch(cli: Cli) -> Result<u8> {
             paths,
             dry_run,
             only,
-        } => Ok(crate::update::run(
-            &discover(paths)?,
-            *dry_run,
-            only,
-            cli.verbose,
-            cli.format == Format::Json,
-        )),
+            allow,
+        } => {
+            let allowed = allow::Store::at(allow::Store::default_path()?).allowed(allow)?;
+            Ok(crate::update::run(
+                &discover(paths)?,
+                *dry_run,
+                only,
+                &allowed,
+                cli.verbose,
+                cli.format == Format::Json,
+            ))
+        }
+        Cmd::Allow { prefix } => {
+            let store = allow::Store::at(allow::Store::default_path()?);
+            match prefix {
+                Some(prefix) => println!("{}", store.allow(prefix)?),
+                None => store.list()?.iter().for_each(|p| println!("{p}")),
+            }
+            Ok(0)
+        }
+        Cmd::Disallow { prefix } => {
+            let store = allow::Store::at(allow::Store::default_path()?);
+            match store.disallow(prefix)? {
+                Some(removed) => println!("{removed}"),
+                None => eprintln!("computed: {prefix} was not allowed"),
+            }
+            Ok(0)
+        }
         Cmd::Trust { path } => {
             let root = trust::root_for(path.as_deref().unwrap_or(Path::new(".")))?;
             let recorded = Store::at(Store::default_path()?).grant(&root)?;
@@ -483,7 +524,7 @@ fn try_process_file(path: &Path, job: &Job<'_>, store: &Store) -> Result<Outcome
     let select = |r: &Region| {
         job.only.is_empty() || r.opener.name.as_ref().is_some_and(|n| job.only.contains(n))
     };
-    let mut loaders = Production::new(ctx);
+    let mut loaders = Production::new(ctx).allowing(job.allowed.cloned().unwrap_or_default());
     let rendered = render::file_where(&parsed, job.mode, trusted, &select, &mut loaders);
     let mut outcome = Outcome {
         tier: rendered.tier(),

@@ -6,6 +6,7 @@
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use crate::allow::Allowed;
 use crate::marker::{self, Region, Segment};
 use crate::remote::{self, RemoteArgs};
 use crate::render::{Action, Mode, RegionReport, State};
@@ -22,9 +23,17 @@ struct Outcome {
 }
 
 /// Updates the pins in `files` and returns the exit tier: 1 when a pin was
-/// written, or would be under `dry_run`; 2 when a url could not be fetched,
-/// a file could not be read or parsed, or a name in `only` names nothing.
-pub fn run(files: &[PathBuf], dry_run: bool, only: &[String], verbose: bool, json: bool) -> u8 {
+/// written, or would be under `dry_run`, or a url is not allowed; 2 when a
+/// url could not be fetched, a file could not be read or parsed, or a name
+/// in `only` names nothing.
+pub fn run(
+    files: &[PathBuf],
+    dry_run: bool,
+    only: &[String],
+    allowed: &Allowed,
+    verbose: bool,
+    json: bool,
+) -> u8 {
     let mode = if dry_run {
         Mode::DryRun { force: false }
     } else {
@@ -34,7 +43,7 @@ pub fn run(files: &[PathBuf], dry_run: bool, only: &[String], verbose: bool, jso
     let mut names = Vec::new();
     let mut outcomes = Vec::new();
     for path in files {
-        let outcome = file(path, dry_run, only);
+        let outcome = file(path, dry_run, only, allowed);
         tier = tier.max(outcome.tier);
         names.extend(outcome.names.iter().cloned());
         if !json {
@@ -83,7 +92,7 @@ pub fn run(files: &[PathBuf], dry_run: bool, only: &[String], verbose: bool, jso
     tier
 }
 
-fn file(path: &Path, dry_run: bool, only: &[String]) -> Outcome {
+fn file(path: &Path, dry_run: bool, only: &[String], allowed: &Allowed) -> Outcome {
     let error = |line, message: String| Outcome {
         tier: 2,
         error: Some((line, message)),
@@ -121,10 +130,10 @@ fn file(path: &Path, dry_run: bool, only: &[String]) -> Outcome {
         if region.opener.loader != "remote" || !selected {
             continue;
         }
-        let report = pin_region(region, dry_run);
+        let report = pin_region(region, dry_run, allowed);
         outcome.tier = outcome.tier.max(match report.action {
             Some(Action::Error) => 2,
-            Some(Action::Written | Action::WouldWrite) => 1,
+            Some(Action::Written | Action::WouldWrite | Action::Disallowed) => 1,
             _ => 0,
         });
         outcome.regions.push(report);
@@ -141,8 +150,10 @@ fn file(path: &Path, dry_run: bool, only: &[String]) -> Outcome {
     outcome
 }
 
-/// Fetches the region's url and moves its pin to what came back.
-fn pin_region(region: &mut Region, dry_run: bool) -> RegionReport {
+/// Fetches the region's url and moves its pin to what came back. A url the
+/// allowlist does not cover is skipped, reported as `run` reports it, with
+/// the state a missing pin is known to be and a present one assumed.
+fn pin_region(region: &mut Region, dry_run: bool, allowed: &Allowed) -> RegionReport {
     let report = |state, action, message: Option<String>| RegionReport {
         line: region.line,
         name: region.opener.name.clone(),
@@ -155,7 +166,18 @@ fn pin_region(region: &mut Region, dry_run: bool) -> RegionReport {
         Ok(args) => args,
         Err(e) => return report(State::Error, Action::Error, Some(format!("{e:?}"))),
     };
-    let body = match remote::fetch(&args.url, args.timeout) {
+    if !allowed.allows(&args.url) {
+        let state = match args.sha256 {
+            None => State::Stale,
+            Some(_) => State::Fresh,
+        };
+        return report(
+            state,
+            Action::Disallowed,
+            Some(remote::not_allowed(&args.url)),
+        );
+    }
+    let body = match remote::fetch(&args.url, args.timeout, allowed) {
         Ok(body) => body,
         Err(e) => return report(State::Error, Action::Error, Some(e)),
     };

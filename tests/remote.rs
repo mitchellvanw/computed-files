@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex};
 use assert_cmd::prelude::*;
 use sha2::{Digest, Sha256};
 
-/// A server answering GET with whatever `pages` holds for the path, 404
-/// otherwise, counting requests.
+/// A server answering GET with whatever `pages` holds for the path, a
+/// redirect for a page `->location`, 404 otherwise, counting requests.
 struct Server {
     base: String,
     pages: Arc<Mutex<HashMap<String, String>>>,
@@ -43,13 +43,16 @@ impl Server {
                 }
                 let path = request.split(' ').nth(1).unwrap_or("").to_string();
                 let page = p.lock().unwrap().get(&path).cloned();
-                let (status, body) = match page {
-                    Some(body) => ("200 OK", body),
-                    None => ("404 Not Found", String::new()),
+                let (status, location, body) = match page {
+                    Some(body) => match body.strip_prefix("->") {
+                        Some(to) => ("302 Found", format!("Location: {to}\r\n"), String::new()),
+                        None => ("200 OK", String::new(), body),
+                    },
+                    None => ("404 Not Found", String::new(), String::new()),
                 };
                 let _ = write!(
                     stream,
-                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    "HTTP/1.1 {status}\r\n{location}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 );
             }
@@ -108,6 +111,14 @@ fn update_pins_run_fetches_and_check_stays_offline() {
         format!("# Spec\n\n<!-- computed remote url={url} name=spec -->\n<!-- /computed -->\n"),
     )
     .unwrap();
+
+    // The server is on this machine's allowlist.
+    let out = computed(r, &["allow", &format!("{}/", server.base)]);
+    assert_eq!(stdout(&out), format!("{}/\n", server.base));
+    assert_eq!(
+        stdout(&computed(r, &["allow"])),
+        format!("{}/\n", server.base)
+    );
 
     // Unpinned: `check` reports it without a fetch, and `run` will not fetch.
     assert_eq!(computed(r, &["check"]).status.code(), Some(1));
@@ -200,7 +211,8 @@ fn a_url_that_cannot_be_fetched_is_an_error_for_update() {
         ),
     )
     .unwrap();
-    let out = computed(r, &["update"]);
+    let allow = format!("{}/", server.base);
+    let out = computed(r, &["update", "--allow", &allow]);
     assert_eq!(out.status.code(), Some(2));
     assert!(
         stderr(&out)
@@ -212,4 +224,83 @@ fn a_url_that_cannot_be_fetched_is_an_error_for_update() {
     let out = computed(r, &["update", "--only", "nope"]);
     assert_eq!(out.status.code(), Some(2));
     assert!(stderr(&out).contains("no region is named \"nope\""));
+}
+
+#[test]
+fn a_url_off_the_allowlist_is_skipped_and_a_redirect_must_be_allowed_too() {
+    let server = Server::start();
+    let other = Server::start();
+    let body = "Moved here.\n";
+    other.put("/doc.md", body);
+    server.put("/doc.md", body);
+    server.put("/moved.md", &format!("->{}/doc.md", other.base));
+    let dir = tempfile::tempdir().unwrap();
+    let r = dir.path();
+    fs::create_dir(r.join(".git")).unwrap();
+    let readme = r.join("README.md");
+    let pin = digest(body);
+    let template = format!(
+        "<!-- computed remote url={0}/doc.md sha256={pin} -->\n<!-- /computed -->\n\n<!-- computed remote url={0}/moved.md sha256={pin} name=moved -->\n<!-- /computed -->\n",
+        server.base
+    );
+    fs::write(&readme, &template).unwrap();
+
+    // Not allowed: skipped like an untrusted exec region, nothing fetched.
+    for command in ["run", "update"] {
+        let out = computed(r, &[command]);
+        assert_eq!(out.status.code(), Some(1), "{command}");
+        let err = stderr(&out);
+        assert!(
+            err.contains(&format!(
+                "README.md:1       remote disallowed skipped; run `computed allow`\n    {}/doc.md is not on this machine's allowlist; `computed allow {}/` allows it",
+                server.base, server.base
+            )),
+            "{command}: {err}"
+        );
+        assert_eq!(fs::read_to_string(&readme).unwrap(), template);
+    }
+    assert_eq!(server.hits() + other.hits(), 0);
+    assert_eq!(
+        computed(r, &["check"]).status.code(),
+        Some(1),
+        "check never asks the allowlist: the regions are unrendered"
+    );
+
+    // `--allow` covers one invocation; the redirect leaves what it covers.
+    let allow = format!("{}/", server.base);
+    let out = computed(r, &["run", "--allow", &allow]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = stderr(&out);
+    assert!(
+        err.contains("README.md:1       remote unrendered written"),
+        "{err}"
+    );
+    assert!(
+        err.contains(&format!(
+            "moved remote unrendered failed; body kept\n    {}/moved.md redirects to {}/doc.md is not on this machine's allowlist",
+            server.base, other.base
+        )),
+        "{err}"
+    );
+    assert_eq!(other.hits(), 0);
+    let also = format!("{}/doc.md", other.base);
+    let out = computed(r, &["run", "--allow", &allow, "--allow", &also]);
+    assert_eq!(out.status.code(), Some(1), "{}", stderr(&out));
+    assert_eq!(other.hits(), 1);
+    assert_eq!(
+        fs::read_to_string(&readme)
+            .unwrap()
+            .matches("Moved here.")
+            .count(),
+        2
+    );
+    assert_eq!(computed(r, &["check"]).status.code(), Some(0));
+    assert_eq!(
+        stderr(&computed(r, &["run", "--allow", "ftp://x/"])),
+        "computed: ftp://x/: expected http:// or https://\n"
+    );
+
+    let out = computed(r, &["disallow", &allow]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(stderr(&out), format!("computed: {allow} was not allowed\n"));
 }

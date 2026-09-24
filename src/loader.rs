@@ -16,6 +16,9 @@ pub enum LoadError {
     Hard(String),
     /// Tier 1: the loader ran and failed. The previous body is kept.
     Failed { stderr: String },
+    /// Tier 1: the region's url is not on this machine's allowlist, so the
+    /// loader did not run. The previous body is kept, as for untrusted exec.
+    NotAllowed(String),
 }
 
 /// The per-loader format constant folded into the input sum. Bumped by hand
@@ -217,6 +220,7 @@ pub struct Production {
     ctx: Ctx,
     walks: HashMap<String, Loaded>,
     read: BTreeSet<PathBuf>,
+    allowed: crate::allow::Allowed,
 }
 
 impl Production {
@@ -225,7 +229,14 @@ impl Production {
             ctx,
             walks: HashMap::new(),
             read: BTreeSet::new(),
+            allowed: crate::allow::Allowed::default(),
         }
+    }
+
+    /// The url prefixes a `remote` region may fetch from; none by default.
+    pub fn allowing(mut self, allowed: crate::allow::Allowed) -> Production {
+        self.allowed = allowed;
+        self
     }
 
     /// The canonical paths of every file a snapshot read, so a caller can
@@ -325,7 +336,7 @@ impl Loaders for Production {
             Loader::File(args) => self.file(&args),
             Loader::Symbol(args) => crate::symbol::load(&self.ctx, &args, &mut self.read),
             Loader::Git(args) => crate::git::load(&self.ctx, &args),
-            Loader::Remote(args) => crate::remote::load(&args),
+            Loader::Remote(args) => crate::remote::load(&args, &self.allowed),
         }
     }
 }
