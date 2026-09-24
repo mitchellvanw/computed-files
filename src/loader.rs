@@ -12,7 +12,8 @@ pub struct Loaded {
 /// A loader error with its exit tier.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoadError {
-    /// Tier 2: the tool could not answer. The file is skipped whole.
+    /// Tier 2: the tool could not answer. The region is skipped, its body
+    /// kept; the file's other regions still render (ADR 0013).
     Hard(String),
     /// Tier 1: the loader ran and failed. The previous body is kept.
     Failed { stderr: String },
