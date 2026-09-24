@@ -17,8 +17,16 @@ The span between an opener and a closer whose body the tool owns and replaces.
 _Avoid_: block, section, slot, placeholder
 
 **Marker**:
-A comment line that opens or closes a region. The opener names the loader and its attributes; the closer carries the sums.
+A comment that opens or closes a region, written in the file's comment syntax and alone on its line, except in an inline region. The opener names the loader and its attributes; the closer carries the sums.
 _Avoid_: tag, directive, annotation
+
+**Comment syntax**:
+The comment a file's markers are written in, chosen by its name or extension: `<!-- -->` in Markdown and HTML, a line comment such as `//` or `#` in code, `/* */` in CSS. A line comment's leader is what the `comment` sink writes before each line.
+_Avoid_: language, file type, dialect
+
+**Inline region**:
+A region inside a line of Markdown or HTML, its opener and closer on the same line and its body one line of text with no newline, such as a version in a sentence.
+_Avoid_: inline mode (that is not a layout), span region, embedded region
 
 **Name**:
 The optional per-file identifier an author gives a region so reports and later tooling can refer to it stably.

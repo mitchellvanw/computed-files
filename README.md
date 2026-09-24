@@ -1,6 +1,6 @@
 # computed
 
-Keep marked regions of a hand-written Markdown file current. The document is a view. The truth lives somewhere else: a directory listing, a part of another file, the repository's history, or the output of a command.
+Keep marked regions of a hand-written Markdown or code file current. The document is a view. The truth lives somewhere else: a directory listing, a part of another file, the repository's history, or the output of a command.
 
 ~~~markdown
 ## Layout
@@ -116,13 +116,17 @@ A loader produces text and a snapshot of what it read. A sink shapes that text i
 | `exec` | a command's output, with `inputs=` or `volatile` | yes |
 | `transcript` | a shell session, each step and what it printed | yes |
 
-Sinks are `raw` (Markdown as it stands), `fence` (a code block) and `table`, which turns CSV, TSV or JSON Lines into a Markdown table. Every region also takes `name=`, `as=`, `lang=`, `max-lines=N`, which cuts long output to N lines and a note, and `on-stale=warn`, which lets `check` report the region stale without failing. The full grammar of each loader is in the [spec](docs/spec/computed-v0.md#which-loaders).
+Sinks are `raw` (Markdown as it stands), `fence` (a code block), `table`, which turns CSV, TSV or JSON Lines into a Markdown table, and `comment`, which writes each line behind a code file's comment leader. Every region also takes `name=`, `as=`, `lang=`, `max-lines=N`, which cuts long output to N lines and a note, and `on-stale=warn`, which lets `check` report the region stale without failing. The full grammar of each loader is in the [spec](docs/spec/computed-v0.md#which-loaders).
 
 **A region reads only what it names.** The snapshot of `file src=README.md section=Install` is that section, and of `value src=Cargo.toml key=package.version` the version, so an edit anywhere else in the file leaves the region fresh. An `exec` input can be narrowed the same way: `inputs="Cargo.toml#key=package.version,src/*.rs"`. [ADR 0016](docs/adr/0016-a-projection-snapshots-only-the-part-it-reads.md).
 
 **Native loaders need no trust.** Every loader but `exec` and `transcript` reads files, history or a pinned document and runs nothing from the repository, so a fresh clone renders them without a grant. Before, an ADR index or a version string was a script, and a fresh clone's hook failed on it until someone ran `computed trust`. [ADR 0017](docs/adr/0017-trust-gates-running-repository-code-and-nothing-else.md).
 
 **A long opener can be named once.** A `computed.toml` holds recipes, `[recipe.adrs]` with a loader and its attributes, and a region writes `use recipe=adrs`. The recipe's expansion is the opener for every purpose, sums included. [ADR 0022](docs/adr/0022-recipes-in-computed-toml.md).
+
+**A region can hold one value in a sentence.** In Markdown and HTML, an opener and a closer on the same line make an inline region: `The current release is <!-- computed value src=Cargo.toml key=package.version -->0.2.0<!-- /computed in=… out=… -->.` Its text must be one line. Markers inside backticks stay prose, so a document can still show one. [ADR 0027](docs/adr/0027-a-region-inside-a-line.md).
+
+**Code files take regions in their own comments.** `// computed tree src=. depth=1 as=comment` in Rust or TypeScript, `# computed …` in Python, YAML or a Makefile, `/* computed … */` in CSS. `as=comment` writes the text as comment lines, so a crate's `//!` doc can list its modules. With no paths, discovery still reads only Markdown; `[discover] extensions = ["rs"]` in the repository root's `computed.toml` adds code. [ADR 0026](docs/adr/0026-a-marker-is-a-comment-in-the-files-own-syntax.md).
 
 Relative paths in a marker resolve against the directory of the file that contains the marker, not the repository root and not the shell's working directory, and an exec command runs there. A region reads the same from a pre-commit hook, from CI, and from a terminal, and moving the file moves its regions with it. [ADR 0004](docs/adr/0004-region-root-is-the-template-directory.md).
 
@@ -169,7 +173,7 @@ computed lsp
 
 `run`, `check` and `clean` are the tool; the rest are built on them. `update`, `allow` and `disallow` move remote pins and keep the allowlist. `doctor` and `trace` test what `check` has to believe. `affected` lists the regions a path reaches, `graph` draws what every region reads, `why` explains from git history why a region is stale, `stats` says how much of each file is computed, and `dupes` finds blocks copied between Markdown files and the `file` region that would replace each copy. `adopt` writes a hand edit in a `file` region back into its source. `merge`, `guard`, `watch` and `lsp` are for git, agents and editors, below.
 
-With no paths, the current directory is walked with the tree loader's ignore settings, dot-directories such as `.claude/` and `.github/` included, and every `.md` and `.markdown` file is read. An explicit file is read whatever its extension. A symlinked file is written through, never replaced. `--only NAME` narrows a command to the regions with that name.
+With no paths, the current directory is walked with the tree loader's ignore settings, dot-directories such as `.claude/` and `.github/` included, and every `.md` and `.markdown` file is read, with the extensions and names a `[discover]` table adds. An explicit file is read whatever its extension, in the comment syntax its name selects. A symlinked file is written through, never replaced. `--only NAME` narrows a command to the regions with that name.
 
 | Exit | Meaning |
 |---|---|
@@ -213,8 +217,8 @@ Then act like someone else in the repository: add a file under `src/` and `check
 ## Layout of this repo
 
 ```
-src/marker.rs     the marker grammar: parse to prose and regions, serialise back
-src/sink.rs       normalisation, raw, fence and table, and the max-lines cut
+src/marker.rs     the marker grammar in every comment syntax, inline regions: parse to prose and regions, serialise back
+src/sink.rs       normalisation, raw, fence, table and comment, and the max-lines cut
 src/render.rs     the sums, the states, refuse, untrusted, failure, clean; pure behind a Loaders seam
 src/fs.rs         the walk, the repository root, the atomic write
 src/loader.rs     every loader behind one enum, the pinned shell, the read set, recipe expansion
@@ -225,7 +229,7 @@ src/report.rs     the stderr line per region, the dry-run diff, the JSON documen
 src/cli.rs        clap, discovery, exit tiers, settling, one dispatch arm per command
 
 src/{symbol,git,remote,transcript,index,toc,table,config}.rs
-                  one loader, sink or the recipe file each
+                  one loader, sink or computed.toml each
 src/{update,doctor,trace,affected,graph,why,stats,dupes,adopt,merge,guard,watch,lsp}.rs
                   one command each
 
