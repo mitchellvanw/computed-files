@@ -37,6 +37,10 @@ struct Cli {
 enum Format {
     Text,
     Json,
+    /// `graph` only: a Mermaid flowchart, the default.
+    Mermaid,
+    /// `graph` only: a Graphviz digraph.
+    Dot,
 }
 
 #[derive(Subcommand)]
@@ -103,6 +107,53 @@ enum Cmd {
     },
     /// Serve the language server protocol on stdin and stdout.
     Lsp,
+    /// List the regions whose snapshots read any of PATHS, or anything under them.
+    Affected {
+        #[arg(required = true)]
+        paths: Vec<PathBuf>,
+    },
+    /// Print templates, their regions and what each reads as a graph.
+    Graph { paths: Vec<PathBuf> },
+    /// Explain from history why a region is stale.
+    Why {
+        file: PathBuf,
+        /// Only the region with this name.
+        #[arg(long, value_name = "NAME", conflicts_with = "line")]
+        only: Option<String>,
+        /// Only the region whose opener is on this line.
+        #[arg(long, value_name = "N")]
+        line: Option<usize>,
+    },
+    /// A merge driver: merge a template, leaving regions both sides re-rendered unrendered.
+    Merge {
+        /// Route Markdown through this driver in the repository's .gitattributes and this clone's config.
+        #[arg(long, conflicts_with = "files")]
+        install: bool,
+        /// git's %O %A %B %P: the base, ours (written), theirs, and the path, unused.
+        #[arg(
+            value_names = ["BASE", "OURS", "THEIRS", "PATH"],
+            num_args = 3..=4,
+            required_unless_present = "install"
+        )]
+        files: Vec<PathBuf>,
+    },
+    /// Write a hand edit inside a file region back into its source, and render the region.
+    Adopt {
+        file: PathBuf,
+        /// Only the regions with this name; repeat for more.
+        #[arg(long, value_name = "NAME")]
+        only: Vec<String>,
+        /// Print the diff each source would take; write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Find verbatim blocks copied between Markdown files, outside regions.
+    Dupes {
+        paths: Vec<PathBuf>,
+        /// The fewest lines with text of their own a block needs to count.
+        #[arg(long, value_name = "N", default_value_t = 4)]
+        min_lines: usize,
+    },
 }
 
 /// Runs the command line and returns the exit code.
@@ -133,6 +184,12 @@ struct Job<'a> {
 }
 
 fn dispatch(cli: Cli) -> Result<u8> {
+    if matches!(cli.format, Format::Mermaid | Format::Dot)
+        && !matches!(cli.command, Cmd::Graph { .. })
+    {
+        eprintln!("computed: --format mermaid and dot are for `graph`");
+        return Ok(2);
+    }
     let job = |mode, trust, only| Job {
         mode,
         trust,
@@ -211,6 +268,50 @@ fn dispatch(cli: Cli) -> Result<u8> {
             crate::watch::watch(paths, cli.format == Format::Text, pass).map_err(anyhow::Error::msg)
         }
         Cmd::Lsp => crate::lsp::main().map_err(anyhow::Error::msg),
+        Cmd::Affected { paths } => {
+            crate::affected::main(paths, cli.format == Format::Json).map_err(anyhow::Error::msg)
+        }
+        Cmd::Graph { paths } => {
+            let style = match cli.format {
+                Format::Json => crate::graph::Style::Json,
+                Format::Dot => crate::graph::Style::Dot,
+                Format::Text | Format::Mermaid => crate::graph::Style::Mermaid,
+            };
+            crate::graph::main(paths, style).map_err(anyhow::Error::msg)
+        }
+        Cmd::Why { file, only, line } => {
+            text_only(cli.format, "why")?;
+            crate::why::main(file, only.as_deref(), *line, cli.verbose).map_err(anyhow::Error::msg)
+        }
+        Cmd::Merge { install, files } => {
+            text_only(cli.format, "merge")?;
+            match files.as_slice() {
+                _ if *install => crate::merge::install(),
+                [base, ours, theirs, ..] => crate::merge::driver(base, ours, theirs),
+                _ => unreachable!("clap requires three files or --install"),
+            }
+            .map_err(anyhow::Error::msg)
+        }
+        Cmd::Adopt {
+            file,
+            only,
+            dry_run,
+        } => {
+            text_only(cli.format, "adopt")?;
+            crate::adopt::main(file, only, *dry_run, cli.verbose).map_err(anyhow::Error::msg)
+        }
+        Cmd::Dupes { paths, min_lines } => {
+            crate::dupes::main(paths, *min_lines, cli.format == Format::Json)
+                .map_err(anyhow::Error::msg)
+        }
+    }
+}
+
+/// A command that prints text only refuses `--format json`.
+fn text_only(format: Format, command: &str) -> Result<()> {
+    match format {
+        Format::Text => Ok(()),
+        _ => anyhow::bail!("`{command}` prints text only; --format is not for it"),
     }
 }
 
@@ -224,7 +325,7 @@ fn is_markdown(path: &Path) -> bool {
 /// extension, walked directories and the current directory for `.md` and
 /// `.markdown`, dotfiles included, symlinks left to the files they name.
 /// Two paths to one file are one file, named by the path that is not a link.
-fn discover(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+pub(crate) fn discover(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     let roots: Vec<PathBuf> = if paths.is_empty() {
         vec![PathBuf::from(".")]
@@ -270,7 +371,7 @@ fn discover(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     Ok(kept.into_iter().flatten().collect())
 }
 
-fn is_link(path: &Path) -> bool {
+pub(crate) fn is_link(path: &Path) -> bool {
     std::fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink())
 }
 
@@ -356,7 +457,9 @@ impl Printer {
 
     fn message(&mut self, path: &Path, message: &str) {
         match self.format {
-            Format::Text => eprint!("{}", report::error(path, None, message)),
+            Format::Text | Format::Mermaid | Format::Dot => {
+                eprint!("{}", report::error(path, None, message))
+            }
             Format::Json => {
                 let entry = Outcome::error(None, message);
                 self.merge(path, &entry);
@@ -457,7 +560,9 @@ fn settle(paths: &[PathBuf], job: &Job<'_>) -> Result<Settled> {
     }
     for name in job.only.iter().filter(|n| !names.contains(*n)) {
         match job.format {
-            Format::Text => eprintln!("computed: no region is named {name:?}"),
+            Format::Text | Format::Mermaid | Format::Dot => {
+                eprintln!("computed: no region is named {name:?}")
+            }
             Format::Json => {
                 printer.message(Path::new("."), &format!("no region is named {name:?}"))
             }

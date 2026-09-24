@@ -310,6 +310,22 @@ fn warned(region: &Region, state: State) -> Option<Action> {
     (state == State::Stale && region.opener.on_stale == OnStale::Warn).then_some(Action::Warn)
 }
 
+/// A region's state against a snapshot of its inputs, `None` when volatile.
+pub fn state(region: &Region, snapshot: Option<&[u8]>) -> State {
+    state_of(region, snapshot)
+}
+
+/// The input sum a region's opener, indentation and snapshot hash to.
+pub fn input_sum(region: &Region, snapshot: &[u8]) -> String {
+    let constant = loader::format_constant(&region.opener.loader);
+    sum::input(&region.opener, &region.indent, constant, snapshot)
+}
+
+/// The output sum of a body as it sits between the marker lines.
+pub fn output_sum(body: &str) -> String {
+    sum::output(body)
+}
+
 /// The state `clean` can know without a snapshot: only the body is tested.
 fn body_state(region: &Region) -> State {
     match &region.sums {
@@ -358,7 +374,7 @@ fn closer_terminator(region: &Region) -> &str {
 /// A sink's LF body as it sits in the file: each non-blank line carries the
 /// opener's indentation, so a region inside a list item stays inside it, and
 /// every line ends as the opener does.
-fn shape(region: &Region, body: &str) -> String {
+pub fn shape(region: &Region, body: &str) -> String {
     let eol = eol(region);
     let mut out = String::with_capacity(body.len());
     for line in body.split_inclusive('\n') {

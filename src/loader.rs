@@ -317,6 +317,12 @@ impl Production {
         &self.read
     }
 
+    /// The files read since the last call, so one region's reads can be
+    /// told from the next one's.
+    pub fn take_read(&mut self) -> BTreeSet<PathBuf> {
+        std::mem::take(&mut self.read)
+    }
+
     fn tree(&mut self, region: &Region, args: &TreeArgs) -> Result<Loaded, LoadError> {
         let key = region.opener.canonical();
         if let Some(l) = self.walks.get(&key) {
@@ -931,6 +937,25 @@ fn push_entry(out: &mut Vec<u8>, rel: &[u8], content: &[u8]) {
     out.push(0);
     out.extend_from_slice(content);
     out.push(0);
+}
+
+/// The entries of a snapshot [`push_entry`] wrote, `(path, content)` in
+/// order; `None` when the bytes are not such a sequence.
+pub fn entries(mut snapshot: &[u8]) -> Option<Vec<(&[u8], &[u8])>> {
+    let mut out = Vec::new();
+    while !snapshot.is_empty() {
+        let path_end = snapshot.iter().position(|&b| b == 0)?;
+        let rest = &snapshot[path_end + 1..];
+        let len_end = rest.iter().position(|&b| b == 0)?;
+        let len: usize = std::str::from_utf8(&rest[..len_end]).ok()?.parse().ok()?;
+        let content = rest.get(len_end + 1..len_end + 1 + len)?;
+        if rest.get(len_end + 1 + len) != Some(&0) {
+            return None;
+        }
+        out.push((&snapshot[..path_end], content));
+        snapshot = &rest[len_end + 2 + len..];
+    }
+    Some(out)
 }
 
 /// Runs `cmd` under `/bin/sh -c` in the region root with the pinned
