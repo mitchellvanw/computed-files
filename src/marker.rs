@@ -201,6 +201,12 @@ const GRAMMAR: &[LoaderGrammar] = &[
         flags: &[],
         sink: Sink::Raw,
     },
+    LoaderGrammar {
+        name: "value",
+        attrs: &["src", "key"],
+        flags: &[],
+        sink: Sink::Raw,
+    },
 ];
 
 const COMMON_ATTRS: &[&str] = &["name", "as", "lang"];
@@ -697,6 +703,13 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
         "file" => match opener.attr("src") {
             None => Err(error(line, "file needs src=")),
             Some(_) => crate::project::from_attrs(&opener.attrs, crate::project::FILE_SLICES)
+                .map(|_| ())
+                .map_err(|e| error(line, e)),
+        },
+        "value" => match (opener.attr("src"), opener.attr("key")) {
+            (None, _) => Err(error(line, "value needs src=")),
+            (_, None) => Err(error(line, "value needs key=")),
+            (Some(_), Some(key)) => crate::project::Projection::parse("key", key)
                 .map(|_| ())
                 .map_err(|e| error(line, e)),
         },

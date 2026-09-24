@@ -26,6 +26,7 @@ pub fn format_constant(loader: &str) -> u32 {
         "tree" => 1,
         "exec" => 1,
         "file" => 1,
+        "value" => 1,
         other => panic!("unknown loader {other:?} reached the format table"),
     }
 }
@@ -121,6 +122,13 @@ pub struct FileArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueArgs {
+    pub src: PathBuf,
+    /// The dotted path, one entry per component.
+    pub key: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecArgs {
     pub cmd: String,
     /// Comma-separated globs, or `None` when volatile.
@@ -134,6 +142,7 @@ pub enum Loader {
     Tree(TreeArgs),
     Exec(ExecArgs),
     File(FileArgs),
+    Value(ValueArgs),
 }
 
 impl Loader {
@@ -185,6 +194,16 @@ impl Loader {
                 src: PathBuf::from(opener.attr("src").ok_or_else(|| hard("file needs src="))?),
                 slice: project::from_attrs(&opener.attrs, project::FILE_SLICES).map_err(hard)?,
             })),
+            "value" => {
+                let key = opener.attr("key").ok_or_else(|| hard("value needs key="))?;
+                let Projection::Key(key) = Projection::parse("key", key).map_err(hard)? else {
+                    unreachable!("a key= projection")
+                };
+                Ok(Loader::Value(ValueArgs {
+                    src: PathBuf::from(opener.attr("src").ok_or_else(|| hard("value needs src="))?),
+                    key,
+                }))
+            }
             other => Err(hard(format!("unknown loader {other:?}"))),
         }
     }
@@ -194,6 +213,7 @@ impl Loader {
             Loader::Tree(_) => format_constant("tree"),
             Loader::Exec(_) => format_constant("exec"),
             Loader::File(_) => format_constant("file"),
+            Loader::Value(_) => format_constant("value"),
         }
     }
 }
@@ -281,6 +301,29 @@ impl Production {
         Ok(Loaded { text, snapshot })
     }
 
+    /// The `value` loader: one scalar of a TOML, JSON or YAML file. The
+    /// snapshot is the key and the value alone, so the rest of the file can
+    /// change under it.
+    fn value(&mut self, args: &ValueArgs) -> Result<Loaded, LoadError> {
+        let path = self.ctx.resolve("src=", &args.src)?;
+        if !path.is_file() {
+            return Err(hard(format!("src=: {} is not a file", args.src.display())));
+        }
+        let content =
+            std::fs::read(&path).map_err(|e| hard(format!("src=: {}: {e}", args.src.display())))?;
+        self.read.insert(path);
+        let text = project::scalar(&args.src, &content, &args.key)
+            .map_err(|e| hard(format!("src=: {}: {e}", args.src.display())))?;
+        let entry = format!(
+            "{}#key={}",
+            lexical(&args.src).display(),
+            args.key.join(".")
+        );
+        let mut snapshot = Vec::new();
+        push_entry(&mut snapshot, entry.as_bytes(), text.as_bytes());
+        Ok(Loaded { text, snapshot })
+    }
+
     fn region_name(&self, region: &Region) -> String {
         region
             .opener
@@ -300,6 +343,7 @@ impl Loaders for Production {
                 ..
             }) => Ok(Some(inputs_snapshot(&self.ctx, &globs, &mut self.read)?)),
             Loader::File(args) => Ok(Some(self.file(&args)?.snapshot)),
+            Loader::Value(args) => Ok(Some(self.value(&args)?.snapshot)),
         }
     }
 
@@ -315,6 +359,7 @@ impl Loaders for Production {
                 Ok(Loaded { text, snapshot })
             }
             Loader::File(args) => self.file(&args),
+            Loader::Value(args) => self.value(&args),
         }
     }
 }

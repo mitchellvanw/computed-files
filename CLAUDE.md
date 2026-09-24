@@ -55,9 +55,10 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── file_slice.rs
     ├── fixtures
     ├── render.rs
-    └── sandbox
+    ├── sandbox
+    └── value.rs
 ```
-<!-- /computed in=38ef89570385242b00a3ed5ecfe2b2a1c38079a783d403700e631c50299d9c48 out=8643c5578d4920de8a379ea473576ace48f610f97ebf53f6aabd2e9e759785f1 -->
+<!-- /computed in=0a43a8ce458d800fe757a8020dbd22d7d2ae33cf9e5c96db7d7da3587289e040 out=11239933143a52d188c4a87e8346c5149ba6c4a8864fe826617f8168df4f4b45 -->
 
 ## Decisions
 

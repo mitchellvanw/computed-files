@@ -399,6 +399,32 @@ impl Value {
     }
 }
 
+/// The one-line text of the scalar at `key` in a data file, what the `value`
+/// loader writes. An array or a table has no one spelling a reader would
+/// want, and a string over several lines cannot sit in a line of prose, so
+/// both are errors.
+pub fn scalar(path: &Path, content: &[u8], key: &[String]) -> Result<String, String> {
+    let at = || format!("key={}", key.join("."));
+    let text = std::str::from_utf8(content)
+        .map_err(|_| format!("{}: {} is not UTF-8", at(), path.display()))?;
+    let value = lookup(path, text, key).map_err(|e| format!("{}: {e}", at()))?;
+    let Some(text) = value.scalar() else {
+        return Err(format!(
+            "{}: {} is {}; value takes a string, number, boolean or date",
+            at(),
+            key.join("."),
+            value.kind()
+        ));
+    };
+    if text.contains(['\n', '\r']) {
+        return Err(format!(
+            "{}: the value runs over more than one line; value takes one line",
+            at()
+        ));
+    }
+    Ok(text.to_string())
+}
+
 /// The value at `key` in a data file, its format chosen by the extension
 /// of `path`: `.toml`, `.json`, `.yaml` or `.yml`.
 pub fn lookup(path: &Path, text: &str, key: &[String]) -> Result<Value, String> {
