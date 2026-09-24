@@ -7,6 +7,7 @@
 //! `report` prints, and `cli` ties them to five commands.
 
 pub mod cli;
+pub mod config;
 pub mod fs;
 pub mod loader;
 pub mod marker;

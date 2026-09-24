@@ -84,6 +84,9 @@ pub struct Opener {
     pub on_stale: OnStale,
     /// The most lines of loader text the sink shapes; the rest is one note.
     pub max_lines: Option<usize>,
+    /// The canonical form of the `use` opener this one was expanded from,
+    /// which is what the file shows; `None` for an opener as written.
+    written: Option<String>,
     /// Every token as written, in order, for the canonical form.
     tokens: Vec<Token>,
 }
@@ -125,6 +128,21 @@ impl Opener {
     pub fn flag(&self, flag: &str) -> bool {
         self.flags.iter().any(|f| f == flag)
     }
+
+    /// The common attributes as written, in order.
+    pub fn common_attrs(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.tokens.iter().filter_map(|t| match t {
+            Token::Attr(k, v) if is_common(k) => Some((k.as_str(), v.as_str())),
+            _ => None,
+        })
+    }
+
+    /// This opener standing in for the `use` opener `written`: the file
+    /// keeps showing `written`, and everything else reads this one.
+    pub fn expanded_from(mut self, written: &Opener) -> Opener {
+        self.written = Some(written.canonical());
+        self
+    }
 }
 
 /// The suffix the tool writes after the attributes of a rendered opener.
@@ -132,7 +150,7 @@ pub const OPENER_SUFFIX: &str = "| do not edit; run computed";
 
 /// The rendered opener line: canonical form with the suffix, without indent.
 pub fn rendered_opener(opener: &Opener) -> String {
-    let c = opener.canonical();
+    let c = opener.written.clone().unwrap_or_else(|| opener.canonical());
     let stem = c
         .strip_suffix(" -->")
         .expect("canonical opener ends with -->");
@@ -147,7 +165,9 @@ pub fn rendered_closer(sums: Option<&Sums>) -> String {
     }
 }
 
-fn quote(v: &str) -> String {
+/// A value as the canonical form writes it: double-quoted when it is empty
+/// or holds whitespace, `>` or `"`.
+pub fn quote(v: &str) -> String {
     let needs = v.is_empty()
         || v.chars()
             .any(|c| c == ' ' || c == '\t' || c == '>' || c == '"');
@@ -213,9 +233,20 @@ const GRAMMAR: &[LoaderGrammar] = &[
         flags: &[],
         sink: Sink::Raw,
     },
+    LoaderGrammar {
+        name: "use",
+        attrs: &["recipe"],
+        flags: &[],
+        sink: Sink::Raw,
+    },
 ];
 
 const COMMON_ATTRS: &[&str] = &["name", "as", "lang", "on-stale", "max-lines"];
+
+/// Whether `key` is an attribute every loader takes.
+pub fn is_common(key: &str) -> bool {
+    COMMON_ATTRS.contains(&key)
+}
 
 /// One physical line of the file with its terminator.
 struct Line<'a> {
@@ -587,6 +618,12 @@ fn tokenise(line: usize, content: &str) -> Result<Vec<Token>, ParseError> {
     Ok(tokens)
 }
 
+/// Parses an opener's content, what sits between `<!-- computed` and `-->`,
+/// for an opener built rather than read, such as a recipe's expansion.
+pub fn opener(line: usize, content: &str) -> Result<Opener, ParseError> {
+    parse_opener(line, content)
+}
+
 fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
     let tokens = tokenise(line, content)?;
     let mut iter = tokens.iter();
@@ -683,6 +720,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
         lang,
         on_stale,
         max_lines,
+        written: None,
         tokens,
     };
     validate(line, &opener)?;
@@ -731,6 +769,10 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
         }
         "file" => match opener.attr("src") {
             None => Err(error(line, "file needs src=")),
+            Some(_) => Ok(()),
+        },
+        "use" => match opener.attr("recipe") {
+            None => Err(error(line, "use needs recipe=")),
             Some(_) => Ok(()),
         },
         _ => Ok(()),
