@@ -85,6 +85,31 @@ pub fn comment(text: &str, lang: &str, comment: Comment) -> String {
     out
 }
 
+/// An inline region's body: the normalised text itself, which must be one
+/// line, and must not hold a comment that would parse as a marker.
+fn inline(region: &Region, text: String) -> Result<String, String> {
+    if text.contains('\n') {
+        return Err(format!(
+            "the text is {} lines, and a region inside a line holds one",
+            text.split('\n').count()
+        ));
+    }
+    let c = region.comment;
+    let probe = format!(
+        "{}{text}{}\n",
+        c.wrap("computed exec cmd=x volatile"),
+        c.wrap("/computed")
+    );
+    match marker::parse_as(&probe, region.syntax) {
+        Ok(file) if matches!(file.segments.as_slice(), [marker::Segment::Region(r), _] if r.body == text) => {
+            Ok(text)
+        }
+        _ => Err(format!(
+            "the text would not parse back inside the line's markers: {text}"
+        )),
+    }
+}
+
 /// Normalises, cuts to `max-lines=`, shapes with the region's sink, and
 /// checks the body parses back to itself between markers in the region's
 /// comment. An error is a loader failure. A line that would parse as a
@@ -104,6 +129,9 @@ pub fn body(region: &Region, bytes: &[u8]) -> Result<String, String> {
     } = &region.opener;
     let syntax = region.syntax;
     let mut text = normalise(bytes)?;
+    if region.column.is_some() {
+        return inline(region, text);
+    }
     if let (Some(max), Sink::Raw | Sink::Fence | Sink::Comment) = (max_lines, sink) {
         text = truncate::lines(&text, *max);
     }

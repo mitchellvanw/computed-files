@@ -18,8 +18,9 @@ fn shown(r: &RegionReport, mode: Mode) -> bool {
 }
 
 /// The region lines for one file, one block per region: `path:line name
-/// loader state action`, with the name and state columns padded to the
-/// file's widest, and loader stderr indented beneath.
+/// loader state action`, `path:line:column` for a region inside a line,
+/// with the name and state columns padded to the file's widest, and loader
+/// stderr indented beneath.
 pub fn regions(path: &Path, regions: &[RegionReport], mode: Mode, verbose: bool) -> Vec<String> {
     let regions: Vec<&RegionReport> = regions
         .iter()
@@ -37,7 +38,7 @@ pub fn regions(path: &Path, regions: &[RegionReport], mode: Mode, verbose: bool)
         let mut line = format!(
             "{}:{} {name:name_width$} {} {:state_width$}",
             path.display(),
-            r.line,
+            crate::marker::place(r.line, r.column),
             r.loader,
             state_of(r)
         );
@@ -125,8 +126,9 @@ pub fn json(files: &[FileJson<'_>], exit: u8) -> String {
             }
             write!(
                 out,
-                "{{\"line\":{},\"name\":{},\"loader\":{},\"state\":{},\"action\":{},\"message\":{},\"severity\":{}}}",
+                "{{\"line\":{},\"column\":{},\"name\":{},\"loader\":{},\"state\":{},\"action\":{},\"message\":{},\"severity\":{}}}",
                 r.line,
+                r.column.map_or("null".to_string(), |c| c.to_string()),
                 optional(r.name.as_deref()),
                 string(&r.loader),
                 string(&r.state.to_string()),
@@ -173,6 +175,7 @@ mod tests {
     fn json_escapes_and_nulls() {
         let regions = [RegionReport {
             line: 3,
+            column: None,
             name: Some("a\"b".into()),
             loader: "exec".into(),
             state: State::Stale,
@@ -190,7 +193,7 @@ mod tests {
         );
         assert_eq!(
             doc,
-            "{\"exit\":1,\"files\":[{\"path\":\"d.md\",\"error\":null,\"regions\":[{\"line\":3,\"name\":\"a\\\"b\",\"loader\":\"exec\",\"state\":\"stale\",\"action\":\"failed\",\"message\":\"x\\n\\ty\\u0001\",\"severity\":null}],\"diff\":null}]}\n"
+            "{\"exit\":1,\"files\":[{\"path\":\"d.md\",\"error\":null,\"regions\":[{\"line\":3,\"column\":null,\"name\":\"a\\\"b\",\"loader\":\"exec\",\"state\":\"stale\",\"action\":\"failed\",\"message\":\"x\\n\\ty\\u0001\",\"severity\":null}],\"diff\":null}]}\n"
         );
     }
 }

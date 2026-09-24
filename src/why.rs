@@ -95,7 +95,7 @@ fn answer(
         let line = format!(
             "{}:{} {name} {} {state}",
             template.path.display(),
-            region.line,
+            region.place(),
             region.opener.loader
         );
         format!(

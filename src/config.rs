@@ -110,9 +110,15 @@ impl Config {
         })
     }
 
-    /// The opener a `use` region in a file of `syntax` stands for, marked
-    /// as expanded from it.
-    pub fn expand(&self, opener: &Opener, line: usize, syntax: Syntax) -> Result<Opener, String> {
+    /// The opener a `use` region in a file of `syntax`, inside a line when
+    /// `inline`, stands for, marked as expanded from it.
+    pub fn expand(
+        &self,
+        opener: &Opener,
+        line: usize,
+        syntax: Syntax,
+        inline: bool,
+    ) -> Result<Opener, String> {
         let name = opener.attr("recipe").unwrap_or_default();
         let Some(recipe) = self.recipes.get(name) else {
             return Err(format!(
@@ -123,7 +129,7 @@ impl Config {
         let region: Vec<(&str, &str)> = opener.common_attrs().collect();
         marker::opener(line, &recipe.expand(&region))
             .map_err(|e| e.message)
-            .and_then(|o| o.placed(syntax))
+            .and_then(|o| o.placed(syntax, inline))
             .map(|o| o.expanded_from(opener))
             .map_err(|m| format!("[recipe.{name}]: {m}"))
     }
@@ -318,8 +324,8 @@ pub fn discovery(dir: &Path) -> Result<Discover, String> {
 pub struct Expansion {
     /// The canonical `computed.toml` read, when there was one to read.
     pub read: Option<PathBuf>,
-    /// Per region line, why its recipe could not be expanded.
-    pub errors: BTreeMap<usize, String>,
+    /// Per region place (`Region::at`), why its recipe could not be expanded.
+    pub errors: BTreeMap<(usize, Option<usize>), String>,
 }
 
 /// Replaces the opener of every `use` region of `file` with the opener its
@@ -342,13 +348,18 @@ pub fn expand(file: &mut File, region_root: &Path, repo_root: Option<&Path>) -> 
             Config::load(&path)
         });
         let expanded = match config {
-            Ok(c) => c.expand(&region.opener, region.line, region.syntax),
+            Ok(c) => c.expand(
+                &region.opener,
+                region.line,
+                region.syntax,
+                region.column.is_some(),
+            ),
             Err(e) => Err(e.clone()),
         };
         match expanded {
             Ok(opener) => region.opener = opener,
             Err(e) => {
-                expansion.errors.insert(region.line, e);
+                expansion.errors.insert(region.at(), e);
             }
         }
     }
@@ -369,7 +380,7 @@ mod tests {
 
     impl Config {
         fn expand_md(&self, opener: &Opener, line: usize) -> Result<Opener, String> {
-            self.expand(opener, line, Syntax::Markdown)
+            self.expand(opener, line, Syntax::Markdown, false)
         }
     }
 

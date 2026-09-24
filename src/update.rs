@@ -139,7 +139,7 @@ fn file(path: &Path, dry_run: bool, only: &[String], allowed: &Allowed) -> Outco
                 .is_some_and(|n| only.contains(n));
         let recipe = region.opener.loader == "use"
             && expansion.opener.loader == "remote"
-            && !recipes.errors.contains_key(&region.line);
+            && !recipes.errors.contains_key(&region.at());
         if !(region.opener.loader == "remote" || recipe) || !selected {
             continue;
         }
@@ -173,6 +173,7 @@ fn file(path: &Path, dry_run: bool, only: &[String], allowed: &Allowed) -> Outco
 fn pin_region(region: &mut Region, dry_run: bool, allowed: &Allowed) -> RegionReport {
     let report = |state, action, message: Option<String>| RegionReport {
         line: region.line,
+        column: region.column,
         name: region.opener.name.clone(),
         loader: region.opener.loader.clone(),
         state,
@@ -228,6 +229,7 @@ fn pin_region(region: &mut Region, dry_run: bool, allowed: &Allowed) -> RegionRe
 fn recipe_pin(region: &Region, allowed: &Allowed) -> RegionReport {
     let report = |state, action, message: Option<String>| RegionReport {
         line: region.line,
+        column: region.column,
         name: region.opener.name.clone(),
         loader: region.opener.loader.clone(),
         state,

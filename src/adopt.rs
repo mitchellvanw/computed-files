@@ -65,7 +65,7 @@ pub fn main(file: &Path, only: &[String], dry_run: bool, verbose: bool) -> Resul
             let line = format!(
                 "{}:{} {name} {} {state} {action}",
                 template.path.display(),
-                region.line,
+                region.place(),
                 region.opener.loader
             );
             line.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -196,6 +196,11 @@ fn restore(adoptions: &[(usize, Adoption)]) {
 /// What adopting `region`'s body would write into its source, or why it
 /// cannot be.
 fn adoption(template: &Template, region: &Region) -> Result<Adoption, String> {
+    if region.column.is_some() {
+        return Err(
+            "a region inside a line is not written back; edit the file it reads".to_string(),
+        );
+    }
     let args = match Loader::from_opener(&region.opener) {
         Ok(Loader::File(args)) => args,
         Ok(_) => {

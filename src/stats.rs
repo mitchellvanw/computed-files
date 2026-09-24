@@ -13,6 +13,8 @@ use crate::report;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegionStats {
     pub line: usize,
+    /// The opener's column for a region inside a line.
+    pub column: Option<usize>,
     pub name: Option<String>,
     /// The loader as the opener names it; a `use` region is counted as written.
     pub loader: String,
@@ -75,9 +77,14 @@ pub fn file(path: &Path) -> Option<FileStats> {
         .filter_map(|s| match s {
             Segment::Region(r) => Some(RegionStats {
                 line: r.line,
+                column: r.column,
                 name: r.opener.name.clone(),
                 loader: r.opener.loader.clone(),
-                lines: r.body.split_inclusive('\n').count(),
+                // A region inside a line takes no line of its own.
+                lines: match r.column {
+                    Some(_) => 0,
+                    None => r.body.split_inclusive('\n').count(),
+                },
                 bytes: r.body.len(),
             }),
             Segment::Prose(_) => None,
@@ -158,7 +165,7 @@ pub fn text(files: &[FileStats]) -> String {
                 out,
                 "{}:{} {:name_width$} {:loader_width$} {} {} ~{}",
                 f.path.display(),
-                r.line,
+                crate::marker::place(r.line, r.column),
                 r.name.as_deref().unwrap_or(""),
                 r.loader,
                 plural(r.lines, "line"),

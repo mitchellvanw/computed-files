@@ -114,6 +114,9 @@ struct Described<'a> {
     region: &'a Region,
     /// 0-based line of the closer.
     closer: u32,
+    /// For a region inside a line, the UTF-16 columns its markers and body
+    /// span on it.
+    within: Option<(u32, u32)>,
     report: Option<&'a RegionReport>,
 }
 
@@ -128,18 +131,34 @@ fn regions(parsed: &marker::File) -> Vec<&Region> {
         .collect()
 }
 
-fn describe<'a>(parsed: &'a marker::File, reports: &'a [RegionReport]) -> Vec<Described<'a>> {
+fn describe<'a>(
+    parsed: &'a marker::File,
+    reports: &'a [RegionReport],
+    text: &str,
+) -> Vec<Described<'a>> {
+    let utf16 = |s: &str| s.encode_utf16().count() as u32;
     regions(parsed)
         .into_iter()
         .map(|region| Described {
             region,
-            closer: (region.line + region.body.matches('\n').count()) as u32,
-            report: reports.iter().find(|r| r.line == region.line),
+            closer: region.last_line() as u32 - 1,
+            within: region.column.map(|column| {
+                let line = text.split('\n').nth(region.line - 1).unwrap_or("");
+                let before: String = line.chars().take(column - 1).collect();
+                let start = utf16(&before);
+                let whole = format!("{}{}{}", region.raw_opener, region.body, region.raw_closer);
+                (start, start + utf16(&whole))
+            }),
+            report: reports.iter().find(|r| (r.line, r.column) == region.at()),
         })
         .collect()
 }
 
 fn range(d: &Described<'_>) -> Range {
+    let line = d.region.line as u32 - 1;
+    if let Some((start, end)) = d.within {
+        return Range::new(Position::new(line, start), Position::new(line, end));
+    }
     let closer = d.region.raw_closer.trim_end_matches(['\n', '\r']);
     Range::new(
         Position::new(d.region.line as u32 - 1, 0),
@@ -322,7 +341,7 @@ impl Server<'_> {
             return Vec::new();
         };
         let trusted = self.trusted(&doc.path);
-        describe(&parsed, &reports)
+        describe(&parsed, &reports, &doc.text)
             .iter()
             .filter_map(|d| {
                 let report = d.report?;
@@ -378,14 +397,17 @@ impl Server<'_> {
         let doc = self
             .docs
             .get(p.text_document_position_params.text_document.uri.as_str())?;
-        let line = p.text_document_position_params.position.line;
+        let at = p.text_document_position_params.position;
         let mut parsed = marker::parse_as(&doc.text, Syntax::for_path(&doc.path)).ok()?;
         let mut loaders = Production::for_file(&doc.path, &mut parsed);
         let reports = guard::check_text(&doc.path, &doc.text).unwrap_or_default();
-        let described = describe(&parsed, &reports);
-        let d = described
-            .iter()
-            .find(|d| (d.region.line as u32 - 1..=d.closer).contains(&line))?;
+        let described = describe(&parsed, &reports, &doc.text);
+        let d = described.iter().find(|d| {
+            let r = range(d);
+            (r.start.line..=r.end.line).contains(&at.line)
+                && d.within
+                    .is_none_or(|(start, end)| (start..=end).contains(&at.character))
+        })?;
         let region = d.region;
         let state = d
             .report
@@ -467,13 +489,13 @@ impl Server<'_> {
             return Vec::new();
         };
         let reports = guard::check_text(&doc.path, &doc.text).unwrap_or_default();
-        describe(&parsed, &reports)
+        describe(&parsed, &reports, &doc.text)
             .iter()
             .map(|d| {
                 let state = d
                     .report
                     .map_or("unknown".to_string(), |r| r.state.to_string());
-                let at = Position::new(d.region.line as u32 - 1, 0);
+                let at = range(d).start;
                 CodeLens {
                     range: Range::new(at, at),
                     command: Some(Command {
@@ -534,7 +556,7 @@ impl Server<'_> {
             .map(|r| {
                 let mut line = format!(
                     "{name}:{} {} {}",
-                    r.line,
+                    marker::place(r.line, r.column),
                     r.name.as_deref().unwrap_or(&r.loader),
                     r.action.map_or(String::new(), |a| a.to_string())
                 );

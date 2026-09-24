@@ -303,8 +303,8 @@ pub struct Production {
     ctx: Ctx,
     walks: HashMap<String, Loaded>,
     read: BTreeSet<PathBuf>,
-    /// Per region line, why its `use` recipe did not expand.
-    unexpanded: BTreeMap<usize, String>,
+    /// Per region place (`Region::at`), why its `use` recipe did not expand.
+    unexpanded: BTreeMap<(usize, Option<usize>), String>,
     allowed: crate::allow::Allowed,
     wrap: Option<Box<Wrap>>,
 }
@@ -354,7 +354,7 @@ impl Production {
 
     /// The region's loader, or why its recipe did not expand.
     fn loader(&self, region: &Region) -> Result<Loader, LoadError> {
-        match self.unexpanded.get(&region.line) {
+        match self.unexpanded.get(&region.at()) {
             Some(message) => Err(hard(message.clone())),
             None => Loader::from_opener(&region.opener),
         }
@@ -496,7 +496,9 @@ impl Production {
     /// The `toc` loader: the headings of the template's own prose. The one
     /// loader that reads its template; it does not record it as read, since
     /// the only write to the template in a run is the run's own, which
-    /// leaves the prose, and so the toc, as it was.
+    /// leaves the prose, and so the toc, as it was. Unless a heading holds
+    /// a region inside its line: the run's write moves that heading, and the
+    /// template, read, gets the second pass that catches the toc up.
     fn toc(&mut self, args: &TocArgs) -> Result<Loaded, LoadError> {
         if !marker::Syntax::for_path(&self.ctx.template).is_markdown() {
             return Err(hard(format!(
@@ -507,6 +509,11 @@ impl Production {
         let template = std::fs::read_to_string(&self.ctx.template)
             .map_err(|e| hard(format!("{}: {e}", self.ctx.template.display())))?;
         let (text, snapshot) = toc::toc(&template, args.min, args.max).map_err(hard)?;
+        if toc::reads_regions(&template)
+            && let Ok(path) = self.ctx.template.canonicalize()
+        {
+            self.read.insert(path);
+        }
         Ok(Loaded { text, snapshot })
     }
 

@@ -58,6 +58,8 @@ impl fmt::Display for Verdict {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
     pub line: usize,
+    /// The opener's column for a region inside a line.
+    pub column: Option<usize>,
     pub name: Option<String>,
     pub loader: String,
     pub verdict: Verdict,
@@ -115,7 +117,7 @@ pub fn compare(
             rendered
                 .regions()
                 .iter()
-                .find(|r| r.line == region.line)
+                .find(|r| (r.line, r.column) == region.at())
                 .cloned()
         };
         // A region `select` left out has no report.
@@ -124,6 +126,7 @@ pub fn compare(
         };
         let mut finding = Finding {
             line: region.line,
+            column: region.column,
             name: region.opener.name.clone(),
             loader: region.opener.loader.clone(),
             verdict: Verdict::Deterministic,
@@ -407,7 +410,7 @@ fn print_text(examined: &Examined, verbose: bool) {
         let mut line = format!(
             "{}:{} {name:name_width$} {} {:verdict_width$}",
             path.display(),
-            f.line,
+            crate::marker::place(f.line, f.column),
             f.loader,
             f.verdict.to_string()
         );

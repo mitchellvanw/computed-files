@@ -157,23 +157,27 @@ fn doc(path: &Path) -> Result<Option<Doc>, FileError> {
     let Ok(text) = String::from_utf8(bytes) else {
         return Ok(None);
     };
-    let lines: Vec<String> = text.lines().map(str::to_string).collect();
-    // The 1-based lines regions own, markers included.
+    let mut lines: Vec<String> = text.lines().map(str::to_string).collect();
+    // The 1-based lines regions on lines of their own take, markers
+    // included. A region inside a line leaves the line to the prose, less
+    // its body and closer: the body is computed, and its sums are not text.
     let mut owned = BTreeSet::new();
     if text.contains("<!--") {
         let parsed = marker::parse(&text).map_err(|e| fail(Some(e.line), e.message))?;
-        let mut line = 1;
+        let mut authored = String::new();
         for segment in &parsed.segments {
-            let count = match segment {
-                Segment::Prose(p) => p.split_inclusive('\n').count(),
+            match segment {
+                Segment::Prose(p) => authored.push_str(p),
+                Segment::Region(r) if r.column.is_some() => authored.push_str(&r.raw_opener),
                 Segment::Region(r) => {
-                    let n = 2 + r.body.split_inclusive('\n').count();
-                    owned.extend(line..line + n);
-                    n
+                    owned.extend(r.line..=r.last_line());
+                    authored.push_str(&r.raw_opener);
+                    authored.push_str(&r.body);
+                    authored.push_str(&r.raw_closer);
                 }
-            };
-            line += count;
+            }
         }
+        lines = authored.lines().map(str::to_string).collect();
     }
     let mut tokens = Vec::new();
     let mut after_region = false;

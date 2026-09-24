@@ -115,6 +115,8 @@ impl fmt::Display for Verdict {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Finding {
     pub line: usize,
+    /// The opener's column for a region inside a line.
+    pub column: Option<usize>,
     pub name: Option<String>,
     pub loader: String,
     pub verdict: Verdict,
@@ -154,6 +156,7 @@ pub fn examine(
 ) -> Result<Finding, String> {
     let mut finding = Finding {
         line: region.line,
+        column: region.column,
         name: region.opener.name.clone(),
         loader: region.opener.loader.clone(),
         verdict: Verdict::Complete,
@@ -360,15 +363,16 @@ pub fn suggest(ctx: &Ctx, reads: &BTreeSet<PathBuf>) -> Option<String> {
     (!entries.is_empty()).then(|| entries.join(","))
 }
 
-/// The file with `inputs=` of the region at each line replaced. A rendered
-/// opener keeps its suffix; line endings and indentation are kept.
-pub fn rewrite(parsed: &File, inputs: &BTreeMap<usize, String>) -> String {
+/// The file with `inputs=` of the region at each place (`Region::at`)
+/// replaced. A rendered opener keeps its suffix; line endings and
+/// indentation are kept.
+pub fn rewrite(parsed: &File, inputs: &BTreeMap<(usize, Option<usize>), String>) -> String {
     let mut file = parsed.clone();
     for segment in &mut file.segments {
         let Segment::Region(r) = segment else {
             continue;
         };
-        let Some(value) = inputs.get(&r.line) else {
+        let Some(value) = inputs.get(&r.at()) else {
             continue;
         };
         let opener = r.opener.with_attr("inputs", value);
@@ -823,9 +827,9 @@ fn examine_file(
     let ctx = Ctx::for_template(&file);
     let trusted = job.trust || cli::is_trusted(&ctx, store)?;
     // A `use` region's inputs= is its recipe's, in computed.toml.
-    let recipes: BTreeMap<usize, String> = regions
+    let recipes: BTreeMap<(usize, Option<usize>), String> = regions
         .iter()
-        .filter_map(|r| Some((r.line, r.opener.recipe()?.to_string())))
+        .filter_map(|r| Some((r.at(), r.opener.recipe()?.to_string())))
         .collect();
     let mut examined = Examined::new(path);
     for region in regions {
@@ -843,6 +847,7 @@ fn examine_file(
             Err(message) => {
                 examined.findings.push(Finding {
                     line: region.line,
+                    column: region.column,
                     name: region.opener.name.clone(),
                     loader: region.opener.loader.clone(),
                     verdict: Verdict::Error,
@@ -864,23 +869,23 @@ fn examine_file(
             )
         };
         for f in examined.findings.iter_mut().filter(|f| wrong(f)) {
-            if let Some(recipe) = recipes.get(&f.line) {
+            if let Some(recipe) = recipes.get(&(f.line, f.column)) {
                 f.message = Some(format!(
                     "not rewritten: inputs= comes from [recipe.{recipe}] in computed.toml; set it there"
                 ));
             }
         }
-        let inputs: BTreeMap<usize, String> = examined
+        let inputs: BTreeMap<(usize, Option<usize>), String> = examined
             .findings
             .iter()
-            .filter(|f| wrong(f) && !recipes.contains_key(&f.line))
-            .filter_map(|f| Some((f.line, f.suggestion.clone()?)))
+            .filter(|f| wrong(f) && !recipes.contains_key(&(f.line, f.column)))
+            .filter_map(|f| Some(((f.line, f.column), f.suggestion.clone()?)))
             .collect();
         if !inputs.is_empty() {
             match fs::replace(&file, &text, &rewrite(&parsed, &inputs)) {
                 Ok(true) => {
                     for f in &mut examined.findings {
-                        f.rewritten = inputs.contains_key(&f.line);
+                        f.rewritten = inputs.contains_key(&(f.line, f.column));
                     }
                 }
                 Ok(false) => {
@@ -915,7 +920,7 @@ fn print_text(examined: &Examined, verbose: bool) {
         let mut line = format!(
             "{}:{} {name:name_width$} {} {}",
             path.display(),
-            f.line,
+            marker::place(f.line, f.column),
             f.loader,
             f.verdict
         );
@@ -995,8 +1000,9 @@ fn json(report: &[Examined], exit: u8) -> String {
             }
             write!(
                 out,
-                "{{\"line\":{},\"name\":{},\"loader\":{},\"verdict\":{},\"reads\":{},\"undeclared\":{},\"unused\":{},\"suggestion\":{},\"rewritten\":{},\"message\":{}}}",
+                "{{\"line\":{},\"column\":{},\"name\":{},\"loader\":{},\"verdict\":{},\"reads\":{},\"undeclared\":{},\"unused\":{},\"suggestion\":{},\"rewritten\":{},\"message\":{}}}",
                 f.line,
+                f.column.map_or("null".to_string(), |c| c.to_string()),
                 report::optional(f.name.as_deref()),
                 report::string(&f.loader),
                 report::string(&f.verdict.to_string()),
@@ -1292,7 +1298,10 @@ mod tests {
         let parsed = marker::parse(&text).unwrap();
         let out = rewrite(
             &parsed,
-            &BTreeMap::from([(2, "c,d".to_string()), (6, "e f".to_string())]),
+            &BTreeMap::from([
+                ((2, None), "c,d".to_string()),
+                ((6, None), "e f".to_string()),
+            ]),
         );
         assert!(out.contains(
             "  <!-- computed exec cmd=x inputs=c,d name=n | do not edit; run computed -->\r\n  body\r\n"

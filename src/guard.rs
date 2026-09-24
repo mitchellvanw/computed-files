@@ -26,6 +26,8 @@ use crate::report;
 pub struct Touched {
     /// The opener's 1-based line in the current file.
     pub line: usize,
+    /// The opener's column, for a region inside a line.
+    pub column: Option<usize>,
     pub name: Option<String>,
     pub loader: String,
     /// The opener without its comment delimiters: `tree src=. depth=2`.
@@ -47,7 +49,11 @@ impl Touched {
     fn label(&self) -> String {
         match &self.name {
             Some(n) => format!("`{n}`"),
-            None => format!("`{}@{}`", self.loader, self.line),
+            None => format!(
+                "`{}@{}`",
+                self.loader,
+                marker::place(self.line, self.column)
+            ),
         }
     }
 }
@@ -134,12 +140,14 @@ pub fn judge(current: &str, proposed: &str, syntax: Syntax) -> Verdict {
     };
     let spans: Vec<(usize, usize)> = before
         .iter()
-        .map(|r| {
-            let opener = r.line - 1;
-            (opener, opener + 1 + r.body.matches('\n').count())
-        })
+        .map(|r| (r.line - 1, r.last_line() - 1))
         .collect();
     let owned_touched = |&(opener, closer): &(usize, usize)| {
+        // A region inside a line shares it with prose: any change to the
+        // line may be its body's, which the twin and sums tests then settle.
+        if opener == closer {
+            return (changed[opener], false);
+        }
         let body = changed[opener + 1..closer].iter().any(|&c| c)
             || inserted[opener + 1..=closer].iter().any(|&i| i);
         let closer = changed.get(closer).copied().unwrap_or(false);
@@ -169,6 +177,7 @@ pub fn judge(current: &str, proposed: &str, syntax: Syntax) -> Verdict {
         }
         touched.push(Touched {
             line: r.line,
+            column: r.column,
             name: r.opener.name.clone(),
             loader: r.opener.loader.clone(),
             source: source(r),
@@ -201,7 +210,7 @@ pub fn refusal(path: &Path, verdict: &Verdict) -> Option<String> {
                     out,
                     "{}:{} {} is owned by computed ({}); this edit changes its {}.",
                     path.display(),
-                    t.line,
+                    marker::place(t.line, t.column),
                     t.label(),
                     t.source,
                     t.changed().replace('+', " and ")
@@ -429,7 +438,7 @@ pub fn command(
                 Value::Null,
                 t.iter()
                     .map(|t| {
-                        json!({"line": t.line, "name": t.name, "loader": t.loader, "changed": t.changed()})
+                        json!({"line": t.line, "column": t.column, "name": t.name, "loader": t.loader, "changed": t.changed()})
                     })
                     .collect(),
             ),
@@ -446,7 +455,7 @@ pub fn command(
                 eprintln!(
                     "{}:{} {} {} {} changed",
                     file.display(),
-                    t.line,
+                    marker::place(t.line, t.column),
                     t.name.as_deref().unwrap_or(""),
                     t.loader,
                     t.changed()

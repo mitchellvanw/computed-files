@@ -4,13 +4,49 @@
 //!
 //! Only prose counts. Region bodies are left out, the toc's own included,
 //! so rendering a region never moves the toc, and a heading inside a fenced
-//! code block is not a heading. The snapshot is the listed headings with
-//! their anchors, which is everything the list depends on.
+//! code block is not a heading. A heading that holds a region inside its
+//! line reads as GitHub shows it: the markers dropped, the body kept. The
+//! snapshot is the listed headings with their anchors, which is everything
+//! the list depends on.
 
 use std::collections::HashMap;
 
 use crate::marker::{self, Segment};
 use crate::project::{self, Heading};
+
+/// The file as a reader sees its lines: each region inside a line is its
+/// body alone, its markers dropped.
+fn shown(parsed: &marker::File) -> String {
+    let mut out = String::new();
+    for s in &parsed.segments {
+        match s {
+            Segment::Prose(p) => out.push_str(p),
+            Segment::Region(r) if r.column.is_some() => out.push_str(&r.body),
+            Segment::Region(r) => {
+                out.push_str(&r.raw_opener);
+                out.push_str(&r.body);
+                out.push_str(&r.raw_closer);
+            }
+        }
+    }
+    out
+}
+
+/// Whether a heading of `template`'s prose holds a region inside its line,
+/// so the toc reads what a render of the template writes.
+pub fn reads_regions(template: &str) -> bool {
+    let Ok(parsed) = marker::parse(template) else {
+        return false;
+    };
+    let lines: Vec<usize> = project::headings(template)
+        .iter()
+        .map(|h| h.line + 1)
+        .collect();
+    parsed
+        .segments
+        .iter()
+        .any(|s| matches!(s, Segment::Region(r) if r.column.is_some() && lines.contains(&r.line)))
+}
 
 /// The levels a toc lists from its `min=` and `max=`, 1 to 6. The defaults
 /// are 2 and 3; a bound given alone moves the other default out of its way,
@@ -38,19 +74,17 @@ pub fn levels(min: Option<&str>, max: Option<&str>) -> Result<(usize, usize), St
 /// `template`'s prose.
 pub fn toc(template: &str, min: usize, max: usize) -> Result<(String, Vec<u8>), String> {
     let parsed = marker::parse(template).map_err(|e| format!("this file: {e}"))?;
-    // 0-based line ranges the regions take, markers included.
+    // 0-based line ranges the regions on lines of their own take, markers
+    // included.
     let regions: Vec<(usize, usize)> = parsed
         .segments
         .iter()
         .filter_map(|s| match s {
-            Segment::Region(r) => {
-                let start = r.line - 1;
-                Some((start, start + 2 + r.body.matches('\n').count()))
-            }
-            Segment::Prose(_) => None,
+            Segment::Region(r) if r.column.is_none() => Some((r.line - 1, r.last_line())),
+            _ => None,
         })
         .collect();
-    let prose: Vec<Heading> = project::headings(template)
+    let prose: Vec<Heading> = project::headings(&shown(&parsed))
         .into_iter()
         .filter(|h| !regions.iter().any(|&(a, b)| (a..b).contains(&h.line)))
         .collect();

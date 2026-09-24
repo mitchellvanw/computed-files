@@ -456,3 +456,40 @@ fn run_fetches_a_remote_region_only_under_the_allowlist() {
     assert!(edit.unwrap().contains("\nfetched\n"));
     c.stop();
 }
+
+#[test]
+fn a_region_inside_a_line_has_a_range_of_its_own_and_one_in_rust_is_read_too() {
+    let (dir, _) = repo();
+    let r = dir.path().canonicalize().unwrap();
+    fs::write(r.join("v.txt"), "1\n").unwrap();
+    let doc = r.join("V.md");
+    let text = "ü <!-- computed file src=v.txt name=a -->x<!-- /computed --> <!-- computed file src=v.txt name=b -->y<!-- /computed -->\n";
+    fs::write(&doc, text).unwrap();
+    let mut c = Client::start();
+    let published = open(&c, &doc, text);
+    let diags = published["diagnostics"].as_array().unwrap();
+    assert_eq!(diags.len(), 2, "{diags:?}");
+    assert_eq!(
+        diags[1]["range"],
+        json!({"start": {"line": 0, "character": 61}, "end": {"line": 0, "character": 119}})
+    );
+    let hover = c.request(
+        "textDocument/hover",
+        json!({"textDocument": {"uri": uri(&doc)}, "position": {"line": 0, "character": 70}}),
+    );
+    let md = hover["contents"]["value"].as_str().unwrap();
+    assert!(md.contains("region `b`"), "{md}");
+    let lib = r.join("src/lib.rs");
+    let rust = "// computed tree src=.\n// /computed\n";
+    fs::write(&lib, rust).unwrap();
+    let published = open(&c, &lib, rust);
+    let diags = published["diagnostics"].as_array().unwrap();
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    assert!(
+        diags[0]["message"]
+            .as_str()
+            .unwrap()
+            .starts_with("unrendered")
+    );
+    c.stop();
+}

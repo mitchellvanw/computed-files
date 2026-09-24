@@ -9,7 +9,9 @@
 //! conflicts stay conflicts. Each placeholder then takes the region's body
 //! and closer from the side that changed them, or, when both did, ours with
 //! both sums stripped: the region is unrendered, and the next `run`, the
-//! pre-commit hook, renders it from the merged inputs.
+//! pre-commit hook, renders it from the merged inputs. A region inside a
+//! line is merged as the prose around it is, so both sides changing it is
+//! a conflict like any other.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write as _;
@@ -63,6 +65,12 @@ fn skeleton(text: &str, syntax: Syntax) -> Option<Skeleton> {
     for segment in &parsed.segments {
         match segment {
             marker::Segment::Prose(p) => out.push_str(p),
+            // A region inside a line is merged as the prose around it is.
+            marker::Segment::Region(r) if r.column.is_some() => {
+                out.push_str(&r.raw_opener);
+                out.push_str(&r.body);
+                out.push_str(&r.raw_closer);
+            }
             marker::Segment::Region(r) => {
                 let base = r
                     .opener

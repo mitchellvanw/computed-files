@@ -146,6 +146,8 @@ impl Action {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RegionReport {
     pub line: usize,
+    /// The opener's column for a region inside a line; `None` otherwise.
+    pub column: Option<usize>,
     pub name: Option<String>,
     pub loader: String,
     pub state: State,
@@ -226,7 +228,9 @@ mod sum {
     /// the comment only when it is not `<!--`, so the sum of an unindented
     /// region in Markdown is what it always was. The comment is there
     /// because the body depends on it: its leader under `as=comment`, and
-    /// the default sink outside Markdown.
+    /// the default sink outside Markdown. ` inline` marks a region inside a
+    /// line, whose body is the bare text, so it never shares an input sum
+    /// with a region on lines of its own.
     pub fn input(region: &Region, format_constant: u32, snapshot: &[u8]) -> String {
         let opener = &region.opener;
         let mut h = Sha256::new();
@@ -237,6 +241,9 @@ mod sum {
         }
         if region.comment != Comment::HTML {
             line.push_str(&format!(" comment={:?}", region.comment.open));
+        }
+        if region.column.is_some() {
+            line.push_str(" inline");
         }
         h.update(format!("{line}\n").as_bytes());
         h.update(opener.canonical().as_bytes());
@@ -382,6 +389,7 @@ fn report(
 ) -> RegionReport {
     RegionReport {
         line: region.line,
+        column: region.column,
         name: region.opener.name.clone(),
         loader: region.opener.loader.clone(),
         state,
@@ -413,7 +421,12 @@ fn closer_terminator(region: &Region) -> &str {
 /// A sink's LF body as it sits in the file: each non-blank line carries the
 /// opener's indentation, so a region inside a list item stays inside it, and
 /// every line ends as the opener does.
+///
+/// An inline region's body is the text itself, and stays as it is.
 pub fn shape(region: &Region, body: &str) -> String {
+    if region.column.is_some() {
+        return body.to_string();
+    }
     let eol = eol(region);
     let mut out = String::with_capacity(body.len());
     for line in body.split_inclusive('\n') {
@@ -428,6 +441,9 @@ pub fn shape(region: &Region, body: &str) -> String {
 }
 
 fn region_text(region: &Region, opener_line: &str, body: &str, closer_line: &str) -> String {
+    if region.column.is_some() {
+        return format!("{opener_line}{body}{closer_line}");
+    }
     format!(
         "{indent}{opener_line}{eol}{body}{indent}{closer_line}{term}",
         indent = region.indent,
@@ -623,6 +639,15 @@ fn parses_back(
     })
 }
 
+/// The opener line the tool writes: with the suffix, except inside a line,
+/// where it would be noise in the middle of a sentence.
+fn opener_line(region: &Region) -> String {
+    match region.column {
+        Some(_) => marker::opener_line(&region.opener, region.comment),
+        None => marker::rendered_opener(&region.opener, region.comment),
+    }
+}
+
 fn clean(region: &Region, state: State) -> (String, RegionReport) {
     if region.sums.is_none() && region.body.is_empty() {
         return (
@@ -681,7 +706,7 @@ fn render(
     };
     let text = region_text(
         region,
-        &marker::rendered_opener(&region.opener, region.comment),
+        &opener_line(region),
         &body,
         &marker::rendered_closer(Some(&sums), region.comment),
     );

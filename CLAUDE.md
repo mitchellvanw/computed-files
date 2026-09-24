@@ -39,8 +39,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 ├── scripts
 │   ├── action
 │   ├── adr-index.sh
-│   ├── cli-commands.sh
-│   └── site-install.sh
+│   └── cli-commands.sh
 ├── src
 │   ├── adopt.rs
 │   ├── affected.rs
@@ -91,6 +90,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── guard.rs
     ├── history.rs
     ├── index.rs
+    ├── inline.rs
     ├── lsp.rs
     ├── max_lines.rs
     ├── merge.rs
@@ -111,7 +111,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── watch.rs
     └── why.rs
 ```
-<!-- /computed in=2000195b1a1851b20ab96703deeecab98ddd9b6ccc29d68777c669eb2281d67b out=62f061a1be3c5be3fbdabb17c2bb58c412f3f599cc0003b347d75417b474e03b -->
+<!-- /computed in=55664ff6519a22654fe825944843219c10cd6afa3cd14d7a797156b35d6050d1 out=049f2f30faf58fa970bdee128354cc1d440ce7b3103b697ca9d32480315473e2 -->
 
 ## Decisions
 

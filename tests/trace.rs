@@ -157,7 +157,7 @@ fn trace_needs_trust_and_speaks_json() {
     assert_eq!(stderr(&out), "");
     assert_eq!(
         String::from_utf8(out.stdout).unwrap(),
-        "{\"exit\":0,\"files\":[{\"path\":\"DOC.md\",\"error\":null,\"regions\":[{\"line\":6,\"name\":\"ok\",\"loader\":\"exec\",\"verdict\":\"complete\",\"reads\":[\"docs/adr/0001.md\"],\"undeclared\":[],\"unused\":[],\"suggestion\":\"docs/adr/0001.md\",\"rewritten\":false,\"message\":null}]}]}\n"
+        "{\"exit\":0,\"files\":[{\"path\":\"DOC.md\",\"error\":null,\"regions\":[{\"line\":6,\"column\":null,\"name\":\"ok\",\"loader\":\"exec\",\"verdict\":\"complete\",\"reads\":[\"docs/adr/0001.md\"],\"undeclared\":[],\"unused\":[],\"suggestion\":\"docs/adr/0001.md\",\"rewritten\":false,\"message\":null}]}]}\n"
     );
 }
 

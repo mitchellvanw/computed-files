@@ -583,7 +583,11 @@ impl Printer {
             entry.diff.clone_from(&outcome.diff);
         }
         for r in &outcome.regions {
-            match entry.regions.iter_mut().find(|e| e.line == r.line) {
+            match entry
+                .regions
+                .iter_mut()
+                .find(|e| (e.line, e.column) == (r.line, r.column))
+            {
                 Some(_) if r.action == Some(Action::Fresh) => {}
                 Some(e) => *e = r.clone(),
                 None => entry.regions.push(r.clone()),
@@ -683,7 +687,9 @@ fn settle(paths: &[PathBuf], job: &Job<'_>) -> Result<Settled> {
         if queue.is_empty() {
             break;
         }
-        if pass > files.len() {
+        // A template whose toc lists a heading with a region inside it
+        // reads itself, and takes a second pass of its own.
+        if pass > files.len() + 1 {
             for path in &queue {
                 printer.message(
                     path,

@@ -234,7 +234,7 @@ pub fn main(paths: &[PathBuf], json: bool) -> Result<u8, String> {
             out,
             "{}:{} {name:width$} {}",
             t.path.display(),
-            r.line,
+            r.place(),
             r.opener.loader
         )
         .unwrap();
