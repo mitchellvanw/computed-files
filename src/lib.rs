@@ -9,6 +9,7 @@
 pub mod adopt;
 pub mod affected;
 pub mod cli;
+pub mod dupes;
 pub mod fs;
 pub mod graph;
 pub mod loader;

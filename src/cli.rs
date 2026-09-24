@@ -123,6 +123,13 @@ enum Cmd {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Find verbatim blocks copied between Markdown files, outside regions.
+    Dupes {
+        paths: Vec<PathBuf>,
+        /// The fewest lines with text of their own a block needs to count.
+        #[arg(long, value_name = "N", default_value_t = 4)]
+        min_lines: usize,
+    },
 }
 
 /// Runs the command line and returns the exit code.
@@ -241,6 +248,10 @@ fn dispatch(cli: Cli) -> Result<u8> {
         } => {
             text_only(cli.format, "adopt")?;
             crate::adopt::main(file, only, *dry_run, cli.verbose).map_err(anyhow::Error::msg)
+        }
+        Cmd::Dupes { paths, min_lines } => {
+            crate::dupes::main(paths, *min_lines, cli.format == Format::Json)
+                .map_err(anyhow::Error::msg)
         }
     }
 }
