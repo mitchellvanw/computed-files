@@ -35,3 +35,7 @@ Three forces pull against each other. `check` has to stay offline and determinis
 - The binary carries an HTTP client, ureq with rustls, and no system TLS library.
 - The GitHub Action takes an `allow` input for `suggest`, passed as `--allow`. The runner keeps no allowlist.
 - `update` does not write into `computed.toml`. For a `use` region whose recipe is a remote, it reports the new pin for the recipe, as a tier-2 answer.
+
+## Amended
+
+Resolving `.` and `..` is not enough where servers disagree on what a path names. A path holding `//`, `\`, `%2f` or `%5c`, or a segment that starts with `..` and goes on, such as `..;`, is covered by no prefix, and a prefix holding one is refused. So is text after an IPv6 host's `]`, or a second `:port`. For such a url the `disallowed` message says no prefix can allow it, and why. A redirect's `Location` is absolute only when a scheme and `://` start it, so one with `://` only in its query resolves against the url it came from.

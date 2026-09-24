@@ -147,7 +147,7 @@ A stale region whose opener says `on-stale=warn` is reported `stale warn` by `ch
 - **`stale`**. Run `computed run`.
 - **`edited`**. The body no longer matches `out=`. `run` refuses the whole file, leaves every region in it untouched and exits 1. `computed run --dry-run` shows the diff `--force` would apply; keep the hand-written change somewhere if it was wanted, then `computed run --force` hands the body back to the tool.
 - **`untrusted`**. An exec or transcript region in a clone with no grant. Run `computed trust`, or pass `run --trust` for a single invocation.
-- **`disallowed`**. A remote region whose url is not on this machine's allowlist. `computed allow <prefix>` allows it; the message names the prefix. Pass `--allow <prefix>` for a single invocation.
+- **`disallowed`**. A remote region whose url is not on this machine's allowlist. `computed allow <prefix>` allows it; the message names the prefix, or says why no prefix can. Pass `--allow <prefix>` for a single invocation.
 - **A pin mismatch or a missing pin**. A remote document changed, or was never pinned. `computed update` fetches it and writes the new `sha256=`; review that one-line diff, then `computed run`.
 - **A loader failure**. The command's stderr prints under the region's line, the last good body and sums stay put, and the run exits 1. Repair the input and run again.
 - **`error`**. The message beneath names the cause: a glob or slice that matches nothing, a path outside the repository, a missing `computed.toml` recipe, a shallow clone under a `git` region. Fix the opener or the input it names.

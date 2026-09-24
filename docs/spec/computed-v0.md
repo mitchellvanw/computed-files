@@ -187,7 +187,7 @@ The snapshot entry for a projected read is `path#<canonical projection>` `\0` de
 - `timeout=` in seconds, at least 1, default 30. Expiry kills the process group and counts as failure. When the shell exits, the process group is killed too: the output is what the command printed before its shell was done, so a background job cannot hold the pipes open. A process that left the group and still holds them is a failure once the timeout has passed.
 - Environment: the inherited environment with `LC_ALL=C`, `LANGUAGE=` (empty) and `TZ=UTC` set unconditionally, plus `COMPUTED_FILE` (the template's absolute path, whatever directory the tool was invoked from), `COMPUTED_ROOT` (the repository root, unset outside one) and `COMPUTED_REGION` (name or `loader@line`). Nothing else is touched, `PATH` included. A command that wants a locale or zone sets it inside `cmd=` ([ADR 0009](../adr/0009-loader-text-is-normalised-and-exec-runs-pinned.md)).
 - stdout must be UTF-8; otherwise the loader failed.
-- The `sandbox` flag runs the command in an operating-system sandbox that allows reading only the declared input files and the system's program trees, listing directories inside the repository, writing only a fresh `TMPDIR` and `/dev/null`, and no network. An undeclared read fails the command, so the region fails. It needs `inputs=`, still needs trust, and where no sandbox is available the region is an `error`, never run unsandboxed. macOS uses `sandbox-exec`; Linux uses Landlock (5.13 or later) and a seccomp filter ([ADR 0020](../adr/0020-the-sandbox-enforces-inputs-and-does-not-replace-trust.md)).
+- The `sandbox` flag runs the command in an operating-system sandbox that allows reading only the declared input files, the system's program trees and the `PATH` directories outside the repository, listing directories inside the repository, writing only a fresh `TMPDIR` and `/dev/null`, and no network. A system or `PATH` directory that holds the repository, such as `/usr/src/app` in a container, is opened only around it: its programs still run, and the repository and the directories on the way to it stay closed. An undeclared read fails the command, so the region fails. It needs `inputs=`, still needs trust, and where no sandbox is available the region is an `error`, never run unsandboxed. macOS uses `sandbox-exec`; Linux uses Landlock (5.13 or later) and a seccomp filter ([ADR 0020](../adr/0020-the-sandbox-enforces-inputs-and-does-not-replace-trust.md)).
 
 ### Loader failure
 
@@ -214,7 +214,7 @@ A verbatim include that runs no command and needs no trust ([ADR 0015](../adr/00
 
 - `src=` required: comma-separated globs, expanded exactly as `inputs=` expands them. A glob that matches nothing is a hard error. `title=h1` (default) or `title=filename`.
 - Text: one line per file, `- [Title](path)`, in byte order of the path relative to the region root, the template left out. Space, `(`, `)`, `<`, `>` and `%` are percent-encoded in the link.
-- The title is the first level-one ATX heading of a `.md` or `.markdown` file, outside fences and front matter, else the file name.
+- The title is the first level-one ATX heading of a `.md` or `.markdown` file, outside fences and front matter, else the file name. In a template it is the first h1 of the prose, as `toc` reads it: a heading inside a region body does not count, and a region inside the heading's line is read as its body.
 - Snapshot: per file, `path` `\0` length `\0` title `\0`, so a body edit that keeps the title keeps the region fresh.
 
 ### `toc`
@@ -238,7 +238,7 @@ A verbatim include that runs no command and needs no trust ([ADR 0015](../adr/00
 - One query flag: `git log [src=PATH] [n=N]`, `git tags [n=N]`, `git contributors [src=PATH]`. `src=` defaults to `.`; `n=` to 10.
 - Text: a list. `log`: `- <7 hex> <subject>`, newest first. `tags`: `- <tag>`, newest first. `contributors`: `- <author>`, mailmapped, in order of first commit.
 - Snapshot: the full commit ids for `log`, the names in order for the others. The snapshot runs the same `git` query, so `check` runs `git` ([ADR 0018](../adr/0018-the-git-snapshot-runs-git-under-check.md)). Reading history runs no repository code and needs no trust.
-- `git` runs in the region root with the configuration keys that could start a program or reshape the output overridden, and the `GIT_*` variables that redirect it removed.
+- `git` runs in the region root with the configuration keys that could start a program or reshape the output overridden, and the `GIT_*` variables that redirect it removed. `why` and `merge --install` run `git` through the same pinned command, so inside a hook they still ask the repository the file is in.
 - Outside a repository, in a shallow clone, with no commits yet, or with `src=` missing from the working tree: a hard error.
 
 ### `remote`
@@ -266,7 +266,7 @@ src = "docs/adr/*.md"
 
 - The file holds `[recipe.NAME]` tables and a `[discover]` table, and nothing else. Discovery reads `[discover]` from the repository root's file only ([Discovery](#what-is-the-command-line)). A recipe has `loader`, the loader's attributes as strings or integers, flags as `true`, and any of `as`, `lang`, `on-stale` and `max-lines`. A recipe cannot use another recipe, and cannot set `name`.
 - A `use` opener takes `recipe=` and common attributes, which override the recipe's. A loader attribute or flag on it is a parse error.
-- Lookup: the nearest `computed.toml`, walking up from the region root to the repository root, never above it. Read for recipes only for a template with a `use` region. A bad `[discover]` table is an error in the file, so it makes those regions `error` too.
+- Lookup: the nearest `computed.toml`, walking up from the region root to the repository root, never above it. One that is a symlink out of the repository is an error, `… escapes <root>`, and is never read. Read for recipes only for a template with a `use` region. A bad `[discover]` table is an error in the file, so it makes those regions `error` too.
 - The expansion is the region's opener for every purpose. Paths resolve against the using template's region root. The input sum is over the expanded canonical opener, so a `use` region has the sums of the equivalent opener written out, and switching between the two is not a change. Editing the recipe is. An exec recipe needs trust.
 - `computed.toml` is in the read set. A missing file or recipe, or any error in the file, makes the regions that use it `error`; only those are skipped. The file shows the `use` opener as written.
 
@@ -360,8 +360,9 @@ A `remote` region fetches only under a url prefix on this machine's allowlist ([
 
 - **Store.** `remote.toml` beside `trust.toml`, never in the working tree. `computed allow PREFIX` records a prefix and prints its normal form; `computed allow` alone lists them; `computed disallow PREFIX` removes one.
 - **One shot.** `--allow PREFIX`, repeatable, on `run`, `run --dry-run`, `update`, `doctor` and `watch`, without writing the store. There is no environment variable. `check` never reads the allowlist.
-- **Matching.** Both sides are parsed. Scheme and host compare without case, a default port is dropped, `.`, `..` and `%2e` segments are resolved, and the path matches at a `/` boundary: `https://h/org/` covers `/org/x` but not `/org`, and `https://h/org` covers `/org` and `/org/x` but not `/orgs`. The fetched url's query and fragment are ignored. An entry with credentials, a query, a fragment or a wildcard host is refused, and a url with credentials is never allowed.
-- **Disallowed.** `run` skips the region as it skips untrusted exec: body kept, reported `disallowed` with the prefix to allow, exit 1.
+- **Matching.** Both sides are parsed. Scheme and host compare without case, a default port is dropped, `.`, `..` and `%2e` segments are resolved, and the path matches at a `/` boundary: `https://h/org/` covers `/org/x` but not `/org`, and `https://h/org` covers `/org` and `/org/x` but not `/orgs`. The fetched url's query and fragment are ignored. An entry with credentials, a query, a fragment or a wildcard host is refused, and a url with credentials is never allowed. A path that servers read differently is covered by no prefix, and a prefix holding one is refused: `//`, `\`, `%2f` or `%5c`, or a segment that starts with `..` and goes on, such as `..;`. So is text after an IPv6 host's `]`, or a second `:port`.
+- **Redirects.** Each `Location` is checked as the url was. It is absolute only when a scheme and `://` start it; one with `://` only in its query or fragment resolves against the url it came from.
+- **Disallowed.** `run` skips the region as it skips untrusted exec: body kept, reported `disallowed` with the prefix to allow, exit 1. When no prefix can cover the url, the message says so and why: "… is not on this machine's allowlist, and no prefix can allow it: <why>".
 
 ## What is the command line?
 
@@ -394,7 +395,7 @@ computed lsp
 
 A flag a command does not take is a usage error: `check --force`, `check --trust`, `clean --trust`. No `-C`, no stdin except where a command reads a hook's JSON or speaks a protocol, no `-`.
 
-**Discovery.** With no paths, walk the current directory with the same `ignore` settings as the tree loader, dotfiles included (so `.claude/` and `.github/` are covered, and `.git` never is), and read `.md` and `.markdown` files, and the files the `[discover]` table of the root's `computed.toml` adds. Symlinks found by the walk are skipped: the file they name is found in its own right. An explicit file is read whatever its extension, in the syntax its name selects; an explicit symlink is its target, resolved against the target's directory and written through, never replaced. Two paths to one file are processed once. A file with no marker is skipped whatever its encoding; a file with markers must be UTF-8. An explicit directory is walked. A file with no opener is skipped silently. A path that does not exist is a usage error. Files are processed in byte-order sorted path order. Every command that takes `[paths]` discovers this way.
+**Discovery.** With no paths, walk the current directory with the same `ignore` settings as the tree loader, dotfiles included (so `.claude/` and `.github/` are covered, and `.git` never is), and read `.md` and `.markdown` files, and the files the `[discover]` table of the root's `computed.toml` adds. Symlinks found by the walk are skipped: the file they name is found in its own right. An explicit file is read whatever its extension, in the syntax its name selects; an explicit symlink is its target, resolved against the target's directory and written through, never replaced. `update`, `guard` and the language server read a symlinked template the same way, so trust and relative paths are the target's. Two paths to one file are processed once. A file with no marker is skipped whatever its encoding; a file with markers must be UTF-8. An explicit directory is walked. A file with no opener is skipped silently. A path that does not exist is a usage error. Files are processed in byte-order sorted path order. Every command that takes `[paths]` discovers this way.
 
 Discovery reads code only when asked ([ADR 0026](../adr/0026-a-marker-is-a-comment-in-the-files-own-syntax.md)):
 
@@ -404,7 +405,7 @@ extensions = ["rs", "html"]
 names = ["Makefile"]
 ```
 
-The file read is the `computed.toml` at the repository root of each walked directory, or the walked directory itself outside a repository, and only its `[discover]` table, so a broken recipe does not break discovery. An extension may be written with a leading dot and compares without case. An extension or name with no comment syntax, a value that is not a list of strings, or another key is exit 2, and the message lists what the tool knows.
+The file read is the `computed.toml` at the repository root of each walked directory, or the walked directory itself outside a repository, and only its `[discover]` table, so a broken recipe does not break discovery. An extension may be written with a leading dot and compares without case. An extension or name with no comment syntax, a value that is not a list of strings, or another key is exit 2, and the message lists what the tool knows. A `computed.toml` that is a symlink out of the repository is exit 2 too, refused unread.
 
 **Exit codes.**
 
@@ -438,13 +439,13 @@ Fresh regions, and volatile regions under `check`, print only with `-v`. A regio
 
 ### `update`, `allow`, `disallow`
 
-`update` fetches every `remote` region's url under the allowlist and rewrites the opener's `sha256=` in place, inserting it after `url=` when there is none; the rest of the line is untouched. It renders nothing: the moved pin makes the region stale, and the next `run` fetches and renders it. A matching pin is `fresh` and silent. `--dry-run` prints the diff. Exit 0 when nothing changed, 1 when a pin was or would be written or a region was disallowed, 2 on a failed fetch. For a `use` region whose recipe is a remote, a moved pin is reported for `computed.toml`, tier 2, and not written. `allow` and `disallow` are in [Who may fetch a url?](#who-may-fetch-a-url).
+`update` fetches every `remote` region's url under the allowlist and rewrites the opener's `sha256=` in place, inserting it after `url=` when there is none; the rest of the line is untouched. It renders nothing: the moved pin makes the region stale, and the next `run` fetches and renders it. A matching pin is `fresh` and silent. `--dry-run` prints the diff. Exit 0 when nothing changed, 1 when a pin was or would be written or a region was disallowed, 2 on a failed fetch. For a `use` region whose recipe is a remote, a moved pin is reported for `computed.toml`, tier 2, and not written. A `use` region whose recipe does not expand is reported `error`, exit 2, since `update` cannot tell whether it is a remote. `allow` and `disallow` are in [Who may fetch a url?](#who-may-fetch-a-url).
 
 ### Is the output honest? `doctor` and `trace`
 
 `check` believes two things it cannot see: that a loader prints the same for the same inputs, and that `inputs=` names everything a command reads. These two commands test them. Both write nothing unless asked.
 
-- **`doctor`** renders every selected region twice, as `run --force` would: once normally, and once from a scratch working directory, under another umask, with each exec command restarted with a changed `HOME`, `TMPDIR`, `USER` and an extra variable. It reports each region `deterministic`, `nondeterministic` (with a short diff), `failed`, `untrusted`, `disallowed` or `error`, and flags a fresh region whose loader now prints something other than its body as moved, with `run --force` as the fix. Silent regions print with `-v`. Exit 1 on anything nondeterministic, moved, failed, untrusted or disallowed; 2 on an error.
+- **`doctor`** renders every selected region twice, as `run --force` would: once normally, and once from a scratch working directory, under another umask, with each exec command restarted with a changed `HOME`, `TMPDIR`, `USER` and an extra variable. A sandboxed region's changed `TMPDIR` is a directory inside the sandbox's own, the one place it may write. It reports each region `deterministic`, `nondeterministic` (with a short diff), `failed`, `untrusted`, `disallowed` or `error`, and flags a fresh region whose loader now prints something other than its body as moved, with `run --force` as the fix. Silent regions print with `-v`. Exit 1 on anything nondeterministic, moved, failed, untrusted or disallowed; 2 on an error.
 - **`trace`** runs each selected exec and transcript command under a file-access tracer and compares the repository files it read with what `inputs=` expands to. Verdicts: `complete`, `undeclared` (a false fresh waiting to happen), `unused` (a false stale), `undeclared+unused`, `volatile` (reads listed, not judged), `failed`, `untrusted`, `error`. It suggests an `inputs=` value, collapsing a directory's files to `dir/*.ext` when that glob selects exactly them, and `--write` puts the suggestion in the opener, which makes the region stale. Commands run unsandboxed. macOS uses `sandbox-exec`'s read reports, read back with `log show`; Linux uses `strace`; with no tracer the command exits 2 before touching a file ([ADR 0021](../adr/0021-trace-reads-the-macos-sandbox-reports.md)). Exit 1 on undeclared reads, failures, untrusted regions or a rewrite.
 
 ### Questions about regions
@@ -453,7 +454,7 @@ These run the snapshot step at most, never `load`, so they are safe on an unvett
 
 - **`affected PATHS...`** lists, on stdout, every region a path reaches: through its read set, a `tree` or `file` `src=` at or under the path, an `inputs=` glob that would match it, `git log` or `git contributors` history under it, `computed.toml` for a `use` region, or the template itself for `toc`. Paths need not exist, so a deleted or a new path is a fair question. Exit 0, or 2 when a template does not parse.
 - **`graph`** draws templates, their regions and their inputs as Mermaid (default), Graphviz (`--format dot`) or JSON. An input is drawn as the opener names it, a glob as one node. A region that reads another template points at it with a dashed `settles` edge.
-- **`why FILE`** explains a region's state from git history. `--line N` selects every region whose opener is on line N, inline ones included. For a stale region it finds the latest commit whose template holds the same `in=` and whose tree, laid down in a temporary directory, recomputes to it, then prints that commit and what changed since: the opener, the listing, each input `added`, `removed` or `changed` (with a diff under `-v`), and the commits that changed them. Exit 2 when no commit reproduces or the file is not in a repository; `why` is a query, and `check` is the gate.
+- **`why FILE`** explains a region's state from git history. `--line N` selects every region whose opener is on line N, inline ones included. For a stale region it finds the latest commit whose template holds the same `in=` and whose tree, laid down in a temporary directory, recomputes to it, then prints that commit and what changed since: the opener, the listing, each input `added`, `removed` or `changed` (with a diff under `-v`), and the commits that changed them. A stale `git` region is explained from the commit it was rendered in: its input is the repository's history, which no commit's tree holds, so `why` names that commit and says commits or tags made since changed it, exit 0. Exit 2 when no commit reproduces or the file is not in a repository; `why` is a query, and `check` is the gate.
 - **`stats`** counts every region's body lines, bytes and estimated tokens (bytes over four, marked `~`), and each file's computed share, on stdout. An inline region counts no lines and its body's bytes. No loader runs.
 - **`dupes`** finds verbatim blocks of at least `--min-lines` lines (default 4) copied between Markdown files outside regions, the body of an inline region left out as a region's is, and suggests for each copy the `file src=… section=…` or `lines=` region that would include the original. Other files discovery finds are skipped. Exit 1 when it finds any.
 
@@ -463,7 +464,7 @@ These run the snapshot step at most, never `load`, so they are safe on an unvett
 
 ### `merge`
 
-A git merge driver for templates ([ADR 0024](../adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md)). `computed merge BASE OURS THEIRS [PATH]` takes git's `%O %A %B %P` and writes the result to OURS. It merges the prose and openers line by line, with each region's body and closer held out. A region only one side changed takes that side; a region both sides changed differently takes ours' body under a closer with no sums, so it is unrendered and the next `run` renders it from the merged inputs. Exit 0 when no conflict is left, 1 when one is, 2 on an error. `computed merge --install` adds `*.md merge=computed` and `*.markdown merge=computed` to the root `.gitattributes` and sets the driver in this clone's git config. It reads each file in the syntax `%P` names, Markdown when git gives no path. A code file with regions needs its own line in `.gitattributes`, such as `*.rs merge=computed`; `--install` adds only the Markdown ones. Inline regions merge as prose, so both sides changing one is an ordinary conflict.
+A git merge driver for templates ([ADR 0024](../adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md)). `computed merge BASE OURS THEIRS [PATH]` takes git's `%O %A %B %P` and writes the result to OURS. It merges the prose and openers line by line, with each region's body and closer held out. A region only one side changed takes that side; a region both sides changed differently takes ours' body under a closer with no sums, so it is unrendered and the next `run` renders it from the merged inputs. Exit 0 when no conflict is left, 1 when one is, 2 on an error. `computed merge --install` adds `*.md merge=computed` and `*.markdown merge=computed` to the root `.gitattributes` and sets the driver in this clone's git config. A `.gitattributes` that is a symlink is refused, exit 2: git does not read one, and appending through it would write wherever it points. It reads each file in the syntax `%P` names, Markdown when git gives no path. A code file with regions needs its own line in `.gitattributes`, such as `*.rs merge=computed`; `--install` adds only the Markdown ones. Inline regions merge as prose, so both sides changing one is an ordinary conflict.
 
 ### `guard`
 
@@ -471,7 +472,7 @@ Whether an edit changes what the tool owns ([ADR 0025](../adr/0025-the-guard-ref
 
 - The syntax comes from the file's path. On an inline region's line, an edit to the prose around the region is allowed and an edit to its body is refused, named as `path:line:column`. An edit to the closer alone is reported as a body edit.
 - `guard FILE --proposed PATH` judges the text in PATH against FILE: exit 0 when allowed, 1 when a region is touched or the markers break, 2 on a usage error.
-- `guard --hook pre` reads a Claude Code PreToolUse hook's JSON on stdin, applies the `Edit`, `MultiEdit` or `Write` in memory, and answers `permissionDecision: deny` with a reason when the edit is refused. `guard --hook post` runs `check` on the edited file and returns any drift as `additionalContext`. Both always exit 0.
+- `guard --hook pre` reads a Claude Code PreToolUse hook's JSON on stdin, applies the `Edit`, `MultiEdit` or `Write` in memory, and answers `permissionDecision: deny` with a reason when the edit is refused. `guard --hook post` runs `check` on the edited file and returns any drift as `additionalContext`. Input that is not JSON, or not UTF-8, gets a `systemMessage`. Both always exit 0.
 
 ### `watch`
 
@@ -481,9 +482,9 @@ Whether an edit changes what the tool owns ([ADR 0025](../adr/0025-the-guard-ref
 
 A language server on stdin and stdout for any editor that speaks the protocol.
 
-- **Syntax** comes from the document's path, not its `languageId`, so a Rust or HTML document is read as the tool reads the file.
+- **Syntax** comes from the document's path, not its `languageId`, so a Rust or HTML document is read as the tool reads the file. A symlinked document is its target, for trust, relative paths and diagnostics.
 - **Diagnostics** are `check` of the unsaved buffer against inputs on disk, published on open, change and save, spanning opener to closer, or for an inline region the markers and body on their line, in UTF-16 columns. `stale` and `unrendered` are warnings; `edited`, `stale+edited` and `error` are errors; an exec region that is not fresh in an untrusted clone is information.
-- **Hover** anywhere in a region shows its loader, state, canonical opener, the `use` opener it expanded from, its read set and its sums.
+- **Hover** anywhere in a region shows its loader, state, canonical opener, the `use` opener it expanded from, its read set and its sums. `computed.toml` is in the read set only of a region that came from a recipe.
 - **Code lens** on each opener, `computed: <state> — Run`, runs the `computed.run` command. It renders the buffer as `run` would, under the trust store and the allowlist, and sends the result as a `workspace/applyEdit` rather than writing the file, so unsaved text is rendered as it stands and the change can be undone.
 
 ### Hooks
@@ -598,6 +599,10 @@ Each item waits on something dogfooding will show.
 - **The Linux sandbox** has run on aarch64 with Landlock ABI 9 only. It wants a CI run on x86_64 and an older kernel.
 - **Markdown and HTML share a comment.** Both write `<!--`, so the loader line does not tell them apart, and a `tree`, `symbol` or `transcript` region moved from a `.md` file to an `.html` one keeps its sums and its fenced body: `check` calls it fresh, and only `run --force` rewrites it raw. Folding the syntax into the sum would move every HTML region's sum once.
 - **Code spans in paragraphs** are approximated: indented code blocks, setext headings and HTML blocks do not end a paragraph for the span scan.
+- **The guard trusts a replaced region.** An edit that changes an opener, rewrites the body and writes new closer sums reads as one region removed and another added, which the guard allows. `run` then refuses the region as edited. Closing this needs a rule for telling a replaced region from an edited one.
+- **Projections read region bodies.** `section=` finds a heading, and `anchor=` an anchor line, inside a region body of the file they read, so a slice can come from text the tool wrote. A slice that takes in a marker is still refused.
+- **The sandbox allows a projected input whole.** `path#lines=…` opens the whole file, so a read outside the slice is not caught. The sandbox allows files, not parts of them.
+- **`clean` reports a stale region `fresh`.** It takes no snapshot and judges only the body, so its state column says nothing about the inputs.
 - **A second dogfood repository**, if one is named.
 
 Out of scope, and returning only if the destination is redrawn: copy layout, symlink layouts, block comments that span lines (`/* */` across lines, Python docstrings), image sinks, nesting, regions that read other regions, Windows, Elixir.
@@ -624,8 +629,8 @@ Out of scope, and returning only if the destination is redrawn: copy layout, sym
 | [0016](../adr/0016-a-projection-snapshots-only-the-part-it-reads.md) | A projection snapshots only the part it reads. |
 | [0017](../adr/0017-trust-gates-running-repository-code-and-nothing-else.md) | Trust gates running repository code, and nothing else. |
 | [0018](../adr/0018-the-git-snapshot-runs-git-under-check.md) | The `git` loader's snapshot runs `git` under `check`. |
-| [0019](../adr/0019-remote-regions-are-pinned-and-allowlisted.md) | Remote regions are pinned by SHA-256 and fetch only under a per-machine allowlist. |
-| [0020](../adr/0020-the-sandbox-enforces-inputs-and-does-not-replace-trust.md) | The sandbox enforces `inputs=` and does not replace trust. |
+| [0019](../adr/0019-remote-regions-are-pinned-and-allowlisted.md) | Remote regions are pinned by SHA-256 and fetch only under a per-machine allowlist. Amended: paths servers read differently are covered by no prefix. |
+| [0020](../adr/0020-the-sandbox-enforces-inputs-and-does-not-replace-trust.md) | The sandbox enforces `inputs=` and does not replace trust. Amended: a directory that holds the repository opens only around it. |
 | [0021](../adr/0021-trace-reads-the-macos-sandbox-reports.md) | `trace` reads the macOS sandbox's own reports. |
 | [0022](../adr/0022-recipes-in-computed-toml.md) | Recipes live in `computed.toml`, the first configuration file. Amended by 0026: `[discover]`. |
 | [0023](../adr/0023-on-stale-warn-softens-only-staleness.md) | `on-stale=warn` softens only staleness. |

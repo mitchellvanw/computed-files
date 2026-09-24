@@ -30,3 +30,7 @@ A sandbox that denies undeclared reads could serve two purposes. It could make `
 - Tools that read from `$HOME` fail inside the sandbox: `~/.gitconfig`, toolchains under `~/.rustup`, binaries under `~/.cargo/bin` that resolve elsewhere. So do tools that need a Mach service on macOS or any socket on Linux, and `PATH` directories inside the repository, such as `node_modules/.bin`.
 - The sandbox is applied last, after `doctor`'s environment wrap, so no wrapper can remove it. `doctor` runs sandboxed regions inside it. `trace` runs them outside it, because the reads it looks for are the ones the sandbox refuses.
 - The Linux path was verified on aarch64 with Landlock ABI 9 only. x86_64 and older kernels are untested.
+
+## Amended
+
+A system or `PATH` directory that holds the repository, such as a checkout in `/usr/src/app` or a `PATH` entry above it, opened the whole repository to every read. Such a directory is now opened only around the repository: its other entries stay readable, and the repository and the directories on the way to it stay closed. `doctor`'s changed `TMPDIR` for a sandboxed region is a directory inside the sandbox's own, so the perturbation does not itself fail the command.
