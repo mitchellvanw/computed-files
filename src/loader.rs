@@ -26,6 +26,7 @@ pub fn format_constant(loader: &str) -> u32 {
         "tree" => 1,
         "exec" => 1,
         "file" => 1,
+        "symbol" => 1,
         other => panic!("unknown loader {other:?} reached the format table"),
     }
 }
@@ -83,7 +84,7 @@ impl Ctx {
 
     /// Resolves a marker path against the region root and checks it exists
     /// and does not escape the bound.
-    fn resolve(&self, what: &str, rel: &Path) -> Result<PathBuf, LoadError> {
+    pub(crate) fn resolve(&self, what: &str, rel: &Path) -> Result<PathBuf, LoadError> {
         let joined = self.region_root.join(rel);
         let canon = joined
             .canonicalize()
@@ -131,6 +132,7 @@ pub enum Loader {
     Tree(TreeArgs),
     Exec(ExecArgs),
     File(FileArgs),
+    Symbol(crate::symbol::SymbolArgs),
 }
 
 impl Loader {
@@ -181,6 +183,9 @@ impl Loader {
             "file" => Ok(Loader::File(FileArgs {
                 src: PathBuf::from(opener.attr("src").ok_or_else(|| hard("file needs src="))?),
             })),
+            "symbol" => Ok(Loader::Symbol(crate::symbol::SymbolArgs::from_opener(
+                opener,
+            )?)),
             other => Err(hard(format!("unknown loader {other:?}"))),
         }
     }
@@ -190,6 +195,7 @@ impl Loader {
             Loader::Tree(_) => format_constant("tree"),
             Loader::Exec(_) => format_constant("exec"),
             Loader::File(_) => format_constant("file"),
+            Loader::Symbol(_) => format_constant("symbol"),
         }
     }
 }
@@ -287,6 +293,9 @@ impl Loaders for Production {
                 ..
             }) => Ok(Some(inputs_snapshot(&self.ctx, &globs, &mut self.read)?)),
             Loader::File(args) => Ok(Some(self.file(&args)?.snapshot)),
+            Loader::Symbol(args) => Ok(Some(
+                crate::symbol::load(&self.ctx, &args, &mut self.read)?.snapshot,
+            )),
         }
     }
 
@@ -302,6 +311,7 @@ impl Loaders for Production {
                 Ok(Loaded { text, snapshot })
             }
             Loader::File(args) => self.file(&args),
+            Loader::Symbol(args) => crate::symbol::load(&self.ctx, &args, &mut self.read),
         }
     }
 }
@@ -608,7 +618,7 @@ fn glob_prefix(glob: &str) -> PathBuf {
 
 /// A marker path as the glob spells it, `.` components dropped, so a
 /// symlinked directory keeps the name the glob matches against.
-fn lexical(path: &Path) -> PathBuf {
+pub(crate) fn lexical(path: &Path) -> PathBuf {
     path.components()
         .filter(|c| !matches!(c, Component::CurDir))
         .collect()
@@ -688,7 +698,7 @@ fn content_snapshot(
 }
 
 /// One snapshot entry: `path NUL length NUL content NUL`.
-fn push_entry(out: &mut Vec<u8>, rel: &[u8], content: &[u8]) {
+pub(crate) fn push_entry(out: &mut Vec<u8>, rel: &[u8], content: &[u8]) {
     out.extend_from_slice(rel);
     out.push(0);
     out.extend_from_slice(content.len().to_string().as_bytes());

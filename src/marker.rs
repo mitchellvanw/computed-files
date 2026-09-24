@@ -201,6 +201,12 @@ const GRAMMAR: &[LoaderGrammar] = &[
         flags: &[],
         sink: Sink::Raw,
     },
+    LoaderGrammar {
+        name: "symbol",
+        attrs: &["src", "item", "part"],
+        flags: &[],
+        sink: Sink::Fence,
+    },
 ];
 
 const COMMON_ATTRS: &[&str] = &["name", "as", "lang"];
@@ -635,6 +641,13 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
         }
     }
     debug_assert!(COMMON_ATTRS.iter().all(|c| !grammar.attrs.contains(c)));
+    let (default_sink, default_lang) = defaults(&loader, &attrs);
+    if !seen.contains(&"as") {
+        sink = default_sink.unwrap_or(sink);
+    }
+    if !seen.contains(&"lang") {
+        lang = default_lang.to_string();
+    }
     let opener = Opener {
         loader,
         flags,
@@ -646,6 +659,23 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
     };
     validate(line, &opener)?;
     Ok(opener)
+}
+
+/// The sink and language a loader defaults to when its choice depends on
+/// its attributes: `symbol` fences code in its source's language and shows
+/// a doc comment as Markdown.
+fn defaults(loader: &str, attrs: &[(String, String)]) -> (Option<Sink>, &'static str) {
+    let attr = |key: &str| {
+        attrs
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+    };
+    match loader {
+        "symbol" if attr("part") == Some("doc") => (Some(Sink::Raw), ""),
+        "symbol" => (None, attr("src").map_or("", crate::symbol::fence_lang)),
+        _ => (None, ""),
+    }
 }
 
 /// The loader-specific rules the grammar owns: required attributes, numeric
@@ -692,6 +722,7 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
             None => Err(error(line, "file needs src=")),
             Some(_) => Ok(()),
         },
+        "symbol" => crate::symbol::validate(opener).map_err(|m| error(line, m)),
         _ => Ok(()),
     }
 }
