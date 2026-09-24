@@ -49,6 +49,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── marker.rs
 │   ├── render.rs
 │   ├── report.rs
+│   ├── sandbox.rs
 │   ├── sink.rs
 │   ├── trace.rs
 │   └── trust.rs
@@ -57,9 +58,10 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── doctor.rs
     ├── fixtures
     ├── render.rs
+    ├── sandbox.rs
     └── trace.rs
 ```
-<!-- /computed in=1623cb096fe670bf0e3073e74e129d03878d848ad4b61b8d1fd52147e382c996 out=3d4340e22f60d5a6f10c53fcefc7d6a99908b9c41d7bef1e97f3298ad12e342a -->
+<!-- /computed in=fc00e35e0f63957037e048694fe7c9e23c3b397a59fe7c7d80e88852c9363fbe out=187a1bf051a4750c5b59b7ea38c290a7976e6c9c263d25d16dde18ae0664535b -->
 
 ## Decisions
 

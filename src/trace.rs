@@ -165,6 +165,11 @@ pub fn examine(
         .name
         .clone()
         .unwrap_or_else(|| format!("exec@{}", region.line));
+    // Unsandboxed: the reads trace looks for are the ones a sandbox refuses.
+    let args = ExecArgs {
+        sandbox: false,
+        ..args
+    };
     let traced = tracer.trace(ctx, &args, &name)?;
     match traced.text {
         Ok(_) => {}

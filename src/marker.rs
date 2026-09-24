@@ -211,7 +211,7 @@ const GRAMMAR: &[LoaderGrammar] = &[
     LoaderGrammar {
         name: "exec",
         attrs: &["cmd", "inputs", "timeout"],
-        flags: &["volatile"],
+        flags: &["volatile", "sandbox"],
         sink: Sink::Raw,
     },
     LoaderGrammar {
@@ -701,6 +701,12 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
                     format!("inputs={inputs}: an entry is empty; remove the stray comma"),
                 ));
             }
+            if opener.flag("sandbox") && opener.flag("volatile") {
+                return Err(error(
+                    line,
+                    "sandbox needs inputs=: the sandbox allows reading only the declared inputs",
+                ));
+            }
             whole_number("timeout")?;
             if opener.attr("timeout").and_then(|t| t.parse::<u64>().ok()) == Some(0) {
                 return Err(error(line, "timeout=0: expected at least 1 second"));
@@ -850,6 +856,19 @@ mod tests {
             "<!-- computed tree src=. all name=x -->"
         );
         assert_eq!(r.opener.flags, vec!["all".to_string()]);
+    }
+
+    #[test]
+    fn sandbox_is_an_exec_flag_that_needs_inputs() {
+        let f =
+            parse("<!-- computed exec cmd=x inputs=a sandbox -->\n<!-- /computed -->\n").unwrap();
+        assert!(region(&f, 0).opener.flag("sandbox"));
+        assert!(region(&f, 0).opener.canonical().contains(" sandbox "));
+        let e = err("x\n<!-- computed exec cmd=x volatile sandbox -->\n<!-- /computed -->\n");
+        assert_eq!(e.line, 2);
+        assert!(e.message.contains("sandbox needs inputs="), "{}", e.message);
+        let e = err("<!-- computed tree sandbox -->\n<!-- /computed -->\n");
+        assert!(e.message.contains("unknown flag"), "{}", e.message);
     }
 
     #[test]

@@ -44,6 +44,7 @@ use crate::fs::{self, Ignores, WalkOpts};
 use crate::launch::Wrap;
 use crate::marker::{self, Opener, Region};
 use crate::render::Loaders;
+use crate::sandbox::Sandbox;
 
 /// Per-file context every marker path is resolved against.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,6 +125,8 @@ pub struct ExecArgs {
     /// Comma-separated globs, or `None` when volatile.
     pub inputs: Option<Vec<String>>,
     pub timeout: Duration,
+    /// Run inside a sandbox that allows reading only the declared inputs.
+    pub sandbox: bool,
 }
 
 /// The closed set of loaders, built from an opener.
@@ -173,10 +176,14 @@ impl Loader {
                         hard(format!("timeout={t}: expected seconds as a whole number"))
                     })?,
                 };
+                if opener.flag("sandbox") && inputs.is_none() {
+                    return Err(hard("sandbox needs inputs="));
+                }
                 Ok(Loader::Exec(ExecArgs {
                     cmd,
                     inputs,
                     timeout: Duration::from_secs(timeout),
+                    sandbox: opener.flag("sandbox"),
                 }))
             }
             "file" => Ok(Loader::File(FileArgs {
@@ -723,7 +730,8 @@ fn push_entry(out: &mut Vec<u8>, rel: &[u8], content: &[u8]) {
 /// the command printed before its shell was done, and a background job it
 /// left behind cannot hold the pipes open. A process that left the group
 /// and still holds them is a failure once the timeout has passed. `wrap`
-/// may put a tracer or another environment around the shell.
+/// may put a tracer or another environment around the shell; the sandbox,
+/// when the region asks for one, goes around the result.
 pub fn exec(
     ctx: &Ctx,
     args: &ExecArgs,
@@ -750,6 +758,13 @@ pub fn exec(
     };
     if let Some(wrap) = wrap {
         command = wrap(command)?;
+    }
+    let sandbox = match (&args.inputs, args.sandbox) {
+        (Some(globs), true) => Some(Sandbox::new(ctx, &input_files(ctx, globs)?)?),
+        _ => None,
+    };
+    if let Some(sandbox) = &sandbox {
+        command = sandbox.apply(command)?;
     }
     command
         .stdin(Stdio::null())
