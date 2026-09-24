@@ -9,8 +9,10 @@
 pub mod cli;
 pub mod config;
 pub mod fs;
+pub mod guard;
 pub mod index;
 pub mod loader;
+pub mod lsp;
 pub mod marker;
 pub mod project;
 pub mod render;
@@ -21,3 +23,4 @@ pub mod table;
 pub mod toc;
 pub mod truncate;
 pub mod trust;
+pub mod watch;

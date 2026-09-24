@@ -28,6 +28,9 @@ csv = "1.4.0"
 globset = "0.4.20"
 ignore = "0.4.33"
 libc = "0.2.189"
+lsp-server = "0.10"
+lsp-types = "0.97"
+notify = "8.2.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.151", features = ["preserve_order"] }
 sha2 = "0.11.0"

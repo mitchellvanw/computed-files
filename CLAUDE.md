@@ -21,7 +21,9 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 ├── Cargo.toml
 ├── LICENSE-MIT
 ├── README.md
+├── action.yml
 ├── claude-code-plugin
+│   ├── hooks
 │   └── skills
 ├── docs
 │   ├── adr
@@ -35,6 +37,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── computed-markdown.prototype.html
 │   └── hand-edit.prototype.html
 ├── scripts
+│   ├── action
 │   ├── adr-index.sh
 │   ├── cli-commands.sh
 │   └── site-install.sh
@@ -42,9 +45,11 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── cli.rs
 │   ├── config.rs
 │   ├── fs.rs
+│   ├── guard.rs
 │   ├── index.rs
 │   ├── lib.rs
 │   ├── loader.rs
+│   ├── lsp.rs
 │   ├── main.rs
 │   ├── marker.rs
 │   ├── project.rs
@@ -55,12 +60,15 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── table.rs
 │   ├── toc.rs
 │   ├── truncate.rs
-│   └── trust.rs
+│   ├── trust.rs
+│   └── watch.rs
 └── tests
     ├── cli.rs
     ├── file_slice.rs
     ├── fixtures
+    ├── guard.rs
     ├── index.rs
+    ├── lsp.rs
     ├── max_lines.rs
     ├── on_stale.rs
     ├── projected_inputs.rs
@@ -70,9 +78,10 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── stats.rs
     ├── table.rs
     ├── toc.rs
-    └── value.rs
+    ├── value.rs
+    └── watch.rs
 ```
-<!-- /computed in=14410064f03d3628479a6048042c0df13ee8830e0924a7a4465fb5e474c62a66 out=99c256b99ef146195e345da33eb5bec7a556ecce2b6160ecac8e283e243b61fc -->
+<!-- /computed in=8b2818e0c5d2c262d14a542a3b8d4ad3f65cfbaf298ca2ddbae003d78803f10b out=1905d5494615b8dcd6f293c04c05b22322759daff45ecd97e0ffe5ef0a15542a -->
 
 ## Decisions
 
