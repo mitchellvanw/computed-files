@@ -1186,6 +1186,11 @@ pub(crate) fn shell(
         Some(root) => command.env("COMPUTED_ROOT", root),
         None => command.env_remove("COMPUTED_ROOT"),
     };
+    if let Some(sandbox) = sandbox {
+        // Set before the wrap, so a wrap that moves `TMPDIR` can see where
+        // the sandbox lets the command write.
+        command.env("TMPDIR", sandbox.tmp());
+    }
     if let Some(wrap) = wrap {
         command = wrap(command)?;
     }

@@ -226,6 +226,16 @@ fn doctor_runs_a_sandboxed_region_inside_the_sandbox() {
     let repo = Repo::new(&region("cat secret.txt"));
     let out = repo.cmd(&["doctor", "--trust"]).output().unwrap();
     assert!(stderr(&out).contains("r exec failed"), "{}", stderr(&out));
+
+    // The perturbed run's TMPDIR is one the sandbox lets it write.
+    let repo = Repo::new(&region("echo x > $TMPDIR/f && cat $TMPDIR/f"));
+    let out = repo.cmd(&["-v", "doctor", "--trust"]).output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("r exec deterministic"),
+        "{}",
+        stderr(&out)
+    );
 }
 
 #[test]

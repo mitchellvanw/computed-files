@@ -170,6 +170,11 @@ impl Sandbox {
         Ok(self)
     }
 
+    /// The temporary directory the command may write to, its `TMPDIR`.
+    pub fn tmp(&self) -> &Path {
+        &self.allowance.tmp
+    }
+
     /// The command, run inside the sandbox with `TMPDIR` set to its
     /// temporary directory.
     pub fn apply(&self, command: Command) -> Result<Command, LoadError> {
