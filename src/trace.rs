@@ -607,7 +607,7 @@ impl Tracer for Seatbelt {
         let root = ctx.bound().map_err(|e| match e {
             LoadError::Hard(m) | LoadError::Failed { stderr: m } | LoadError::NotAllowed(m) => m,
         })?;
-        let profile = reporting(&format!("(subpath {})", sbpl_string(&root)));
+        let profile = reporting(&format!("(subpath {})", crate::sandbox::sbpl(&root)));
         let started = Instant::now();
         let first = Sentinel::read()?;
         let wrap =
@@ -679,7 +679,7 @@ impl Sentinel {
             .path()
             .canonicalize()
             .map_err(|e| format!("trace sentinel: {e}"))?;
-        let profile = reporting(&format!("(literal {})", sbpl_string(&path)));
+        let profile = reporting(&format!("(literal {})", crate::sandbox::sbpl(&path)));
         Command::new(SANDBOX_EXEC)
             .args(["-p", &profile, "/bin/cat"])
             .arg(&path)
@@ -703,15 +703,9 @@ fn sandbox_reads(log: &str) -> Vec<PathBuf> {
         .collect()
 }
 
-/// A string literal in a sandbox profile.
-fn sbpl_string(p: &Path) -> String {
-    let s = p.to_string_lossy();
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
 /// A string literal in a `log` predicate.
 fn predicate_string(p: &Path) -> String {
-    sbpl_string(p)
+    crate::sandbox::sbpl(p)
 }
 
 /// What one invocation of `trace` asks for.

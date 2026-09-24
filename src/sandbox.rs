@@ -180,8 +180,8 @@ impl Sandbox {
 }
 
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
-/// A string literal in a sandbox profile.
-fn sbpl(p: &Path) -> String {
+/// A string literal in a sandbox profile, or in a `log` predicate.
+pub(crate) fn sbpl(p: &Path) -> String {
     let s = p.to_string_lossy();
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
