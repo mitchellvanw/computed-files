@@ -28,6 +28,7 @@ pub fn format_constant(loader: &str) -> u32 {
         "file" => 1,
         "value" => 1,
         "index" => 1,
+        "toc" => 1,
         other => panic!("unknown loader {other:?} reached the format table"),
     }
 }
@@ -47,6 +48,7 @@ use crate::index::{self, Title};
 use crate::marker::{self, Opener, Region};
 use crate::project::{self, Projection};
 use crate::render::Loaders;
+use crate::toc;
 
 /// Per-file context every marker path is resolved against.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,6 +139,13 @@ pub struct IndexArgs {
     pub title: Title,
 }
 
+/// The heading levels a toc lists, inclusive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TocArgs {
+    pub min: usize,
+    pub max: usize,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecArgs {
     pub cmd: String,
@@ -153,6 +162,7 @@ pub enum Loader {
     File(FileArgs),
     Value(ValueArgs),
     Index(IndexArgs),
+    Toc(TocArgs),
 }
 
 impl Loader {
@@ -226,6 +236,11 @@ impl Loader {
                     title,
                 }))
             }
+            "toc" => {
+                let (min, max) =
+                    toc::levels(opener.attr("min"), opener.attr("max")).map_err(hard)?;
+                Ok(Loader::Toc(TocArgs { min, max }))
+            }
             other => Err(hard(format!("unknown loader {other:?}"))),
         }
     }
@@ -237,6 +252,7 @@ impl Loader {
             Loader::File(_) => format_constant("file"),
             Loader::Value(_) => format_constant("value"),
             Loader::Index(_) => format_constant("index"),
+            Loader::Toc(_) => format_constant("toc"),
         }
     }
 }
@@ -374,6 +390,17 @@ impl Production {
         Ok(Loaded { text, snapshot })
     }
 
+    /// The `toc` loader: the headings of the template's own prose. The one
+    /// loader that reads its template; it does not record it as read, since
+    /// the only write to the template in a run is the run's own, which
+    /// leaves the prose, and so the toc, as it was.
+    fn toc(&mut self, args: &TocArgs) -> Result<Loaded, LoadError> {
+        let template = std::fs::read_to_string(&self.ctx.template)
+            .map_err(|e| hard(format!("{}: {e}", self.ctx.template.display())))?;
+        let (text, snapshot) = toc::toc(&template, args.min, args.max).map_err(hard)?;
+        Ok(Loaded { text, snapshot })
+    }
+
     fn region_name(&self, region: &Region) -> String {
         region
             .opener
@@ -395,6 +422,7 @@ impl Loaders for Production {
             Loader::File(args) => Ok(Some(self.file(&args)?.snapshot)),
             Loader::Value(args) => Ok(Some(self.value(&args)?.snapshot)),
             Loader::Index(args) => Ok(Some(self.index(&args)?.snapshot)),
+            Loader::Toc(args) => Ok(Some(self.toc(&args)?.snapshot)),
         }
     }
 
@@ -412,6 +440,7 @@ impl Loaders for Production {
             Loader::File(args) => self.file(&args),
             Loader::Value(args) => self.value(&args),
             Loader::Index(args) => self.index(&args),
+            Loader::Toc(args) => self.toc(&args),
         }
     }
 }

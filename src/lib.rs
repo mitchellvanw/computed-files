@@ -15,4 +15,5 @@ pub mod project;
 pub mod render;
 pub mod report;
 pub mod sink;
+pub mod toc;
 pub mod trust;

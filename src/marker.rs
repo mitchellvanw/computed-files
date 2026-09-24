@@ -213,6 +213,12 @@ const GRAMMAR: &[LoaderGrammar] = &[
         flags: &[],
         sink: Sink::Raw,
     },
+    LoaderGrammar {
+        name: "toc",
+        attrs: &["min", "max"],
+        flags: &[],
+        sink: Sink::Raw,
+    },
 ];
 
 const COMMON_ATTRS: &[&str] = &["name", "as", "lang"];
@@ -744,6 +750,9 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
                 _ => Ok(()),
             }
         }
+        "toc" => crate::toc::levels(opener.attr("min"), opener.attr("max"))
+            .map(|_| ())
+            .map_err(|e| error(line, e)),
         _ => Ok(()),
     }
 }

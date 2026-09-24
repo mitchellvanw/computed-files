@@ -50,6 +50,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── render.rs
 │   ├── report.rs
 │   ├── sink.rs
+│   ├── toc.rs
 │   └── trust.rs
 └── tests
     ├── cli.rs
@@ -58,9 +59,10 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── index.rs
     ├── render.rs
     ├── sandbox
+    ├── toc.rs
     └── value.rs
 ```
-<!-- /computed in=fad9703b69ea514877697ba2922e3bdf4feb33039003fc5ea8ca8f1308d0f750 out=eda5e1356305be53863db848abbc77f6a78cbbc7a86be0148d7fa828c73e77d0 -->
+<!-- /computed in=cfe27da84944e55361cf98884c7a7ab4ceb11ce4886a4c13b2142658eefe63b1 out=53a2043d61913c679bf50e2ac6ececb2a4dc0dfe4dc54a8f784ba8b7d298c812 -->
 
 ## Decisions
 
