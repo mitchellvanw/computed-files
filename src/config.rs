@@ -3,6 +3,8 @@
 //! opener the recipe stands for. The expansion is an opener like any other:
 //! its paths resolve against the template's region root, its canonical form
 //! goes into the input sum, and an exec recipe needs trust as exec does.
+//! The file may also hold a `[discover]` table: the code files, by
+//! extension or name, that discovery reads beside Markdown ([`Discover`]).
 //!
 //! ```toml
 //! [recipe.adrs]
