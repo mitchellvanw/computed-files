@@ -47,6 +47,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── guard.rs
 │   ├── lib.rs
 │   ├── loader.rs
+│   ├── lsp.rs
 │   ├── main.rs
 │   ├── marker.rs
 │   ├── render.rs
@@ -58,10 +59,11 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── cli.rs
     ├── fixtures
     ├── guard.rs
+    ├── lsp.rs
     ├── render.rs
     └── watch.rs
 ```
-<!-- /computed in=b26a2041be10638d936e89f6fb1f5b5f65452db3ebca6b561eecf09eaffd17f3 out=bd05de917c2f130d07c6d96ba20ab272258453fd8be2748920af9d16e5326d79 -->
+<!-- /computed in=d70a4c04499b8d1970def279ffc341c62b2a03a740c729db09af80a7c979bbdc out=9da2a05ff3d6915e604fa0f4c2b7627c189efd335de6d1e4b6d4ba816763d4fd -->
 
 ## Decisions
 

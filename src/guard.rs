@@ -74,7 +74,7 @@ fn regions(file: &File) -> Vec<&Region> {
 }
 
 /// The opener's tokens, as the canonical form spells them.
-fn source(region: &Region) -> String {
+pub fn source(region: &Region) -> String {
     let c = region.opener.canonical();
     c.trim_start_matches("<!-- computed ")
         .trim_end_matches(" -->")

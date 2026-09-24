@@ -10,6 +10,7 @@ pub mod cli;
 pub mod fs;
 pub mod guard;
 pub mod loader;
+pub mod lsp;
 pub mod marker;
 pub mod render;
 pub mod report;

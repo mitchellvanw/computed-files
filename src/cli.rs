@@ -98,6 +98,8 @@ enum Cmd {
         #[arg(long)]
         trust: bool,
     },
+    /// Serve the language server protocol on stdin and stdout.
+    Lsp,
 }
 
 /// Runs the command line and returns the exit code.
@@ -201,6 +203,7 @@ fn dispatch(cli: Cli) -> Result<u8> {
             };
             crate::watch::watch(paths, cli.format == Format::Text, pass).map_err(anyhow::Error::msg)
         }
+        Cmd::Lsp => crate::lsp::main().map_err(anyhow::Error::msg),
     }
 }
 
