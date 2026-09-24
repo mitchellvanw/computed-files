@@ -7,6 +7,8 @@
 
 use std::fmt;
 
+use crate::table::TableFrom;
+
 /// A parsed template: prose and regions in file order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct File {
@@ -50,6 +52,8 @@ pub struct Sums {
 pub enum Sink {
     Raw,
     Fence,
+    /// `as=table`, with what the text is written in.
+    Table(TableFrom),
 }
 
 impl Sink {
@@ -57,13 +61,15 @@ impl Sink {
         match s {
             "raw" => Some(Sink::Raw),
             "fence" => Some(Sink::Fence),
+            "table" => Some(Sink::Table(TableFrom::Delimited(b','))),
             _ => None,
         }
     }
 }
 
 /// The parsed opener. `attrs` holds the loader's own attributes in the order
-/// written; the common attributes `name=`, `as=` and `lang=` are lifted out.
+/// written; the common attributes `name=`, `as=` and `lang=` are lifted out,
+/// and so are `delim=` and `from=`, which shape `as=table` into `sink`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Opener {
     pub loader: String,
@@ -197,7 +203,25 @@ const GRAMMAR: &[LoaderGrammar] = &[
     },
     LoaderGrammar {
         name: "file",
-        attrs: &["src"],
+        attrs: &["src", "lines", "section", "anchor"],
+        flags: &[],
+        sink: Sink::Raw,
+    },
+    LoaderGrammar {
+        name: "value",
+        attrs: &["src", "key"],
+        flags: &[],
+        sink: Sink::Raw,
+    },
+    LoaderGrammar {
+        name: "index",
+        attrs: &["src", "title"],
+        flags: &[],
+        sink: Sink::Raw,
+    },
+    LoaderGrammar {
+        name: "toc",
+        attrs: &["min", "max"],
         flags: &[],
         sink: Sink::Raw,
     },
@@ -342,6 +366,12 @@ fn fenced_lines(lines: &[Line<'_>]) -> Vec<bool> {
         }
     }
     fenced
+}
+
+/// Which lines of `text`, split at LF, sit inside a fenced code block as
+/// the parser reads it, fence lines included.
+pub fn fenced(text: &str) -> Vec<bool> {
+    fenced_lines(&lines(text))
 }
 
 /// Whether a line, on its own, would parse as an opener or a closer.
@@ -597,6 +627,8 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
     let mut sink = grammar.sink;
     let mut lang = String::new();
     let mut seen: Vec<&str> = Vec::new();
+    // `delim=` and `from=`, which only `as=table` takes.
+    let mut table: Vec<(&str, &str)> = Vec::new();
     for t in iter {
         match t {
             Token::Bare(w) => {
@@ -624,6 +656,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
                     }
                     "lang" => lang = v.clone(),
                     _ if grammar.attrs.contains(&k.as_str()) => attrs.push((k.clone(), v.clone())),
+                    "delim" | "from" => table.push((k, v)),
                     _ => {
                         return Err(error(
                             line,
@@ -633,6 +666,23 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
                 }
             }
         }
+    }
+    match (sink, table.first()) {
+        (Sink::Table(_), _) => {
+            let attr = |key| table.iter().find(|(k, _)| *k == key).map(|(_, v)| *v);
+            sink = Sink::Table(
+                TableFrom::parse(attr("delim"), attr("from")).map_err(|e| error(line, e))?,
+            );
+        }
+        (_, Some((k, _))) => {
+            return Err(error(
+                line,
+                format!(
+                    "unknown attribute {k}= for loader {loader}: it applies only with as=table"
+                ),
+            ));
+        }
+        _ => {}
     }
     debug_assert!(COMMON_ATTRS.iter().all(|c| !grammar.attrs.contains(c)));
     let opener = Opener {
@@ -682,6 +732,12 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
                     format!("inputs={inputs}: an entry is empty; remove the stray comma"),
                 ));
             }
+            if let Some(inputs) = opener.attr("inputs") {
+                for entry in inputs.split(',') {
+                    crate::project::split_input(entry.trim())
+                        .map_err(|e| error(line, format!("inputs={e}")))?;
+                }
+            }
             whole_number("timeout")?;
             if opener.attr("timeout").and_then(|t| t.parse::<u64>().ok()) == Some(0) {
                 return Err(error(line, "timeout=0: expected at least 1 second"));
@@ -690,8 +746,45 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
         }
         "file" => match opener.attr("src") {
             None => Err(error(line, "file needs src=")),
-            Some(_) => Ok(()),
+            Some(_) => crate::project::from_attrs(&opener.attrs, crate::project::FILE_SLICES)
+                .map(|_| ())
+                .map_err(|e| error(line, e)),
         },
+        "value" => match (opener.attr("src"), opener.attr("key")) {
+            (None, _) => Err(error(line, "value needs src=")),
+            (_, None) => Err(error(line, "value needs key=")),
+            (Some(_), Some(key)) => crate::project::Projection::parse("key", key)
+                .map(|_| ())
+                .map_err(|e| error(line, e)),
+        },
+        "index" => {
+            let Some(src) = opener.attr("src") else {
+                return Err(error(line, "index needs src="));
+            };
+            for glob in src.split(',') {
+                if glob.trim().trim_end_matches('/').is_empty() {
+                    return Err(error(
+                        line,
+                        format!("src={src}: an entry is empty; remove the stray comma"),
+                    ));
+                }
+                if let Ok((_, Some(_))) | Err(_) = crate::project::split_input(glob) {
+                    return Err(error(
+                        line,
+                        format!("src={src}: index takes globs, not a projection"),
+                    ));
+                }
+            }
+            match opener.attr("title") {
+                Some(t) if crate::index::Title::parse(t).is_none() => {
+                    Err(error(line, format!("title={t}: expected h1 or filename")))
+                }
+                _ => Ok(()),
+            }
+        }
+        "toc" => crate::toc::levels(opener.attr("min"), opener.attr("max"))
+            .map(|_| ())
+            .map_err(|e| error(line, e)),
         _ => Ok(()),
     }
 }
@@ -998,7 +1091,7 @@ mod tests {
                 "unterminated",
             ),
             (
-                "<!-- computed tree as=table -->\n<!-- /computed -->\n",
+                "<!-- computed tree as=bogus -->\n<!-- /computed -->\n",
                 1,
                 "unknown sink",
             ),

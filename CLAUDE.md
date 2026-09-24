@@ -41,20 +41,31 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 ├── src
 │   ├── cli.rs
 │   ├── fs.rs
+│   ├── index.rs
 │   ├── lib.rs
 │   ├── loader.rs
 │   ├── main.rs
 │   ├── marker.rs
+│   ├── project.rs
 │   ├── render.rs
 │   ├── report.rs
 │   ├── sink.rs
+│   ├── table.rs
+│   ├── toc.rs
 │   └── trust.rs
 └── tests
     ├── cli.rs
+    ├── file_slice.rs
     ├── fixtures
-    └── render.rs
+    ├── index.rs
+    ├── projected_inputs.rs
+    ├── render.rs
+    ├── sandbox
+    ├── table.rs
+    ├── toc.rs
+    └── value.rs
 ```
-<!-- /computed in=78aaac611c004a503bdd9b79b7ca352f8deef8b6dbc7b64285c2328a03fbdf4a out=4a04076276ffdfc5c22d7758125ddec3abb18caf6c3ea1df4c4bcc964d6198d1 -->
+<!-- /computed in=b9e9f174d706a53ada32934ba5c6f76e15395fcc39f3f9cc7dd1e211503d6c7c out=013ae7326bea46d942eb5a55cfc569aae5f6420a3e287bb4255b2c5f280a729b -->
 
 ## Decisions
 

@@ -1,5 +1,5 @@
-//! The three loaders, `tree`, `exec` and `file`, and the production
-//! `Loaders` adapter.
+//! The loaders, `tree`, `exec`, `file`, `value`, `index` and `toc`, and the
+//! production `Loaders` adapter.
 
 /// What every loader produces: the text a sink shapes, and the snapshot of
 /// the inputs it read, which the input sum is taken over.
@@ -26,6 +26,9 @@ pub fn format_constant(loader: &str) -> u32 {
         "tree" => 1,
         "exec" => 1,
         "file" => 1,
+        "value" => 1,
+        "index" => 1,
+        "toc" => 1,
         other => panic!("unknown loader {other:?} reached the format table"),
     }
 }
@@ -41,8 +44,11 @@ use std::time::{Duration, Instant};
 use globset::GlobMatcher;
 
 use crate::fs::{self, Ignores, WalkOpts};
+use crate::index::{self, Title};
 use crate::marker::{self, Opener, Region};
+use crate::project::{self, Projection};
 use crate::render::Loaders;
+use crate::toc;
 
 /// Per-file context every marker path is resolved against.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +121,29 @@ pub struct TreeArgs {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileArgs {
     pub src: PathBuf,
+    /// `lines=`, `section=` or `anchor=`: the slice of the file taken.
+    pub slice: Option<Projection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValueArgs {
+    pub src: PathBuf,
+    /// The dotted path, one entry per component.
+    pub key: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexArgs {
+    /// Comma-separated globs, expanded as `inputs=` is.
+    pub src: Vec<String>,
+    pub title: Title,
+}
+
+/// The heading levels a toc lists, inclusive.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TocArgs {
+    pub min: usize,
+    pub max: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -131,6 +160,9 @@ pub enum Loader {
     Tree(TreeArgs),
     Exec(ExecArgs),
     File(FileArgs),
+    Value(ValueArgs),
+    Index(IndexArgs),
+    Toc(TocArgs),
 }
 
 impl Loader {
@@ -180,7 +212,35 @@ impl Loader {
             }
             "file" => Ok(Loader::File(FileArgs {
                 src: PathBuf::from(opener.attr("src").ok_or_else(|| hard("file needs src="))?),
+                slice: project::from_attrs(&opener.attrs, project::FILE_SLICES).map_err(hard)?,
             })),
+            "value" => {
+                let key = opener.attr("key").ok_or_else(|| hard("value needs key="))?;
+                let Projection::Key(key) = Projection::parse("key", key).map_err(hard)? else {
+                    unreachable!("a key= projection")
+                };
+                Ok(Loader::Value(ValueArgs {
+                    src: PathBuf::from(opener.attr("src").ok_or_else(|| hard("value needs src="))?),
+                    key,
+                }))
+            }
+            "index" => {
+                let src = opener.attr("src").ok_or_else(|| hard("index needs src="))?;
+                let title = match opener.attr("title") {
+                    None => Title::H1,
+                    Some(t) => Title::parse(t)
+                        .ok_or_else(|| hard(format!("title={t}: expected h1 or filename")))?,
+                };
+                Ok(Loader::Index(IndexArgs {
+                    src: src.split(',').map(str::to_string).collect(),
+                    title,
+                }))
+            }
+            "toc" => {
+                let (min, max) =
+                    toc::levels(opener.attr("min"), opener.attr("max")).map_err(hard)?;
+                Ok(Loader::Toc(TocArgs { min, max }))
+            }
             other => Err(hard(format!("unknown loader {other:?}"))),
         }
     }
@@ -190,6 +250,9 @@ impl Loader {
             Loader::Tree(_) => format_constant("tree"),
             Loader::Exec(_) => format_constant("exec"),
             Loader::File(_) => format_constant("file"),
+            Loader::Value(_) => format_constant("value"),
+            Loader::Index(_) => format_constant("index"),
+            Loader::Toc(_) => format_constant("toc"),
         }
     }
 }
@@ -243,7 +306,9 @@ impl Production {
     }
 
     /// The `file` loader: the named file's text, closer sums taken out, and
-    /// the same one-entry snapshot `inputs=` would take of it.
+    /// the same one-entry snapshot `inputs=` would take of it. A slice
+    /// narrows both to the projected part, so an edit elsewhere in the file
+    /// leaves the region fresh.
     fn file(&mut self, args: &FileArgs) -> Result<Loaded, LoadError> {
         let path = self.ctx.resolve("src=", &args.src)?;
         if !path.is_file() {
@@ -258,13 +323,81 @@ impl Production {
         let rel = lexical(&args.src);
         let content =
             std::fs::read(&path).map_err(|e| hard(format!("src=: {}: {e}", args.src.display())))?;
-        let content = marker::strip_sums(&content).into_owned();
+        let mut content = marker::strip_sums(&content).into_owned();
         self.read.insert(path);
+        let mut key = rel.to_string_lossy().into_owned();
+        if let Some(slice) = &args.slice {
+            content = slice
+                .apply(&args.src, &content)
+                .map_err(|e| hard(format!("src=: {}: {e}", args.src.display())))?;
+            key = format!("{key}#{}", slice.canonical());
+        }
         let mut snapshot = Vec::new();
-        push_entry(&mut snapshot, rel.to_string_lossy().as_bytes(), &content);
+        push_entry(&mut snapshot, key.as_bytes(), &content);
         let text = String::from_utf8(content).map_err(|_| LoadError::Failed {
             stderr: format!("src=: {} is not UTF-8", args.src.display()),
         })?;
+        Ok(Loaded { text, snapshot })
+    }
+
+    /// The `value` loader: one scalar of a TOML, JSON or YAML file. The
+    /// snapshot is the key and the value alone, so the rest of the file can
+    /// change under it.
+    fn value(&mut self, args: &ValueArgs) -> Result<Loaded, LoadError> {
+        let path = self.ctx.resolve("src=", &args.src)?;
+        if !path.is_file() {
+            return Err(hard(format!("src=: {} is not a file", args.src.display())));
+        }
+        let content =
+            std::fs::read(&path).map_err(|e| hard(format!("src=: {}: {e}", args.src.display())))?;
+        self.read.insert(path);
+        let text = project::scalar(&args.src, &content, &args.key)
+            .map_err(|e| hard(format!("src=: {}: {e}", args.src.display())))?;
+        let entry = format!(
+            "{}#key={}",
+            lexical(&args.src).display(),
+            args.key.join(".")
+        );
+        let mut snapshot = Vec::new();
+        push_entry(&mut snapshot, entry.as_bytes(), text.as_bytes());
+        Ok(Loaded { text, snapshot })
+    }
+
+    /// The `index` loader: a link per file the globs select, in byte order
+    /// of path. The snapshot is each path with the title taken from it, the
+    /// only part of a file the list depends on.
+    fn index(&mut self, args: &IndexArgs) -> Result<Loaded, LoadError> {
+        let mut text = String::new();
+        let mut snapshot = Vec::new();
+        for (rel, file) in expand(&self.ctx, "src", &args.src)? {
+            let rel = String::from_utf8_lossy(&rel).into_owned();
+            let content = if args.title.reads(Path::new(&rel)) {
+                let read = present(std::fs::read(&file))
+                    .map_err(|e| hard(format!("src: {}: {e}", file.display())))?;
+                let Some(content) = read else {
+                    continue;
+                };
+                self.read.insert(file);
+                Some(content)
+            } else {
+                None
+            };
+            let title = index::title(Path::new(&rel), content.as_deref());
+            text.push_str(&index::line(&title, &rel));
+            text.push('\n');
+            push_entry(&mut snapshot, rel.as_bytes(), title.as_bytes());
+        }
+        Ok(Loaded { text, snapshot })
+    }
+
+    /// The `toc` loader: the headings of the template's own prose. The one
+    /// loader that reads its template; it does not record it as read, since
+    /// the only write to the template in a run is the run's own, which
+    /// leaves the prose, and so the toc, as it was.
+    fn toc(&mut self, args: &TocArgs) -> Result<Loaded, LoadError> {
+        let template = std::fs::read_to_string(&self.ctx.template)
+            .map_err(|e| hard(format!("{}: {e}", self.ctx.template.display())))?;
+        let (text, snapshot) = toc::toc(&template, args.min, args.max).map_err(hard)?;
         Ok(Loaded { text, snapshot })
     }
 
@@ -287,6 +420,9 @@ impl Loaders for Production {
                 ..
             }) => Ok(Some(inputs_snapshot(&self.ctx, &globs, &mut self.read)?)),
             Loader::File(args) => Ok(Some(self.file(&args)?.snapshot)),
+            Loader::Value(args) => Ok(Some(self.value(&args)?.snapshot)),
+            Loader::Index(args) => Ok(Some(self.index(&args)?.snapshot)),
+            Loader::Toc(args) => Ok(Some(self.toc(&args)?.snapshot)),
         }
     }
 
@@ -302,6 +438,9 @@ impl Loaders for Production {
                 Ok(Loaded { text, snapshot })
             }
             Loader::File(args) => self.file(&args),
+            Loader::Value(args) => self.value(&args),
+            Loader::Index(args) => self.index(&args),
+            Loader::Toc(args) => self.toc(&args),
         }
     }
 }
@@ -617,24 +756,72 @@ fn lexical(path: &Path) -> PathBuf {
 /// The `inputs=` snapshot: for every matched file in byte-order relative
 /// path, `path NUL length NUL content NUL`, closer sums taken out of the
 /// content. A matched directory means every file under it; the template
-/// itself is excluded. Every file read is added to `read`.
+/// itself is excluded. An entry with a projection, `path#kind=value`, takes
+/// the entry `path#kind=value NUL length NUL slice NUL` in the same order,
+/// so an edit outside the slice leaves the snapshot as it was. Every file
+/// read is added to `read`.
 fn inputs_snapshot(
     ctx: &Ctx,
     globs: &[String],
     read: &mut BTreeSet<PathBuf>,
 ) -> Result<Vec<u8>, LoadError> {
+    let mut plain = Vec::new();
+    let mut matched: BTreeMap<Vec<u8>, (PathBuf, Option<Projection>)> = BTreeMap::new();
+    for entry in globs {
+        let entry = entry.trim();
+        let (path, projection) =
+            project::split_input(entry).map_err(|e| hard(format!("inputs={e}")))?;
+        let Some(projection) = projection else {
+            plain.push(entry.to_string());
+            continue;
+        };
+        let rel = Path::new(path);
+        if !ctx.region_root.join(rel).exists() {
+            return Err(hard(format!("inputs={entry} matches nothing")));
+        }
+        let file = ctx.resolve("inputs=", rel)?;
+        if !file.is_file() {
+            return Err(hard(format!("inputs={entry}: {path} is not a file")));
+        }
+        if ctx.template.canonicalize().ok().as_ref() == Some(&file) {
+            return Err(hard(format!(
+                "inputs={entry}: {path} is this file; a region cannot read a part of its own file"
+            )));
+        }
+        let key = format!("{}#{}", lexical(rel).display(), projection.canonical());
+        matched.insert(key.into_bytes(), (file, Some(projection)));
+    }
+    if !plain.is_empty() {
+        matched.extend(
+            expand(ctx, "inputs", &plain)?
+                .into_iter()
+                .map(|(rel, file)| (rel, (file, None))),
+        );
+    }
+    content_snapshot(matched, read)
+}
+
+/// The files a list of globs selects, keyed by their path from the region
+/// root in byte order, each with its canonical path; the template is left
+/// out. A glob that matches nothing is an error. `attr` names the attribute
+/// the globs came from, for messages.
+fn expand(
+    ctx: &Ctx,
+    attr: &str,
+    globs: &[String],
+) -> Result<BTreeMap<Vec<u8>, PathBuf>, LoadError> {
     let template = ctx.template.canonicalize().ok();
     let bound = ctx.bound()?;
     let mut matched: BTreeMap<Vec<u8>, PathBuf> = BTreeMap::new();
     for glob in globs {
         // `docs/` names the directory `docs` names.
         let glob = glob.trim().trim_end_matches('/');
-        let input = InputGlob::new(glob).map_err(|e| hard(format!("inputs={glob}: {e}")))?;
+        let input = InputGlob::new(glob).map_err(|e| hard(format!("{attr}={glob}: {e}")))?;
         let prefix = glob_prefix(glob);
         if !ctx.region_root.join(&prefix).exists() {
-            return Err(hard(format!("inputs={glob} matches nothing")));
+            return Err(hard(format!("{attr}={glob} matches nothing")));
         }
-        let dir = ctx.resolve("inputs=", &prefix)?;
+        let dir = ctx.resolve(&format!("{attr}="), &prefix)?;
         let rel = lexical(&prefix);
         let below = if input.matches(&rel) {
             Below::Everything
@@ -647,14 +834,14 @@ fn inputs_snapshot(
         let mut expansion = Expansion::new(&input, &bound, ctx.repo_root.as_deref());
         expansion
             .walk(&dir, &rel, &below, &ignores)
-            .map_err(|e| hard(format!("inputs={glob}: {e}")))?;
+            .map_err(|e| hard(format!("{attr}={glob}: {e}")))?;
         if expansion.files.is_empty() {
             let why = if expansion.ignored {
                 " that is not ignored"
             } else {
                 ""
             };
-            return Err(hard(format!("inputs={glob} matches nothing{why}")));
+            return Err(hard(format!("{attr}={glob} matches nothing{why}")));
         }
         for (rel, file) in expansion.files {
             if template.as_ref() != Some(&file) {
@@ -662,27 +849,40 @@ fn inputs_snapshot(
             }
         }
     }
-    content_snapshot(matched, read)
+    Ok(matched)
 }
 
-/// The snapshot bytes over the matched files. A file deleted since
-/// expansion listed it is left out, as if the listing had missed it. The
-/// sums in another template's closers are not content: they change when
-/// that file renders, not when what it says does, and two templates that
-/// read each other would otherwise never settle.
+/// The snapshot bytes over the matched files, each narrowed by its
+/// projection when it has one. A file deleted since expansion listed it is
+/// left out, as if the listing had missed it. The sums in another
+/// template's closers are not content: they change when that file renders,
+/// not when what it says does, and two templates that read each other would
+/// otherwise never settle.
 fn content_snapshot(
-    matched: BTreeMap<Vec<u8>, PathBuf>,
+    matched: BTreeMap<Vec<u8>, (PathBuf, Option<Projection>)>,
     read: &mut BTreeSet<PathBuf>,
 ) -> Result<Vec<u8>, LoadError> {
     let mut out = Vec::new();
-    for (rel, file) in matched {
+    for (key, (file, projection)) in matched {
         let Some(content) = present(std::fs::read(&file))
             .map_err(|e| hard(format!("inputs: {}: {e}", file.display())))?
         else {
             continue;
         };
-        push_entry(&mut out, &rel, &marker::strip_sums(&content));
         read.insert(file);
+        let content = marker::strip_sums(&content);
+        match projection {
+            None => push_entry(&mut out, &key, &content),
+            Some(p) => {
+                // The key is `path#kind=value`; the error names the same.
+                let key = String::from_utf8_lossy(&key);
+                let path = &key[..key.len() - p.canonical().len() - 1];
+                let slice = p
+                    .apply(Path::new(path), &content)
+                    .map_err(|e| hard(format!("inputs={path}#{e}")))?;
+                push_entry(&mut out, key.as_bytes(), &slice);
+            }
+        }
     }
     Ok(out)
 }
@@ -1092,8 +1292,8 @@ mod tests {
             .unwrap();
         assert!(expansion.files.is_empty());
         let matched = BTreeMap::from([
-            (b"CLAUDE.md".to_vec(), dir.path().join("CLAUDE.md")),
-            (b"gone.md".to_vec(), dir.path().join("gone.md")),
+            (b"CLAUDE.md".to_vec(), (dir.path().join("CLAUDE.md"), None)),
+            (b"gone.md".to_vec(), (dir.path().join("gone.md"), None)),
         ]);
         assert_eq!(
             content_snapshot(matched, &mut BTreeSet::new()).unwrap(),
