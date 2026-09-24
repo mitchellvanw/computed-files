@@ -17,5 +17,6 @@ pub mod render;
 pub mod report;
 pub mod sink;
 pub mod symbol;
+pub mod transcript;
 pub mod trust;
 pub mod update;

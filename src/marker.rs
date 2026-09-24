@@ -219,6 +219,12 @@ const GRAMMAR: &[LoaderGrammar] = &[
         flags: &[],
         sink: Sink::Raw,
     },
+    LoaderGrammar {
+        name: "transcript",
+        attrs: &["steps", "inputs", "timeout", "workdir"],
+        flags: &["volatile"],
+        sink: Sink::Fence,
+    },
 ];
 
 const COMMON_ATTRS: &[&str] = &["name", "as", "lang"];
@@ -675,7 +681,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
 
 /// The sink and language a loader defaults to when its choice depends on
 /// its attributes: `symbol` fences code in its source's language and shows
-/// a doc comment as Markdown.
+/// a doc comment as Markdown; a `transcript` is a console session.
 fn defaults(loader: &str, attrs: &[(String, String)]) -> (Option<Sink>, &'static str) {
     let attr = |key: &str| {
         attrs
@@ -686,6 +692,7 @@ fn defaults(loader: &str, attrs: &[(String, String)]) -> (Option<Sink>, &'static
     match loader {
         "symbol" if attr("part") == Some("doc") => (Some(Sink::Raw), ""),
         "symbol" => (None, attr("src").map_or("", crate::symbol::fence_lang)),
+        "transcript" => (None, "console"),
         _ => (None, ""),
     }
 }
@@ -737,6 +744,7 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
         "symbol" => crate::symbol::validate(opener).map_err(|m| error(line, m)),
         "git" => crate::git::validate(opener).map_err(|m| error(line, m)),
         "remote" => crate::remote::validate(opener).map_err(|m| error(line, m)),
+        "transcript" => crate::transcript::validate(opener).map_err(|m| error(line, m)),
         _ => Ok(()),
     }
 }

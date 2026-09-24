@@ -592,7 +592,7 @@ fn render(
     if state == State::Fresh && !force {
         return kept(Action::Fresh, None);
     }
-    if region.opener.loader == "exec" && !trusted {
+    if matches!(region.opener.loader.as_str(), "exec" | "transcript") && !trusted {
         return kept(Action::Untrusted, None);
     }
     let loaded = match loaders.load(region) {
