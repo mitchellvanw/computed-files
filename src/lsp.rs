@@ -230,6 +230,8 @@ impl Server<'_> {
                 };
                 let key = p.text_document.uri.as_str().to_string();
                 let Some(path) = path_of(&key) else { return };
+                // A symlinked template is its target, as under `computed run`.
+                let path = crate::survey::target(&path).unwrap_or(path);
                 self.docs.insert(
                     key.clone(),
                     Doc {

@@ -230,6 +230,8 @@ pub fn refusal(path: &Path, verdict: &Verdict) -> Option<String> {
 /// `check` of one template's text, inputs read from disk: what the hooks
 /// and the editor report after an edit. `Err` is a file-level error.
 pub fn check_text(path: &Path, text: &str) -> Result<Vec<RegionReport>, (usize, String)> {
+    let file = crate::survey::target(path).unwrap_or_else(|_| path.to_path_buf());
+    let path = file.as_path();
     let mut parsed =
         marker::parse_as(text, Syntax::for_path(path)).map_err(|e| (e.line, e.message))?;
     let mut loaders = Production::for_file(path, &mut parsed);

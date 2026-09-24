@@ -50,6 +50,17 @@ pub fn regions(file: &File) -> impl Iterator<Item = &Region> {
     })
 }
 
+/// The file a template path names. A symlinked template is its target: its
+/// paths resolve against the target's directory, the target's repository
+/// decides its trust, and a write lands in it.
+pub fn target(path: &Path) -> std::io::Result<PathBuf> {
+    if crate::cli::is_link(path) {
+        path.canonicalize()
+    } else {
+        Ok(path.to_path_buf())
+    }
+}
+
 /// Reads one file as `run` does: `None` when it holds no region, whatever
 /// its encoding; an error when it has markers and is not UTF-8 or does not
 /// parse. `use` regions are expanded, as `run` expands them.
@@ -59,12 +70,7 @@ pub fn read(path: &Path) -> Result<Option<Template>, FileError> {
         line,
         message,
     };
-    let file = if crate::cli::is_link(path) {
-        path.canonicalize()
-            .map_err(|e| fail(None, format!("unreadable: {e}")))?
-    } else {
-        path.to_path_buf()
-    };
+    let file = target(path).map_err(|e| fail(None, format!("unreadable: {e}")))?;
     let bytes = std::fs::read(&file).map_err(|e| fail(None, format!("unreadable: {e}")))?;
     let syntax = marker::Syntax::for_path(&file);
     let text = match String::from_utf8(bytes) {
