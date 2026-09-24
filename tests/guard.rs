@@ -294,3 +294,18 @@ fn post_reads_a_symlinked_template_as_its_target() {
     assert_eq!(out.status.code(), Some(0));
     assert_eq!(stdout(&out), "", "the target's region is fresh");
 }
+
+#[test]
+fn a_hook_answers_input_that_is_not_utf8_and_exits_0() {
+    let dir = repo();
+    let mut child = computed(dir.path(), &["guard", "--hook", "pre"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child.stdin.take().unwrap().write_all(b"\xff{").unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert_eq!(out.status.code(), Some(0), "{out:?}");
+    assert!(stdout(&out).contains("systemMessage"), "{out:?}");
+}

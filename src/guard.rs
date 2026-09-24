@@ -414,9 +414,10 @@ pub fn command(
     json: bool,
 ) -> std::io::Result<u8> {
     if let Some(event) = hook {
-        let mut input = String::new();
-        std::io::Read::read_to_string(&mut std::io::stdin(), &mut input)?;
-        if let Some(out) = self::hook(event, &input) {
+        // Bytes, so input that is not UTF-8 is answered as not JSON.
+        let mut input = Vec::new();
+        std::io::Read::read_to_end(&mut std::io::stdin(), &mut input)?;
+        if let Some(out) = self::hook(event, &String::from_utf8_lossy(&input)) {
             println!("{out}");
         }
         return Ok(0);
