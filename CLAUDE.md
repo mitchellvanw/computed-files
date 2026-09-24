@@ -72,5 +72,8 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 - [Sums are full SHA-256](docs/adr/0010-sha-256-sums.md)
 - [The tree loader honours `.gitignore` without a flag](docs/adr/0011-gitignore-is-not-a-flag.md)
 - [Wildcards in `inputs=` do not reach ignored paths](docs/adr/0012-wildcards-in-inputs-do-not-reach-ignored-paths.md)
+- [A region the tool cannot answer skips only itself](docs/adr/0013-a-region-the-tool-cannot-answer-skips-only-itself.md)
+- [Snapshots ignore closer sums, and `run` settles templates that read each other](docs/adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md)
+- [The `file` loader](docs/adr/0015-the-file-loader.md)
 
-<!-- /computed in=4752ebbbebed96c3535e892f67ddf24f65ff3c9a53765218ea25f9ec46294723 out=840bb45ce57e51b21c3ff896536f8da9f01e6264d709ac4284f4986d4b2b00d9 -->
+<!-- /computed in=7889c53daa593b8da7ee057aaefb8a89a5b0ffe62cbe79d0df3496843c3a0765 out=1d5d18700a303ecb8aa4e56252ba741d3b04a292cec7d258a2712448d332b8b2 -->
