@@ -73,7 +73,9 @@ pub fn main(file: &Path, only: &[String], dry_run: bool, verbose: bool) -> Resul
         let state = match loaders.snapshot(region) {
             Ok(snapshot) => render::state(region, snapshot.as_deref()),
             Err(
-                crate::loader::LoadError::Hard(m) | crate::loader::LoadError::Failed { stderr: m },
+                crate::loader::LoadError::Hard(m)
+                | crate::loader::LoadError::Failed { stderr: m }
+                | crate::loader::LoadError::NotAllowed(m),
             ) => {
                 lines.push(format!("{}\n    {m}", say("error", "skipped")));
                 tier = 2;
@@ -202,7 +204,11 @@ fn adoption(template: &Template, region: &Region) -> Result<Adoption, String> {
                 region.opener.loader
             ));
         }
-        Err(crate::loader::LoadError::Hard(m) | crate::loader::LoadError::Failed { stderr: m }) => {
+        Err(
+            crate::loader::LoadError::Hard(m)
+            | crate::loader::LoadError::Failed { stderr: m }
+            | crate::loader::LoadError::NotAllowed(m),
+        ) => {
             return Err(m);
         }
     };

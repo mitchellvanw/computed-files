@@ -16,6 +16,9 @@ pub enum LoadError {
     Hard(String),
     /// Tier 1: the loader ran and failed. The previous body is kept.
     Failed { stderr: String },
+    /// Tier 1: the region's url is not on this machine's allowlist, so the
+    /// loader did not run. The previous body is kept, as for untrusted exec.
+    NotAllowed(String),
 }
 
 /// The per-loader format constant folded into the input sum. Bumped by hand
@@ -30,6 +33,10 @@ pub fn format_constant(loader: &str) -> u32 {
         "index" => 1,
         "toc" => 1,
         "use" => 1,
+        "symbol" => 1,
+        "git" => 1,
+        "remote" => 1,
+        "transcript" => 1,
         other => panic!("unknown loader {other:?} reached the format table"),
     }
 }
@@ -91,7 +98,7 @@ impl Ctx {
 
     /// Resolves a marker path against the region root and checks it exists
     /// and does not escape the bound.
-    fn resolve(&self, what: &str, rel: &Path) -> Result<PathBuf, LoadError> {
+    pub(crate) fn resolve(&self, what: &str, rel: &Path) -> Result<PathBuf, LoadError> {
         let joined = self.region_root.join(rel);
         let canon = joined
             .canonicalize()
@@ -165,6 +172,10 @@ pub enum Loader {
     Value(ValueArgs),
     Index(IndexArgs),
     Toc(TocArgs),
+    Symbol(crate::symbol::SymbolArgs),
+    Git(crate::git::GitArgs),
+    Remote(crate::remote::RemoteArgs),
+    Transcript(crate::transcript::TranscriptArgs),
 }
 
 impl Loader {
@@ -247,6 +258,16 @@ impl Loader {
                 "recipe={}: the recipe was not expanded",
                 opener.attr("recipe").unwrap_or_default()
             ))),
+            "symbol" => Ok(Loader::Symbol(crate::symbol::SymbolArgs::from_opener(
+                opener,
+            )?)),
+            "git" => Ok(Loader::Git(crate::git::GitArgs::from_opener(opener)?)),
+            "remote" => Ok(Loader::Remote(crate::remote::RemoteArgs::from_opener(
+                opener,
+            )?)),
+            "transcript" => Ok(Loader::Transcript(
+                crate::transcript::TranscriptArgs::from_opener(opener)?,
+            )),
             other => Err(hard(format!("unknown loader {other:?}"))),
         }
     }
@@ -259,6 +280,10 @@ impl Loader {
             Loader::Value(_) => format_constant("value"),
             Loader::Index(_) => format_constant("index"),
             Loader::Toc(_) => format_constant("toc"),
+            Loader::Symbol(_) => format_constant("symbol"),
+            Loader::Git(_) => format_constant("git"),
+            Loader::Remote(_) => format_constant("remote"),
+            Loader::Transcript(_) => format_constant("transcript"),
         }
     }
 }
@@ -272,6 +297,7 @@ pub struct Production {
     read: BTreeSet<PathBuf>,
     /// Per region line, why its `use` recipe did not expand.
     unexpanded: BTreeMap<usize, String>,
+    allowed: crate::allow::Allowed,
 }
 
 impl Production {
@@ -281,6 +307,7 @@ impl Production {
             walks: HashMap::new(),
             read: BTreeSet::new(),
             unexpanded: BTreeMap::new(),
+            allowed: crate::allow::Allowed::default(),
         }
     }
 
@@ -321,6 +348,12 @@ impl Production {
             Some(message) => Err(hard(message.clone())),
             None => Loader::from_opener(&region.opener),
         }
+    }
+
+    /// The url prefixes a `remote` region may fetch from; none by default.
+    pub fn allowing(mut self, allowed: crate::allow::Allowed) -> Production {
+        self.allowed = allowed;
+        self
     }
 
     /// The canonical paths of every file a snapshot read, so a caller can
@@ -477,6 +510,15 @@ impl Loaders for Production {
             Loader::Value(args) => Ok(Some(self.value(&args)?.snapshot)),
             Loader::Index(args) => Ok(Some(self.index(&args)?.snapshot)),
             Loader::Toc(args) => Ok(Some(self.toc(&args)?.snapshot)),
+            Loader::Symbol(args) => Ok(Some(
+                crate::symbol::load(&self.ctx, &args, &mut self.read)?.snapshot,
+            )),
+            Loader::Git(args) => Ok(Some(crate::git::load(&self.ctx, &args)?.snapshot)),
+            Loader::Remote(args) => Ok(Some(crate::remote::snapshot(&args))),
+            Loader::Transcript(args) => match &args.inputs {
+                None => Ok(None),
+                Some(globs) => Ok(Some(inputs_snapshot(&self.ctx, globs, &mut self.read)?)),
+            },
         }
     }
 
@@ -495,6 +537,17 @@ impl Loaders for Production {
             Loader::Value(args) => self.value(&args),
             Loader::Index(args) => self.index(&args),
             Loader::Toc(args) => self.toc(&args),
+            Loader::Symbol(args) => crate::symbol::load(&self.ctx, &args, &mut self.read),
+            Loader::Git(args) => crate::git::load(&self.ctx, &args),
+            Loader::Remote(args) => crate::remote::load(&args, &self.allowed),
+            Loader::Transcript(args) => {
+                let snapshot = match &args.inputs {
+                    None => Vec::new(),
+                    Some(globs) => inputs_snapshot(&self.ctx, globs, &mut self.read)?,
+                };
+                let text = crate::transcript::run(&self.ctx, &args, &self.region_name(region))?;
+                Ok(Loaded { text, snapshot })
+            }
         }
     }
 }
@@ -801,7 +854,7 @@ fn glob_prefix(glob: &str) -> PathBuf {
 
 /// A marker path as the glob spells it, `.` components dropped, so a
 /// symlinked directory keeps the name the glob matches against.
-fn lexical(path: &Path) -> PathBuf {
+pub(crate) fn lexical(path: &Path) -> PathBuf {
     path.components()
         .filter(|c| !matches!(c, Component::CurDir))
         .collect()
@@ -942,7 +995,7 @@ fn content_snapshot(
 }
 
 /// One snapshot entry: `path NUL length NUL content NUL`.
-fn push_entry(out: &mut Vec<u8>, rel: &[u8], content: &[u8]) {
+pub(crate) fn push_entry(out: &mut Vec<u8>, rel: &[u8], content: &[u8]) {
     out.extend_from_slice(rel);
     out.push(0);
     out.extend_from_slice(content.len().to_string().as_bytes());
@@ -970,36 +1023,96 @@ pub fn entries(mut snapshot: &[u8]) -> Option<Vec<(&[u8], &[u8])>> {
     Some(out)
 }
 
-/// Runs `cmd` under `/bin/sh -c` in the region root with the pinned
+/// Runs `cmd` in the region root; a non-zero exit or stdout that is not
+/// UTF-8 is a failure, as is anything [`shell`] fails on.
+fn exec(ctx: &Ctx, args: &ExecArgs, region_name: &str) -> Result<String, LoadError> {
+    let run = shell(&args.cmd, &Place::of(ctx), args.timeout, region_name)?;
+    if !run.status.success() {
+        return Err(run.failed(match run.status.code() {
+            Some(c) => format!("exit status {c}"),
+            None => "killed by a signal".to_string(),
+        }));
+    }
+    let failed = run.failed("stdout is not UTF-8".to_string());
+    String::from_utf8(run.stdout).map_err(|_| failed)
+}
+
+/// Where a shell runs, and the template and repository root it is told of.
+pub(crate) struct Place {
+    pub dir: PathBuf,
+    pub file: PathBuf,
+    pub root: Option<PathBuf>,
+}
+
+impl Place {
+    /// The region root, the template's absolute path, the repository root.
+    pub(crate) fn of(ctx: &Ctx) -> Place {
+        Place {
+            dir: ctx.region_root.clone(),
+            file: ctx
+                .template
+                .canonicalize()
+                .unwrap_or_else(|_| ctx.template.clone()),
+            root: ctx.repo_root.clone(),
+        }
+    }
+}
+
+/// A shell that exited before its timeout.
+pub(crate) struct Shell {
+    pub status: std::process::ExitStatus,
+    pub stdout: Vec<u8>,
+    pub stderr: String,
+}
+
+impl Shell {
+    /// A loader failure for `reason`, with the shell's stderr beneath.
+    pub(crate) fn failed(&self, reason: String) -> LoadError {
+        failure(reason, &self.stderr)
+    }
+}
+
+fn failure(reason: String, stderr: &str) -> LoadError {
+    let mut s = reason;
+    if !stderr.is_empty() {
+        s.push('\n');
+        s.push_str(stderr.trim_end_matches('\n'));
+    }
+    LoadError::Failed { stderr: s }
+}
+
+/// Runs `script` under `/bin/sh -c` in `place.dir` with the pinned
 /// environment, stdin closed, in its own process group. When the shell
 /// exits or the timeout expires, the group is killed: the output is what
-/// the command printed before its shell was done, and a background job it
+/// the script printed before its shell was done, and a background job it
 /// left behind cannot hold the pipes open. A process that left the group
-/// and still holds them is a failure once the timeout has passed.
-fn exec(ctx: &Ctx, args: &ExecArgs, region_name: &str) -> Result<String, LoadError> {
-    let template = ctx
-        .template
-        .canonicalize()
-        .unwrap_or_else(|_| ctx.template.clone());
+/// and still holds them is a failure once the timeout has passed, and so is
+/// the timeout itself.
+pub(crate) fn shell(
+    script: &str,
+    place: &Place,
+    timeout: Duration,
+    region_name: &str,
+) -> Result<Shell, LoadError> {
     let mut command = Command::new("/bin/sh");
     command
         .arg("-c")
-        .arg(&args.cmd)
-        .current_dir(&ctx.region_root)
+        .arg(script)
+        .current_dir(&place.dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .env("LC_ALL", "C")
         .env("LANGUAGE", "")
         .env("TZ", "UTC")
-        .env("COMPUTED_FILE", &template)
+        .env("COMPUTED_FILE", &place.file)
         .env("COMPUTED_REGION", region_name);
-    match &ctx.repo_root {
+    match &place.root {
         Some(root) => command.env("COMPUTED_ROOT", root),
         None => command.env_remove("COMPUTED_ROOT"),
     };
     std::os::unix::process::CommandExt::process_group(&mut command, 0);
-    let deadline = Instant::now() + args.timeout;
+    let deadline = Instant::now() + timeout;
     let mut child = command.spawn().map_err(|e| hard(format!("/bin/sh: {e}")))?;
     let (tx, rx) = mpsc::channel();
     let pipes: [Box<dyn Read + Send>; 2] = [
@@ -1014,7 +1127,7 @@ fn exec(ctx: &Ctx, args: &ExecArgs, region_name: &str) -> Result<String, LoadErr
             let _ = tx.send((i, buf));
         });
     }
-    let status = wait_timeout::ChildExt::wait_timeout(&mut child, args.timeout)
+    let status = wait_timeout::ChildExt::wait_timeout(&mut child, timeout)
         .map_err(|e| hard(format!("wait: {e}")))?;
     // SAFETY: kill(2) on the process group we created; the id is our child's.
     unsafe {
@@ -1038,34 +1151,26 @@ fn exec(ctx: &Ctx, args: &ExecArgs, region_name: &str) -> Result<String, LoadErr
     let held = bufs.iter().any(Option::is_none);
     let [stdout, stderr] = bufs.map(Option::unwrap_or_default);
     let stderr = String::from_utf8_lossy(&stderr).into_owned();
-    let failed = |reason: String| {
-        let mut s = reason;
-        if !stderr.is_empty() {
-            s.push('\n');
-            s.push_str(stderr.trim_end_matches('\n'));
-        }
-        LoadError::Failed { stderr: s }
-    };
     if timed_out {
-        return Err(failed(format!(
-            "timed out after {}s",
-            args.timeout.as_secs()
-        )));
+        return Err(failure(
+            format!("timed out after {}s", timeout.as_secs()),
+            &stderr,
+        ));
     }
     if held {
-        return Err(failed(format!(
-            "a process outside the command's process group kept its output open past {}s",
-            args.timeout.as_secs()
-        )));
+        return Err(failure(
+            format!(
+                "a process outside the command's process group kept its output open past {}s",
+                timeout.as_secs()
+            ),
+            &stderr,
+        ));
     }
-    let status = status.expect("not timed out");
-    if !status.success() {
-        return Err(failed(match status.code() {
-            Some(c) => format!("exit status {c}"),
-            None => "killed by a signal".to_string(),
-        }));
-    }
-    String::from_utf8(stdout).map_err(|_| failed("stdout is not UTF-8".to_string()))
+    Ok(Shell {
+        status: status.expect("not timed out"),
+        stdout,
+        stderr,
+    })
 }
 
 #[cfg(test)]

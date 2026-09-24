@@ -92,6 +92,8 @@ pub enum Action {
     Kept,
     Refused,
     Untrusted,
+    /// Skipped because the url is not on this machine's allowlist.
+    Disallowed,
     Failed,
     /// Tier 2: the tool could not answer for this region; body kept.
     Error,
@@ -111,6 +113,7 @@ impl fmt::Display for Action {
             Action::Kept => "kept",
             Action::Refused => "refused; run with --force",
             Action::Untrusted => "skipped; run `computed trust`",
+            Action::Disallowed => "skipped; run `computed allow`",
             Action::Failed => "failed; body kept",
             Action::Error => "skipped; body kept",
             Action::Cleaned => "cleaned",
@@ -130,6 +133,7 @@ impl Action {
             Action::Kept => "kept",
             Action::Refused => "refused",
             Action::Untrusted => "untrusted",
+            Action::Disallowed => "disallowed",
             Action::Failed => "failed",
             Action::Error => "error",
             Action::Cleaned => "cleaned",
@@ -198,7 +202,7 @@ impl Rendered {
             Rendered::Written { .. } | Rendered::Refused { .. } => 1,
             Rendered::Unchanged { regions } => {
                 let said_no = regions.iter().any(|r| match r.action {
-                    Some(Action::Untrusted | Action::Failed) => true,
+                    Some(Action::Untrusted | Action::Disallowed | Action::Failed) => true,
                     Some(_) => false,
                     None => r.state.drifted(),
                 });
@@ -434,7 +438,11 @@ pub fn file_where(
         }
         let state = match loaders.snapshot(region) {
             Ok(s) => Ok(state_of(region, s.as_deref())),
-            Err(LoadError::Hard(message) | LoadError::Failed { stderr: message }) => Err(message),
+            Err(
+                LoadError::Hard(message)
+                | LoadError::Failed { stderr: message }
+                | LoadError::NotAllowed(message),
+            ) => Err(message),
         };
         states.push(Some(state));
     }
@@ -611,12 +619,13 @@ fn render(
     if state == State::Fresh && !force {
         return kept(Action::Fresh, None);
     }
-    if region.opener.loader == "exec" && !trusted {
+    if matches!(region.opener.loader.as_str(), "exec" | "transcript") && !trusted {
         return kept(Action::Untrusted, None);
     }
     let loaded = match loaders.load(region) {
         Ok(l) => l,
         Err(LoadError::Failed { stderr }) => return kept(Action::Failed, Some(stderr)),
+        Err(LoadError::NotAllowed(message)) => return kept(Action::Disallowed, Some(message)),
         Err(LoadError::Hard(message)) => return kept(Action::Error, Some(message)),
     };
     let body = match sink::body(

@@ -41,13 +41,13 @@ An exec region runs only in a clone `computed trust` has granted, recorded in `~
 
 <!-- computed exec cmd=../../scripts/cli-commands.sh inputs=../../src/cli.rs,../../scripts/cli-commands.sh name=commands as=fence | do not edit; run computed -->
 ```
-computed run      [paths] [--force] [--dry-run] [--trust] [--only NAME]
+computed run      [paths] [--force] [--dry-run] [--trust] [--only NAME] [--allow PREFIX]
 computed check    [paths] [--only NAME]
 computed clean    [paths] [--force] [--dry-run] [--only NAME]
 computed trust    [path]
 computed untrust  [path]
 ```
-<!-- /computed in=3ef0f3db823b5ce53b5ff56c566de08769ec0e6c9d362bb6faf98ac84d5ed3c9 out=b78c8bf352f17f9baa7538eb4a745be9a2903bf9957584e10e3c84679f295596 -->
+<!-- /computed in=f4ddd1be8eac012b64c36ad86a0651a63e749c0f4a1977bb2f8476b57dad1a6f out=62ff5182e2b4af5b172cf45e30590aaa5dcef60420b115ecccbdd28ed4392ec9 -->
 
 With no paths, the current directory is walked with the tree loader's ignore settings, dot-directories such as `.claude/` included, and every `.md` and `.markdown` file is read. An explicit file is read whatever its extension. `run --dry-run` prints the diff `run` would write and writes nothing. `--only NAME` narrows a command to the regions with that name. `--format json` prints one JSON document on stdout instead of the report.
 

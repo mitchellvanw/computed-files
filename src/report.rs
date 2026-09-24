@@ -62,6 +62,7 @@ pub fn regions(path: &Path, regions: &[RegionReport], mode: Mode, verbose: bool)
 fn state_of(r: &RegionReport) -> String {
     match r.action {
         Some(Action::Untrusted) => "untrusted".to_string(),
+        Some(Action::Disallowed) => "disallowed".to_string(),
         _ => r.state.to_string(),
     }
 }

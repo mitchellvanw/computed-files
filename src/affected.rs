@@ -75,7 +75,7 @@ pub fn reach(template: &Template, region: &Region, loaders: &mut Production) -> 
         Ok(Loader::File(args)) => reach.src = Some(at(&args.src)),
         Ok(Loader::Value(args)) => reach.src = Some(at(&args.src)),
         Ok(Loader::Toc(_)) => reach.own = Some(survey::anchor(&template.file)),
-        Err(_) => {}
+        _ => {}
     }
     reach
 }

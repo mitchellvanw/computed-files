@@ -105,7 +105,11 @@ fn answer(
     };
     let now = match loaders.snapshot(region) {
         Ok(s) => s,
-        Err(loader::LoadError::Hard(m) | loader::LoadError::Failed { stderr: m }) => {
+        Err(
+            loader::LoadError::Hard(m)
+            | loader::LoadError::Failed { stderr: m }
+            | loader::LoadError::NotAllowed(m),
+        ) => {
             return Answer {
                 text: format!("{}{}", head("error"), indent(&m, 4)),
                 tier: 2,
