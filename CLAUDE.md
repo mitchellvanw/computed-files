@@ -57,12 +57,13 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── file_slice.rs
     ├── fixtures
     ├── index.rs
+    ├── projected_inputs.rs
     ├── render.rs
     ├── sandbox
     ├── toc.rs
     └── value.rs
 ```
-<!-- /computed in=cfe27da84944e55361cf98884c7a7ab4ceb11ce4886a4c13b2142658eefe63b1 out=53a2043d61913c679bf50e2ac6ececb2a4dc0dfe4dc54a8f784ba8b7d298c812 -->
+<!-- /computed in=e94f344c39df20f27a3e5788c71c4e999279c91f62a8824e88944e2c8e9f852f out=098e329419ae2d812cc6640a1939915d39c3943f200e44676a3986405772cbea -->
 
 ## Decisions
 

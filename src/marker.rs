@@ -706,6 +706,12 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
                     format!("inputs={inputs}: an entry is empty; remove the stray comma"),
                 ));
             }
+            if let Some(inputs) = opener.attr("inputs") {
+                for entry in inputs.split(',') {
+                    crate::project::split_input(entry.trim())
+                        .map_err(|e| error(line, format!("inputs={e}")))?;
+                }
+            }
             whole_number("timeout")?;
             if opener.attr("timeout").and_then(|t| t.parse::<u64>().ok()) == Some(0) {
                 return Err(error(line, "timeout=0: expected at least 1 second"));

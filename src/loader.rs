@@ -756,13 +756,49 @@ fn lexical(path: &Path) -> PathBuf {
 /// The `inputs=` snapshot: for every matched file in byte-order relative
 /// path, `path NUL length NUL content NUL`, closer sums taken out of the
 /// content. A matched directory means every file under it; the template
-/// itself is excluded. Every file read is added to `read`.
+/// itself is excluded. An entry with a projection, `path#kind=value`, takes
+/// the entry `path#kind=value NUL length NUL slice NUL` in the same order,
+/// so an edit outside the slice leaves the snapshot as it was. Every file
+/// read is added to `read`.
 fn inputs_snapshot(
     ctx: &Ctx,
     globs: &[String],
     read: &mut BTreeSet<PathBuf>,
 ) -> Result<Vec<u8>, LoadError> {
-    content_snapshot(expand(ctx, "inputs", globs)?, read)
+    let mut plain = Vec::new();
+    let mut matched: BTreeMap<Vec<u8>, (PathBuf, Option<Projection>)> = BTreeMap::new();
+    for entry in globs {
+        let entry = entry.trim();
+        let (path, projection) =
+            project::split_input(entry).map_err(|e| hard(format!("inputs={e}")))?;
+        let Some(projection) = projection else {
+            plain.push(entry.to_string());
+            continue;
+        };
+        let rel = Path::new(path);
+        if !ctx.region_root.join(rel).exists() {
+            return Err(hard(format!("inputs={entry} matches nothing")));
+        }
+        let file = ctx.resolve("inputs=", rel)?;
+        if !file.is_file() {
+            return Err(hard(format!("inputs={entry}: {path} is not a file")));
+        }
+        if ctx.template.canonicalize().ok().as_ref() == Some(&file) {
+            return Err(hard(format!(
+                "inputs={entry}: {path} is this file; a region cannot read a part of its own file"
+            )));
+        }
+        let key = format!("{}#{}", lexical(rel).display(), projection.canonical());
+        matched.insert(key.into_bytes(), (file, Some(projection)));
+    }
+    if !plain.is_empty() {
+        matched.extend(
+            expand(ctx, "inputs", &plain)?
+                .into_iter()
+                .map(|(rel, file)| (rel, (file, None))),
+        );
+    }
+    content_snapshot(matched, read)
 }
 
 /// The files a list of globs selects, keyed by their path from the region
@@ -816,24 +852,37 @@ fn expand(
     Ok(matched)
 }
 
-/// The snapshot bytes over the matched files. A file deleted since
-/// expansion listed it is left out, as if the listing had missed it. The
-/// sums in another template's closers are not content: they change when
-/// that file renders, not when what it says does, and two templates that
-/// read each other would otherwise never settle.
+/// The snapshot bytes over the matched files, each narrowed by its
+/// projection when it has one. A file deleted since expansion listed it is
+/// left out, as if the listing had missed it. The sums in another
+/// template's closers are not content: they change when that file renders,
+/// not when what it says does, and two templates that read each other would
+/// otherwise never settle.
 fn content_snapshot(
-    matched: BTreeMap<Vec<u8>, PathBuf>,
+    matched: BTreeMap<Vec<u8>, (PathBuf, Option<Projection>)>,
     read: &mut BTreeSet<PathBuf>,
 ) -> Result<Vec<u8>, LoadError> {
     let mut out = Vec::new();
-    for (rel, file) in matched {
+    for (key, (file, projection)) in matched {
         let Some(content) = present(std::fs::read(&file))
             .map_err(|e| hard(format!("inputs: {}: {e}", file.display())))?
         else {
             continue;
         };
-        push_entry(&mut out, &rel, &marker::strip_sums(&content));
         read.insert(file);
+        let content = marker::strip_sums(&content);
+        match projection {
+            None => push_entry(&mut out, &key, &content),
+            Some(p) => {
+                // The key is `path#kind=value`; the error names the same.
+                let key = String::from_utf8_lossy(&key);
+                let path = &key[..key.len() - p.canonical().len() - 1];
+                let slice = p
+                    .apply(Path::new(path), &content)
+                    .map_err(|e| hard(format!("inputs={path}#{e}")))?;
+                push_entry(&mut out, key.as_bytes(), &slice);
+            }
+        }
     }
     Ok(out)
 }
@@ -1243,8 +1292,8 @@ mod tests {
             .unwrap();
         assert!(expansion.files.is_empty());
         let matched = BTreeMap::from([
-            (b"CLAUDE.md".to_vec(), dir.path().join("CLAUDE.md")),
-            (b"gone.md".to_vec(), dir.path().join("gone.md")),
+            (b"CLAUDE.md".to_vec(), (dir.path().join("CLAUDE.md"), None)),
+            (b"gone.md".to_vec(), (dir.path().join("gone.md"), None)),
         ]);
         assert_eq!(
             content_snapshot(matched, &mut BTreeSet::new()).unwrap(),

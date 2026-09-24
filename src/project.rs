@@ -178,7 +178,7 @@ pub fn split_input(entry: &str) -> Result<(&str, Option<Projection>), String> {
     };
     let (path, suffix) = (&entry[..at], &entry[at + 1..]);
     let (kind, value) = suffix.split_once('=').expect("found with a `=`");
-    let projection = Projection::parse(kind, value)?;
+    let projection = Projection::parse(kind, value).map_err(|e| format!("{path}#{e}"))?;
     if path.contains(['*', '?', '[', '{', '\\']) {
         return Err(format!(
             "{entry}: a projection needs a literal path, not a wildcard"
