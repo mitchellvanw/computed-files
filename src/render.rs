@@ -299,6 +299,22 @@ fn state_of(region: &Region, snapshot: Option<&[u8]>) -> State {
     }
 }
 
+/// A region's state against a snapshot of its inputs, `None` when volatile.
+pub fn state(region: &Region, snapshot: Option<&[u8]>) -> State {
+    state_of(region, snapshot)
+}
+
+/// The input sum a region's opener, indentation and snapshot hash to.
+pub fn input_sum(region: &Region, snapshot: &[u8]) -> String {
+    let constant = loader::format_constant(&region.opener.loader);
+    sum::input(&region.opener, &region.indent, constant, snapshot)
+}
+
+/// The output sum of a body as it sits between the marker lines.
+pub fn output_sum(body: &str) -> String {
+    sum::output(body)
+}
+
 /// The state `clean` can know without a snapshot: only the body is tested.
 fn body_state(region: &Region) -> State {
     match &region.sums {

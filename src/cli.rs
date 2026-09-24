@@ -90,6 +90,16 @@ enum Cmd {
     },
     /// Print templates, their regions and what each reads as a graph.
     Graph { paths: Vec<PathBuf> },
+    /// Explain from history why a region is stale.
+    Why {
+        file: PathBuf,
+        /// Only the region with this name.
+        #[arg(long, value_name = "NAME", conflicts_with = "line")]
+        only: Option<String>,
+        /// Only the region whose opener is on this line.
+        #[arg(long, value_name = "N")]
+        line: Option<usize>,
+    },
 }
 
 /// Runs the command line and returns the exit code.
@@ -188,6 +198,18 @@ fn dispatch(cli: Cli) -> Result<u8> {
             };
             crate::graph::main(paths, style).map_err(anyhow::Error::msg)
         }
+        Cmd::Why { file, only, line } => {
+            text_only(cli.format, "why")?;
+            crate::why::main(file, only.as_deref(), *line, cli.verbose).map_err(anyhow::Error::msg)
+        }
+    }
+}
+
+/// A command that prints text only refuses `--format json`.
+fn text_only(format: Format, command: &str) -> Result<()> {
+    match format {
+        Format::Text => Ok(()),
+        _ => anyhow::bail!("`{command}` prints text only; --format is not for it"),
     }
 }
 
