@@ -363,7 +363,7 @@ fn closer_terminator(region: &Region) -> &str {
 /// A sink's LF body as it sits in the file: each non-blank line carries the
 /// opener's indentation, so a region inside a list item stays inside it, and
 /// every line ends as the opener does.
-fn shape(region: &Region, body: &str) -> String {
+pub fn shape(region: &Region, body: &str) -> String {
     let eol = eol(region);
     let mut out = String::with_capacity(body.len());
     for line in body.split_inclusive('\n') {

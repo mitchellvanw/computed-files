@@ -113,6 +113,16 @@ enum Cmd {
         )]
         files: Vec<PathBuf>,
     },
+    /// Write a hand edit inside a file region back into its source, and render the region.
+    Adopt {
+        file: PathBuf,
+        /// Only the regions with this name; repeat for more.
+        #[arg(long, value_name = "NAME")]
+        only: Vec<String>,
+        /// Print the diff each source would take; write nothing.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 /// Runs the command line and returns the exit code.
@@ -223,6 +233,14 @@ fn dispatch(cli: Cli) -> Result<u8> {
                 _ => unreachable!("clap requires three files or --install"),
             }
             .map_err(anyhow::Error::msg)
+        }
+        Cmd::Adopt {
+            file,
+            only,
+            dry_run,
+        } => {
+            text_only(cli.format, "adopt")?;
+            crate::adopt::main(file, only, *dry_run, cli.verbose).map_err(anyhow::Error::msg)
         }
     }
 }

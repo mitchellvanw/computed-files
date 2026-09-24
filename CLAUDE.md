@@ -39,6 +39,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── cli-commands.sh
 │   └── site-install.sh
 ├── src
+│   ├── adopt.rs
 │   ├── affected.rs
 │   ├── cli.rs
 │   ├── fs.rs
@@ -55,6 +56,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── trust.rs
 │   └── why.rs
 └── tests
+    ├── adopt.rs
     ├── affected.rs
     ├── cli.rs
     ├── fixtures
@@ -62,7 +64,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── render.rs
     └── why.rs
 ```
-<!-- /computed in=c52f1ae011b3864a6d8e53c4a6c19965cd2fe48d37016ff0d7feae0d70686bf7 out=12cfbaae5f2d07abf112eb8cae31a77879f1a10f26e6c861b1d28f75c4bbcc29 -->
+<!-- /computed in=1fbdb383802fe0b297fe273ce77e029dbdaed43c6a6b23480462fc4c60e27cdb out=2a6471d25baf1a6a762301001a82e6635846da8460cf907787115164937ca190 -->
 
 ## Decisions
 

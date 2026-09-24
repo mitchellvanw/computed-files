@@ -6,6 +6,7 @@
 //! snapshots, `fs` walks and writes, `trust` keeps the per-clone grants,
 //! `report` prints, and `cli` ties them to five commands.
 
+pub mod adopt;
 pub mod affected;
 pub mod cli;
 pub mod fs;
