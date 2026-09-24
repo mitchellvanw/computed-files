@@ -197,7 +197,7 @@ const GRAMMAR: &[LoaderGrammar] = &[
     },
     LoaderGrammar {
         name: "file",
-        attrs: &["src"],
+        attrs: &["src", "lines", "section", "anchor"],
         flags: &[],
         sink: Sink::Raw,
     },
@@ -696,7 +696,9 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
         }
         "file" => match opener.attr("src") {
             None => Err(error(line, "file needs src=")),
-            Some(_) => Ok(()),
+            Some(_) => crate::project::from_attrs(&opener.attrs, crate::project::FILE_SLICES)
+                .map(|_| ())
+                .map_err(|e| error(line, e)),
         },
         _ => Ok(()),
     }

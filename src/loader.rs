@@ -42,6 +42,7 @@ use globset::GlobMatcher;
 
 use crate::fs::{self, Ignores, WalkOpts};
 use crate::marker::{self, Opener, Region};
+use crate::project::{self, Projection};
 use crate::render::Loaders;
 
 /// Per-file context every marker path is resolved against.
@@ -115,6 +116,8 @@ pub struct TreeArgs {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileArgs {
     pub src: PathBuf,
+    /// `lines=`, `section=` or `anchor=`: the slice of the file taken.
+    pub slice: Option<Projection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -180,6 +183,7 @@ impl Loader {
             }
             "file" => Ok(Loader::File(FileArgs {
                 src: PathBuf::from(opener.attr("src").ok_or_else(|| hard("file needs src="))?),
+                slice: project::from_attrs(&opener.attrs, project::FILE_SLICES).map_err(hard)?,
             })),
             other => Err(hard(format!("unknown loader {other:?}"))),
         }
@@ -243,7 +247,9 @@ impl Production {
     }
 
     /// The `file` loader: the named file's text, closer sums taken out, and
-    /// the same one-entry snapshot `inputs=` would take of it.
+    /// the same one-entry snapshot `inputs=` would take of it. A slice
+    /// narrows both to the projected part, so an edit elsewhere in the file
+    /// leaves the region fresh.
     fn file(&mut self, args: &FileArgs) -> Result<Loaded, LoadError> {
         let path = self.ctx.resolve("src=", &args.src)?;
         if !path.is_file() {
@@ -258,10 +264,17 @@ impl Production {
         let rel = lexical(&args.src);
         let content =
             std::fs::read(&path).map_err(|e| hard(format!("src=: {}: {e}", args.src.display())))?;
-        let content = marker::strip_sums(&content).into_owned();
+        let mut content = marker::strip_sums(&content).into_owned();
         self.read.insert(path);
+        let mut key = rel.to_string_lossy().into_owned();
+        if let Some(slice) = &args.slice {
+            content = slice
+                .apply(&args.src, &content)
+                .map_err(|e| hard(format!("src=: {}: {e}", args.src.display())))?;
+            key = format!("{key}#{}", slice.canonical());
+        }
         let mut snapshot = Vec::new();
-        push_entry(&mut snapshot, rel.to_string_lossy().as_bytes(), &content);
+        push_entry(&mut snapshot, key.as_bytes(), &content);
         let text = String::from_utf8(content).map_err(|_| LoadError::Failed {
             stderr: format!("src=: {} is not UTF-8", args.src.display()),
         })?;

@@ -13,6 +13,9 @@ use crate::marker;
 /// The projection kinds, as attribute names and `inputs=` suffixes.
 pub const KINDS: &[&str] = &["lines", "section", "anchor", "key"];
 
+/// The projections the `file` loader takes; `key=` belongs to `value`.
+pub const FILE_SLICES: &[&str] = &["lines", "section", "anchor"];
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Projection {
     /// 1-based and inclusive; `last` is `None` for `A-`, to the end.
@@ -128,6 +131,25 @@ impl Projection {
                 .map_err(|e| format!("{}: {e}", self.canonical())),
         }
     }
+}
+
+/// The one projection among an opener's attributes, from the kinds a
+/// loader takes. More than one is an error: a slice of a slice is not
+/// something any region has needed.
+pub fn from_attrs(
+    attrs: &[(String, String)],
+    kinds: &[&str],
+) -> Result<Option<Projection>, String> {
+    let mut found = attrs.iter().filter(|(k, _)| kinds.contains(&k.as_str()));
+    let Some((kind, value)) = found.next() else {
+        return Ok(None);
+    };
+    if let Some((other, _)) = found.next() {
+        return Err(format!(
+            "{kind}= and {other}= both narrow the file; take one"
+        ));
+    }
+    Projection::parse(kind, value).map(Some)
 }
 
 /// A run of ASCII digits as a number; `+5` and ` 5` are not numbers here.

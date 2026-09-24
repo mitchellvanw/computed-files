@@ -52,10 +52,12 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   └── trust.rs
 └── tests
     ├── cli.rs
+    ├── file_slice.rs
     ├── fixtures
-    └── render.rs
+    ├── render.rs
+    └── sandbox
 ```
-<!-- /computed in=62e8bc3629482a3c44ade834ce861120146e49cd38f456d9e7e391f440e7d0b9 out=f75680df338d0496cc6a8b948c98b7ed470cdc1a81ad0bb2f50192fe9246dccd -->
+<!-- /computed in=38ef89570385242b00a3ed5ecfe2b2a1c38079a783d403700e631c50299d9c48 out=8643c5578d4920de8a379ea473576ace48f610f97ebf53f6aabd2e9e759785f1 -->
 
 ## Decisions
 
