@@ -4,7 +4,8 @@
 //! and serialises a file, `sink` shapes loader text, `render` decides what
 //! every region becomes behind the `Loaders` seam, `loader` produces text and
 //! snapshots, `fs` walks and writes, `trust` keeps the per-clone grants,
-//! `report` prints, and `cli` ties them to five commands.
+//! `report` prints, and `cli` ties them to the commands. Most other modules
+//! are one loader or one command each.
 
 pub mod adopt;
 pub mod affected;

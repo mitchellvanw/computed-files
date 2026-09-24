@@ -1,6 +1,7 @@
-//! The five commands: clap definitions, discovery, per-file context and
-//! trust, the mapping from `Rendered` to a write and an exit tier, and the
-//! passes that let templates reading each other settle in one `run`.
+//! The commands: clap definitions, discovery, per-file context and trust,
+//! the mapping from `Rendered` to a write and an exit tier, the passes that
+//! let templates reading each other settle in one `run`, and one dispatch
+//! arm for each command that lives in a module of its own.
 //! The only module using `anyhow`.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
