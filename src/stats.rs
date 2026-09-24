@@ -57,14 +57,15 @@ pub fn file(path: &Path) -> Option<FileStats> {
         Ok(b) => b,
         Err(e) => return failed(None, format!("unreadable: {e}")),
     };
+    let syntax = marker::Syntax::for_path(path);
     let text = match String::from_utf8(bytes) {
         Ok(t) => t,
-        Err(e) if marker::has_marker(&String::from_utf8_lossy(e.as_bytes())) => {
+        Err(e) if marker::has_marker(&String::from_utf8_lossy(e.as_bytes()), syntax) => {
             return failed(None, "not UTF-8".to_string());
         }
         Err(_) => return None,
     };
-    let parsed = match marker::parse(&text) {
+    let parsed = match marker::parse_as(&text, syntax) {
         Ok(p) => p,
         Err(e) => return failed(Some(e.line), e.message),
     };

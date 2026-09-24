@@ -84,7 +84,9 @@ impl Finding {
 /// The region bodies a render produced, in file order.
 fn bodies(parsed: &File, rendered: &Rendered) -> Result<Vec<String>, (usize, String)> {
     let file = match rendered {
-        Rendered::Written { text, .. } => marker::parse(text).map_err(|e| (e.line, e.message))?,
+        Rendered::Written { text, .. } => {
+            marker::parse_as(text, parsed.syntax).map_err(|e| (e.line, e.message))?
+        }
         Rendered::Unchanged { .. } | Rendered::Refused { .. } => parsed.clone(),
         Rendered::Error { line, message } => return Err((*line, message.clone())),
     };

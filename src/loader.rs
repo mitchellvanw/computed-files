@@ -426,7 +426,7 @@ impl Production {
         let rel = lexical(&args.src);
         let content =
             std::fs::read(&path).map_err(|e| hard(format!("src=: {}: {e}", args.src.display())))?;
-        let mut content = marker::strip_sums(&content).into_owned();
+        let mut content = marker::strip_sums(&path, &content).into_owned();
         self.read.insert(path);
         let mut key = rel.to_string_lossy().into_owned();
         if let Some(slice) = &args.slice {
@@ -498,6 +498,12 @@ impl Production {
     /// the only write to the template in a run is the run's own, which
     /// leaves the prose, and so the toc, as it was.
     fn toc(&mut self, args: &TocArgs) -> Result<Loaded, LoadError> {
+        if !marker::Syntax::for_path(&self.ctx.template).is_markdown() {
+            return Err(hard(format!(
+                "toc lists the headings of a Markdown file, and {} is not one",
+                self.ctx.template.display()
+            )));
+        }
         let template = std::fs::read_to_string(&self.ctx.template)
             .map_err(|e| hard(format!("{}: {e}", self.ctx.template.display())))?;
         let (text, snapshot) = toc::toc(&template, args.min, args.max).map_err(hard)?;
@@ -1019,8 +1025,8 @@ fn content_snapshot(matched: Selected, read: &mut BTreeSet<PathBuf>) -> Result<V
         else {
             continue;
         };
+        let content = marker::strip_sums(&file, &content);
         read.insert(file);
-        let content = marker::strip_sums(&content);
         match projection {
             None => push_entry(&mut out, &key, &content),
             Some(p) => {

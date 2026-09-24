@@ -373,9 +373,9 @@ pub fn rewrite(parsed: &File, inputs: &BTreeMap<usize, String>) -> String {
         };
         let opener = r.opener.with_attr("inputs", value);
         let line = if r.raw_opener.contains(marker::OPENER_SUFFIX) {
-            marker::rendered_opener(&opener)
+            marker::rendered_opener(&opener, r.comment)
         } else {
-            opener.canonical()
+            marker::opener_line(&opener, r.comment)
         };
         let body = r.raw_opener.trim_end_matches(['\n', '\r']);
         let eol = &r.raw_opener[body.len()..];

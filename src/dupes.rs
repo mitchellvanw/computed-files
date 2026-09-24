@@ -17,7 +17,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 
 use crate::affected;
-use crate::marker::{self, Segment};
+use crate::marker::{self, Segment, Syntax};
 use crate::report;
 use crate::survey::{self, FileError};
 
@@ -141,8 +141,13 @@ pub fn main(paths: &[PathBuf], min_lines: usize, json: bool) -> Result<u8, Strin
     Ok(exit)
 }
 
-/// A Markdown file's tokens; `None` for a file that is not text.
+/// A Markdown file's tokens; `None` for a file that is not text, or not
+/// Markdown: a file discovery reads for its comment syntax is code, and a
+/// copy in code is not a block of prose to include.
 fn doc(path: &Path) -> Result<Option<Doc>, FileError> {
+    if !Syntax::for_path(path).is_markdown() {
+        return Ok(None);
+    }
     let fail = |line, message: String| FileError {
         path: path.to_path_buf(),
         line,

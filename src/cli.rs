@@ -392,7 +392,9 @@ fn dispatch(cli: Cli) -> Result<u8> {
             text_only(cli.format, "merge")?;
             match files.as_slice() {
                 _ if *install => crate::merge::install(),
-                [base, ours, theirs, ..] => crate::merge::driver(base, ours, theirs),
+                [base, ours, theirs, rest @ ..] => {
+                    crate::merge::driver(base, ours, theirs, rest.first().map(PathBuf::as_path))
+                }
                 _ => unreachable!("clap requires three files or --install"),
             }
             .map_err(anyhow::Error::msg)
@@ -450,16 +452,13 @@ fn text_only(format: Format, command: &str) -> Result<()> {
     }
 }
 
-/// Whether a walked file is a template candidate by its extension.
-fn is_markdown(path: &Path) -> bool {
-    path.extension()
-        .is_some_and(|e| e == "md" || e == "markdown")
-}
-
 /// Files to process, byte-order sorted: explicit files whatever their
 /// extension, walked directories and the current directory for `.md` and
 /// `.markdown`, dotfiles included, symlinks left to the files they name.
-/// Two paths to one file are one file, named by the path that is not a link.
+/// A walk also reads the extensions and names the `[discover]` table of
+/// its repository root's `computed.toml` lists (the walked directory's,
+/// outside a repository). Two paths to one file are one file, named by the
+/// path that is not a link.
 pub(crate) fn discover(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut files = Vec::new();
     let roots: Vec<PathBuf> = if paths.is_empty() {
@@ -474,8 +473,10 @@ pub(crate) fn discover(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     for root in roots {
         let meta = std::fs::metadata(&root).with_context(|| format!("{}", root.display()))?;
         if meta.is_dir() {
+            let top = fs::repo_root(&root).unwrap_or_else(|| root.clone());
+            let wanted = crate::config::discovery(&top).map_err(anyhow::Error::msg)?;
             for entry in fs::walk(&root, walk) {
-                if !entry.is_dir && !entry.is_link && is_markdown(&entry.path) {
+                if !entry.is_dir && !entry.is_link && wanted.selects(&entry.path) {
                     let p = if root == Path::new(".") {
                         entry.path
                     } else {
@@ -740,18 +741,19 @@ pub(crate) fn open(path: &Path) -> Result<Opened> {
         path.to_path_buf()
     };
     let bytes = std::fs::read(&file).context("unreadable")?;
+    let syntax = marker::Syntax::for_path(&file);
     let text = match String::from_utf8(bytes) {
         Ok(text) => text,
-        Err(e) if marker::has_marker(&String::from_utf8_lossy(e.as_bytes())) => {
+        Err(e) if marker::has_marker(&String::from_utf8_lossy(e.as_bytes()), syntax) => {
             return Ok(Opened::Error(None, "not UTF-8".to_string()));
         }
         // A file with no marker is none of the tool's business, whatever its encoding.
         Err(_) => return Ok(Opened::Skip),
     };
-    if !text.contains("<!--") {
+    if !syntax.may_hold(&text) {
         return Ok(Opened::Skip);
     }
-    let mut parsed = match marker::parse(&text) {
+    let mut parsed = match marker::parse_as(&text, syntax) {
         Ok(p) => p,
         Err(e) => return Ok(Opened::Error(Some(e.line), e.message)),
     };

@@ -1,11 +1,17 @@
 //! The marker grammar: parse a file into prose and regions, and serialise it back.
 //!
-//! A marker is a whole line: optional indentation, an HTML comment whose first
+//! A marker is a whole line: optional indentation, a comment whose first
 //! token is `computed` (opener) or `/computed` (closer), optional trailing
-//! whitespace. Markers inside CommonMark fenced code blocks are prose. The
-//! raw lines are kept so a fresh region can be reproduced byte for byte.
+//! whitespace. The comment is the file's own, chosen by its extension or
+//! name ([`Syntax`]): `<!-- … -->` in Markdown and HTML, `//`, `#` or `--`
+//! line comments in code, `/* … */` in CSS. In a line comment, an opener
+//! must name a known loader, so a comment that merely starts with the word
+//! is prose. Markers inside CommonMark fenced code blocks of a Markdown file
+//! are prose. The raw lines are kept so a fresh region can be reproduced
+//! byte for byte.
 
 use std::fmt;
+use std::path::Path;
 
 use crate::table::TableFrom;
 
@@ -13,6 +19,172 @@ use crate::table::TableFrom;
 #[derive(Debug, Clone, PartialEq)]
 pub struct File {
     pub segments: Vec<Segment>,
+    /// The comment syntax the file was read in.
+    pub syntax: Syntax,
+}
+
+/// The comment a marker is written in, as the file spells it: the token
+/// that opens it and, for a comment that ends on its line, the one that
+/// closes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Comment {
+    pub open: &'static str,
+    /// Empty for a line comment, which runs to the end of its line.
+    pub close: &'static str,
+}
+
+impl Comment {
+    pub const HTML: Comment = Comment {
+        open: "<!--",
+        close: "-->",
+    };
+    const CSS: Comment = Comment {
+        open: "/*",
+        close: "*/",
+    };
+    const SLASH: Comment = Comment::line("//");
+    /// Rust's outer and inner doc comments, which `//` alone would miss.
+    const DOC: Comment = Comment::line("///");
+    const INNER_DOC: Comment = Comment::line("//!");
+    const HASH: Comment = Comment::line("#");
+    const DASH: Comment = Comment::line("--");
+
+    const fn line(open: &'static str) -> Comment {
+        Comment { open, close: "" }
+    }
+
+    /// Whether the comment runs to the end of its line, so a sink can put
+    /// its leader before every body line.
+    pub fn is_line(self) -> bool {
+        self.close.is_empty()
+    }
+
+    /// `content` as a marker in this comment, one space either side.
+    pub fn wrap(self, content: &str) -> String {
+        if self.is_line() {
+            format!("{} {content}", self.open)
+        } else {
+            format!("{} {content} {}", self.open, self.close)
+        }
+    }
+}
+
+/// The comment syntax of a file, chosen by its extension or name. Markdown
+/// is the only one with fenced code blocks, and the only one whose loaders
+/// default to a fence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Syntax {
+    /// `<!-- … -->`; markers inside fenced code blocks are prose.
+    Markdown,
+    /// `<!-- … -->` in HTML, XML and SVG, with no fence rule.
+    Html,
+    /// `//` line comments, and Rust's `///` and `//!`.
+    Slash,
+    /// `#` line comments.
+    Hash,
+    /// `--` line comments.
+    Dash,
+    /// `/* … */` on one line.
+    Css,
+}
+
+/// Every extension with a syntax. An extension compares without case.
+const EXTENSIONS: &[(Syntax, &[&str])] = &[
+    (Syntax::Markdown, &["md", "markdown"]),
+    (Syntax::Html, &["html", "htm", "xml", "svg"]),
+    (
+        Syntax::Slash,
+        &[
+            "rs", "js", "mjs", "cjs", "jsx", "ts", "tsx", "go", "c", "h", "cc", "cpp", "hpp",
+            "java", "kt", "swift", "scala", "cs", "dart", "zig", "proto",
+        ],
+    ),
+    (
+        Syntax::Hash,
+        &[
+            "py", "sh", "bash", "zsh", "rb", "toml", "yaml", "yml", "pl", "r", "tf", "nix", "ini",
+            "cfg",
+        ],
+    ),
+    (Syntax::Dash, &["sql", "lua", "hs"]),
+    (Syntax::Css, &["css"]),
+];
+
+/// File names with a syntax and no extension to tell it by.
+const NAMES: &[(&str, Syntax)] = &[
+    ("Makefile", Syntax::Hash),
+    ("GNUmakefile", Syntax::Hash),
+    ("makefile", Syntax::Hash),
+    ("Dockerfile", Syntax::Hash),
+    ("Containerfile", Syntax::Hash),
+    (".gitignore", Syntax::Hash),
+    (".gitattributes", Syntax::Hash),
+    (".dockerignore", Syntax::Hash),
+];
+
+impl Syntax {
+    /// The syntax an extension, without its dot, selects.
+    pub fn of_extension(ext: &str) -> Option<Syntax> {
+        let ext = ext.to_ascii_lowercase();
+        EXTENSIONS
+            .iter()
+            .find(|(_, exts)| exts.contains(&ext.as_str()))
+            .map(|(s, _)| *s)
+    }
+
+    /// The syntax a file name without an extension to tell it by selects.
+    pub fn of_name(name: &str) -> Option<Syntax> {
+        NAMES.iter().find(|(n, _)| *n == name).map(|(_, s)| *s)
+    }
+
+    /// The syntax a path selects by its name, else its extension.
+    pub fn of(path: &Path) -> Option<Syntax> {
+        let name = path.file_name()?.to_str()?;
+        Syntax::of_name(name).or_else(|| Syntax::of_extension(path.extension()?.to_str()?))
+    }
+
+    /// The syntax a file is read in: an unknown extension reads as
+    /// Markdown, as every file named on the command line always did.
+    pub fn for_path(path: &Path) -> Syntax {
+        Syntax::of(path).unwrap_or(Syntax::Markdown)
+    }
+
+    /// Every extension and file name with a syntax, for a message.
+    pub fn supported() -> String {
+        let exts: Vec<&str> = EXTENSIONS
+            .iter()
+            .flat_map(|(_, e)| e.iter().copied())
+            .collect();
+        let names: Vec<&str> = NAMES.iter().map(|(n, _)| *n).collect();
+        format!(
+            "the extensions {} and the names {}",
+            exts.join(" "),
+            names.join(" ")
+        )
+    }
+
+    /// The comments a marker may be written in, longest opening token first.
+    fn comments(self) -> &'static [Comment] {
+        match self {
+            Syntax::Markdown | Syntax::Html => &[Comment::HTML],
+            Syntax::Slash => &[Comment::DOC, Comment::INNER_DOC, Comment::SLASH],
+            Syntax::Hash => &[Comment::HASH],
+            Syntax::Dash => &[Comment::DASH],
+            Syntax::Css => &[Comment::CSS],
+        }
+    }
+
+    pub fn is_markdown(self) -> bool {
+        self == Syntax::Markdown
+    }
+
+    /// Whether `text` could hold a marker at all: a quick test before a parse.
+    pub fn may_hold(self, text: &str) -> bool {
+        match self {
+            Syntax::Markdown | Syntax::Html => text.contains("<!--"),
+            _ => text.contains("computed"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -39,6 +211,11 @@ pub struct Region {
     /// The closer's sums; `None` means the region is unrendered.
     pub sums: Option<Sums>,
     pub opener: Opener,
+    /// The syntax of the file the region sits in.
+    pub syntax: Syntax,
+    /// The comment the opener is written in, which the tool writes both
+    /// markers in.
+    pub comment: Comment,
 }
 
 /// The two sums a rendered closer carries, as 64 lowercase hex characters each.
@@ -54,6 +231,8 @@ pub enum Sink {
     Fence,
     /// `as=table`, with what the text is written in.
     Table(TableFrom),
+    /// `as=comment`: every line behind the opener's line-comment leader.
+    Comment,
 }
 
 impl Sink {
@@ -61,6 +240,7 @@ impl Sink {
         match s {
             "raw" => Some(Sink::Raw),
             "fence" => Some(Sink::Fence),
+            "comment" => Some(Sink::Comment),
             "table" => Some(Sink::Table(TableFrom::Delimited(b','))),
             _ => None,
         }
@@ -169,6 +349,27 @@ impl Opener {
         self
     }
 
+    /// The opener as it reads in a file of `syntax`: a loader that fences
+    /// its text by default writes it raw outside Markdown, where a fence
+    /// means nothing, and `as=comment` needs a comment with a line leader.
+    pub fn placed(mut self, syntax: Syntax) -> Result<Opener, String> {
+        let written_as = self
+            .tokens
+            .iter()
+            .any(|t| matches!(t, Token::Attr(k, _) if k == "as"));
+        if !written_as && self.sink == Sink::Fence && !syntax.is_markdown() {
+            self.sink = Sink::Raw;
+        }
+        let comment = syntax.comments()[0];
+        if self.sink == Sink::Comment && !comment.is_line() {
+            return Err(format!(
+                "as=comment needs a line comment such as // or #; a {} {} comment has no leader to put before each line",
+                comment.open, comment.close
+            ));
+        }
+        Ok(self)
+    }
+
     /// The opener with the loader attribute `key=` set to `value`: in its
     /// place when written, else last.
     pub fn with_attr(&self, key: &str, value: &str) -> Opener {
@@ -192,20 +393,31 @@ impl Opener {
 /// The suffix the tool writes after the attributes of a rendered opener.
 pub const OPENER_SUFFIX: &str = "| do not edit; run computed";
 
-/// The rendered opener line: canonical form with the suffix, without indent.
-pub fn rendered_opener(opener: &Opener) -> String {
-    let c = opener.written.clone().unwrap_or_else(|| opener.canonical());
-    let stem = c
-        .strip_suffix(" -->")
-        .expect("canonical opener ends with -->");
-    format!("{stem} {OPENER_SUFFIX} -->")
+/// The attributes of a canonical opener: what sits between `<!--` and `-->`.
+fn content(canonical: &str) -> &str {
+    canonical
+        .strip_prefix("<!-- ")
+        .and_then(|c| c.strip_suffix(" -->"))
+        .expect("canonical opener is an HTML comment")
 }
 
-/// The closer line for the given sums, without indent.
-pub fn rendered_closer(sums: Option<&Sums>) -> String {
+/// The canonical form in `comment`, without the suffix or indent.
+pub fn opener_line(opener: &Opener, comment: Comment) -> String {
+    comment.wrap(content(&opener.canonical()))
+}
+
+/// The rendered opener line in `comment`: canonical form with the suffix,
+/// without indent.
+pub fn rendered_opener(opener: &Opener, comment: Comment) -> String {
+    let c = opener.written.clone().unwrap_or_else(|| opener.canonical());
+    comment.wrap(&format!("{} {OPENER_SUFFIX}", content(&c)))
+}
+
+/// The closer line in `comment` for the given sums, without indent.
+pub fn rendered_closer(sums: Option<&Sums>, comment: Comment) -> String {
     match sums {
-        Some(s) => format!("<!-- /computed in={} out={} -->", s.input, s.output),
-        None => "<!-- /computed -->".to_string(),
+        Some(s) => comment.wrap(&format!("/computed in={} out={}", s.input, s.output)),
+        None => comment.wrap("/computed"),
     }
 }
 
@@ -378,51 +590,99 @@ fn lines(text: &str) -> Vec<Line<'_>> {
 
 enum Kind<'a> {
     Prose,
-    /// The content between `<!--` and `-->`, trimmed, plus the indent.
+    /// The content between the comment's tokens after the first word,
+    /// trimmed, plus the indent and the comment.
     Opener {
         indent: &'a str,
         content: &'a str,
+        comment: Comment,
     },
     Closer {
         indent: &'a str,
         content: &'a str,
+        comment: Comment,
     },
 }
 
-fn classify<'a>(line: &Line<'a>) -> Result<Kind<'a>, ParseError> {
+/// Whether `word` names a loader, so a line comment that starts with
+/// `computed` and then prose is prose.
+fn is_loader(word: &str) -> bool {
+    GRAMMAR.iter().any(|g| g.name == word)
+}
+
+fn classify<'a>(line: &Line<'a>, syntax: Syntax) -> Result<Kind<'a>, ParseError> {
     let text = line.text;
     let trimmed_start = text.trim_start_matches([' ', '\t']);
     let indent = &text[..text.len() - trimmed_start.len()];
-    let Some(after) = trimmed_start.strip_prefix("<!--") else {
+    let found = syntax.comments().iter().find_map(|&c| {
+        let after = trimmed_start.strip_prefix(c.open)?;
+        after.starts_with([' ', '\t']).then_some((c, after))
+    });
+    let Some((comment, after)) = found else {
         return Ok(Kind::Prose);
     };
-    if !after.starts_with([' ', '\t']) {
-        return Ok(Kind::Prose);
-    }
     let inner = after.trim_start_matches([' ', '\t']);
     let word_end = inner.find([' ', '\t']).unwrap_or(inner.len());
     // `<!-- /computed-->` closes as surely as `<!-- /computed -->`.
     let word = &inner[..word_end];
-    let word = word.strip_suffix("-->").unwrap_or(word);
+    let word = if comment.is_line() {
+        word
+    } else {
+        word.strip_suffix(comment.close).unwrap_or(word)
+    };
     if word != "computed" && word != "/computed" {
         return Ok(Kind::Prose);
     }
+    if comment.is_line() && word == "computed" {
+        let loader = inner[word.len()..]
+            .trim_start_matches([' ', '\t'])
+            .split([' ', '\t'])
+            .next()
+            .unwrap_or("");
+        if !is_loader(loader) {
+            return Ok(Kind::Prose);
+        }
+    }
     let body = trimmed_start.trim_end_matches([' ', '\t']);
-    let Some(content) = body.strip_suffix("-->") else {
+    let content = if comment.is_line() {
+        body
+    } else {
+        let Some(content) = body.strip_suffix(comment.close) else {
+            return Err(error(
+                line.number,
+                format!(
+                    "unterminated marker: the line does not end with {}",
+                    comment.close
+                ),
+            ));
+        };
+        content
+    };
+    let content = content[comment.open.len()..].trim_matches([' ', '\t']);
+    let content = content[word.len()..].trim_start_matches([' ', '\t']);
+    // `-->` in a value is the tokeniser's to refuse; another comment's
+    // end would end the marker early wherever the file is read.
+    if !comment.is_line() && comment != Comment::HTML && content.contains(comment.close) {
         return Err(error(
             line.number,
-            "unterminated marker: the line does not end with -->",
+            format!(
+                "the marker holds {} before its end, which would end the comment there",
+                comment.close
+            ),
         ));
-    };
-    let content = content
-        .strip_prefix("<!--")
-        .unwrap()
-        .trim_matches([' ', '\t']);
-    let content = content[word.len()..].trim_start_matches([' ', '\t']);
+    }
     if word == "computed" {
-        Ok(Kind::Opener { indent, content })
+        Ok(Kind::Opener {
+            indent,
+            content,
+            comment,
+        })
     } else {
-        Ok(Kind::Closer { indent, content })
+        Ok(Kind::Closer {
+            indent,
+            content,
+            comment,
+        })
     }
 }
 
@@ -450,6 +710,14 @@ pub fn has_unclosed_fence(text: &str) -> bool {
 
 /// Which lines sit inside a fenced code block, fence lines included. A fence
 /// counts only when a matching closer follows; an unclosed fence is prose.
+/// Only Markdown has fences; in any other syntax no line is fenced.
+fn fenced_in(lines: &[Line<'_>], syntax: Syntax) -> Vec<bool> {
+    match syntax {
+        Syntax::Markdown => fenced_lines(lines),
+        _ => vec![false; lines.len()],
+    }
+}
+
 fn fenced_lines(lines: &[Line<'_>]) -> Vec<bool> {
     let mut fenced = vec![false; lines.len()];
     let mut i = 0;
@@ -482,25 +750,31 @@ pub fn fenced(text: &str) -> Vec<bool> {
     fenced_lines(&lines(text))
 }
 
-/// Whether a line, on its own, would parse as an opener or a closer.
+/// Whether a line, on its own, would parse as an opener or a closer in a
+/// Markdown file.
 pub fn is_marker(text: &str) -> bool {
+    is_marker_in(text, Syntax::Markdown)
+}
+
+/// Whether a line, on its own, would parse as an opener or a closer.
+pub fn is_marker_in(text: &str, syntax: Syntax) -> bool {
     let line = Line {
         number: 1,
         raw: text,
         text,
     };
-    !matches!(classify(&line), Ok(Kind::Prose))
+    !matches!(classify(&line, syntax), Ok(Kind::Prose))
 }
 
 /// The first line of `text` outside a fenced code block that would parse
 /// as a marker. Such a line in a `raw` body would open or close a region.
-pub fn unfenced_marker_line(text: &str) -> Option<&str> {
+pub fn unfenced_marker_line(text: &str, syntax: Syntax) -> Option<&str> {
     let lines = lines(text);
-    let fenced = fenced_lines(&lines);
+    let fenced = fenced_in(&lines, syntax);
     lines
         .iter()
         .zip(&fenced)
-        .find(|(l, f)| !**f && is_marker(l.text))
+        .find(|(l, f)| !**f && is_marker_in(l.text, syntax))
         .map(|(l, _)| l.text)
 }
 
@@ -520,19 +794,24 @@ pub fn unclosed_fences(text: &str) -> Vec<usize> {
         .collect()
 }
 
-/// Whether any line of `text` would parse as a marker, fenced or not.
-pub fn has_marker(text: &str) -> bool {
-    lines(text).iter().any(|l| is_marker(l.text))
+/// Whether any line of `text` would parse as a marker in `syntax`, fenced
+/// or not.
+pub fn has_marker(text: &str, syntax: Syntax) -> bool {
+    syntax.may_hold(text) && lines(text).iter().any(|l| is_marker_in(l.text, syntax))
 }
 
-/// `bytes` with the sums taken out of every closer line, so a snapshot of
-/// another template moves with its prose and bodies and not with the sums
-/// the tool writes into it. Lines that are not UTF-8 are kept as they are.
-pub fn strip_sums(bytes: &[u8]) -> std::borrow::Cow<'_, [u8]> {
+/// `bytes`, the content of the file at `path`, with the sums taken out of
+/// every closer line, so a snapshot of another template moves with its
+/// prose and bodies and not with the sums the tool writes into it. A closer
+/// is one in the file's own syntax or an HTML comment, which every file was
+/// read for before files had syntaxes. Lines that are not UTF-8 are kept
+/// as they are.
+pub fn strip_sums<'b>(path: &Path, bytes: &'b [u8]) -> std::borrow::Cow<'b, [u8]> {
     const NEEDLE: &[u8] = b"/computed";
     if !bytes.windows(NEEDLE.len()).any(|w| w == NEEDLE) {
         return std::borrow::Cow::Borrowed(bytes);
     }
+    let own = Syntax::for_path(path);
     let mut out = Vec::with_capacity(bytes.len());
     for raw in bytes.split_inclusive(|&b| b == b'\n') {
         let (body, term) = match raw.strip_suffix(b"\r\n") {
@@ -547,24 +826,42 @@ pub fn strip_sums(bytes: &[u8]) -> std::borrow::Cow<'_, [u8]> {
             raw: "",
             text: std::str::from_utf8(body).unwrap_or(""),
         };
-        match classify(&line) {
-            Ok(Kind::Closer { indent, content }) if !content.is_empty() => {
+        let closer =
+            [own, Syntax::Markdown]
+                .into_iter()
+                .find_map(|syntax| match classify(&line, syntax) {
+                    Ok(Kind::Closer {
+                        indent,
+                        content,
+                        comment,
+                    }) if !content.is_empty() => Some((indent, comment)),
+                    _ => None,
+                });
+        match closer {
+            Some((indent, comment)) => {
                 out.extend_from_slice(indent.as_bytes());
-                out.extend_from_slice(rendered_closer(None).as_bytes());
+                out.extend_from_slice(rendered_closer(None, comment).as_bytes());
                 out.extend_from_slice(term);
             }
-            _ => out.extend_from_slice(raw),
+            None => out.extend_from_slice(raw),
         }
     }
     std::borrow::Cow::Owned(out)
 }
 
-/// Parses a file into prose and regions. Every grammar error is tier 2.
+/// Parses a Markdown file into prose and regions. Every grammar error is
+/// tier 2.
 pub fn parse(text: &str) -> Result<File, ParseError> {
+    parse_as(text, Syntax::Markdown)
+}
+
+/// Parses a file of `syntax` into prose and regions. Every grammar error
+/// is tier 2.
+pub fn parse_as(text: &str, syntax: Syntax) -> Result<File, ParseError> {
     let lines = lines(text);
     let mut segments = Vec::new();
     let mut prose = String::new();
-    let fenced = fenced_lines(&lines);
+    let fenced = fenced_in(&lines, syntax);
     let mut names: Vec<String> = Vec::new();
     let mut i = 0;
     while i < lines.len() {
@@ -574,14 +871,20 @@ pub fn parse(text: &str) -> Result<File, ParseError> {
             i += 1;
             continue;
         }
-        match classify(line)? {
+        match classify(line, syntax)? {
             Kind::Prose => {
                 prose.push_str(line.raw);
                 i += 1;
             }
             Kind::Closer { .. } => return Err(error(line.number, "closer without opener")),
-            Kind::Opener { indent, content } => {
-                let opener = parse_opener(line.number, content)?;
+            Kind::Opener {
+                indent,
+                content,
+                comment,
+            } => {
+                let opener = parse_opener(line.number, content)?
+                    .placed(syntax)
+                    .map_err(|m| error(line.number, m))?;
                 if let Some(name) = &opener.name {
                     if names.contains(name) {
                         return Err(error(line.number, format!("duplicate name {name:?}")));
@@ -602,7 +905,7 @@ pub fn parse(text: &str) -> Result<File, ParseError> {
                         j += 1;
                         continue;
                     }
-                    match classify(l)? {
+                    match classify(l, syntax)? {
                         Kind::Prose => body.push_str(l.raw),
                         Kind::Opener { .. } => {
                             return Err(error(
@@ -624,6 +927,8 @@ pub fn parse(text: &str) -> Result<File, ParseError> {
                     body,
                     sums: closer.1,
                     opener,
+                    syntax,
+                    comment,
                 }));
                 i = j + 1;
             }
@@ -632,7 +937,7 @@ pub fn parse(text: &str) -> Result<File, ParseError> {
     if !prose.is_empty() {
         segments.push(Segment::Prose(prose));
     }
-    Ok(File { segments })
+    Ok(File { segments, syntax })
 }
 
 /// Tokenises marker content: bare words and `key=value` pairs, values
@@ -1399,9 +1704,13 @@ mod tests {
 
     #[test]
     fn a_fenced_marker_is_not_an_unfenced_one() {
-        assert_eq!(unfenced_marker_line("```\n<!-- /computed -->\n```\n"), None);
+        let md = Syntax::Markdown;
         assert_eq!(
-            unfenced_marker_line("x\n  <!-- /computed -->\n"),
+            unfenced_marker_line("```\n<!-- /computed -->\n```\n", md),
+            None
+        );
+        assert_eq!(
+            unfenced_marker_line("x\n  <!-- /computed -->\n", md),
             Some("  <!-- /computed -->")
         );
     }
@@ -1413,11 +1722,11 @@ mod tests {
         let mut bytes = text.into_bytes();
         bytes.push(0xff);
         assert_eq!(
-            &*strip_sums(&bytes),
+            &*strip_sums(Path::new("a.md"), &bytes),
             b"a /computed b\r\n  <!-- /computed -->\r\n<!-- /computed -->\n\xff"
         );
         assert!(matches!(
-            strip_sums(b"no markers"),
+            strip_sums(Path::new("a.md"), b"no markers"),
             std::borrow::Cow::Borrowed(_)
         ));
     }
@@ -1427,5 +1736,186 @@ mod tests {
         let text = "<!-- computedx tree -->\n<!--computed tree-->\n<!-- Computed tree -->\n";
         let file = parse(text).unwrap();
         assert_eq!(file.segments.len(), 1);
+    }
+
+    fn regions_in(text: &str, syntax: Syntax) -> Vec<Region> {
+        let file = parse_as(text, syntax).unwrap();
+        assert_eq!(serialise(&file), text);
+        file.segments
+            .into_iter()
+            .filter_map(|s| match s {
+                Segment::Region(r) => Some(r),
+                Segment::Prose(_) => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_syntax_is_chosen_by_name_else_extension() {
+        let of = |p: &str| Syntax::of(Path::new(p));
+        assert_eq!(of("src/lib.rs"), Some(Syntax::Slash));
+        assert_eq!(of("a/b.PY"), Some(Syntax::Hash));
+        assert_eq!(of("Makefile"), Some(Syntax::Hash));
+        assert_eq!(of(".gitignore"), Some(Syntax::Hash));
+        assert_eq!(of("q.sql"), Some(Syntax::Dash));
+        assert_eq!(of("site.css"), Some(Syntax::Css));
+        assert_eq!(of("index.html"), Some(Syntax::Html));
+        assert_eq!(of("README.md"), Some(Syntax::Markdown));
+        assert_eq!(of("notes.txt"), None);
+        assert_eq!(Syntax::for_path(Path::new("notes.txt")), Syntax::Markdown);
+    }
+
+    #[test]
+    fn line_comment_markers_round_trip_in_each_leader() {
+        let text = "fn a() {}\n    // computed tree src=. depth=1\n    // x\n    // /computed\n//! computed tree name=d\n//! /computed\n/// computed exec cmd=x volatile\n/// /computed\n";
+        let rs = regions_in(text, Syntax::Slash);
+        assert_eq!(rs.len(), 3);
+        assert_eq!((rs[0].line, rs[0].indent.as_str()), (2, "    "));
+        assert_eq!(rs[0].comment.open, "//");
+        assert_eq!(rs[0].body, "    // x\n");
+        assert_eq!(rs[1].comment.open, "//!");
+        assert_eq!(rs[2].comment.open, "///");
+        assert_eq!(
+            rs[0].opener.canonical(),
+            "<!-- computed tree src=. depth=1 -->"
+        );
+        let sql = regions_in("-- computed file src=a.sql\n-- /computed\n", Syntax::Dash);
+        assert_eq!(sql[0].comment.open, "--");
+        let css = regions_in(
+            "a {}\n/* computed file src=a.css */\n/* /computed */\n",
+            Syntax::Css,
+        );
+        assert_eq!(css[0].comment, Comment::CSS);
+        let py = regions_in(
+            "#!/bin/sh\n# computed exec cmd=x volatile | do not edit; run computed\n# /computed in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715\n",
+            Syntax::Hash,
+        );
+        assert!(py[0].sums.is_some());
+    }
+
+    #[test]
+    fn a_line_comment_opens_only_with_a_known_loader() {
+        let text = "// computed values are cached\n// computed\n// computedtree\n//// computed tree\n//computed tree\n## computed tree\n// /computedx\n";
+        assert!(regions_in(text, Syntax::Slash).is_empty());
+        assert!(
+            regions_in(
+                "# computed, then rendered\n#! computed tree\n",
+                Syntax::Hash
+            )
+            .is_empty()
+        );
+        // A known loader followed by prose is a marker that does not parse.
+        let e = parse_as(
+            "// computed tree is the loader\n// /computed\n",
+            Syntax::Slash,
+        )
+        .unwrap_err();
+        assert!(e.message.contains("unknown flag \"is\""), "{}", e.message);
+        let e = parse_as("x\n# /computed\n", Syntax::Hash).unwrap_err();
+        assert_eq!((e.line, e.message.as_str()), (2, "closer without opener"));
+        // Another syntax's markers are prose.
+        assert!(
+            regions_in(
+                "<!-- computed tree -->\n<!-- /computed -->\n",
+                Syntax::Slash
+            )
+            .is_empty()
+        );
+        assert!(regions_in("// computed tree\n// /computed\n", Syntax::Markdown).is_empty());
+    }
+
+    #[test]
+    fn only_markdown_has_fences() {
+        let text = "```\n// computed tree\n// /computed\n```\n";
+        assert_eq!(regions_in(text, Syntax::Slash).len(), 1);
+        let html = "<pre>\n```\n<!-- computed tree -->\n<!-- /computed -->\n```\n</pre>\n";
+        assert_eq!(regions_in(html, Syntax::Html).len(), 1);
+        assert!(regions_in(html, Syntax::Markdown).is_empty());
+    }
+
+    #[test]
+    fn a_css_marker_ends_with_its_comment() {
+        let e = parse_as("/* computed tree\n/* /computed */\n", Syntax::Css).unwrap_err();
+        assert!(e.message.contains("does not end with */"), "{}", e.message);
+        let e = parse_as(
+            "/* computed exec cmd=\"a */ b\" volatile */\n/* /computed */\n",
+            Syntax::Css,
+        )
+        .unwrap_err();
+        assert!(e.message.contains("holds */"), "{}", e.message);
+    }
+
+    #[test]
+    fn outside_markdown_a_fence_default_is_raw_and_as_comment_needs_a_line_leader() {
+        let sink = |text: &str, syntax| regions_in(text, syntax)[0].opener.sink;
+        assert_eq!(
+            sink("// computed tree\n// /computed\n", Syntax::Slash),
+            Sink::Raw
+        );
+        assert_eq!(
+            sink("<!-- computed tree -->\n<!-- /computed -->\n", Syntax::Html),
+            Sink::Raw
+        );
+        assert_eq!(
+            sink(
+                "<!-- computed tree -->\n<!-- /computed -->\n",
+                Syntax::Markdown
+            ),
+            Sink::Fence
+        );
+        assert_eq!(
+            sink("// computed tree as=fence\n// /computed\n", Syntax::Slash),
+            Sink::Fence
+        );
+        assert_eq!(
+            sink("# computed tree as=comment\n# /computed\n", Syntax::Hash),
+            Sink::Comment
+        );
+        for (text, syntax) in [
+            (
+                "<!-- computed tree as=comment -->\n<!-- /computed -->\n",
+                Syntax::Markdown,
+            ),
+            (
+                "/* computed tree as=comment */\n/* /computed */\n",
+                Syntax::Css,
+            ),
+        ] {
+            let e = parse_as(text, syntax).unwrap_err();
+            assert!(
+                e.message.contains("as=comment needs a line comment"),
+                "{}",
+                e.message
+            );
+        }
+    }
+
+    #[test]
+    fn markers_are_written_in_the_openers_comment() {
+        let r = &regions_in("//! computed tree src=.\n// /computed\n", Syntax::Slash)[0];
+        assert_eq!(
+            rendered_opener(&r.opener, r.comment),
+            "//! computed tree src=. | do not edit; run computed"
+        );
+        assert_eq!(rendered_closer(None, r.comment), "//! /computed");
+        assert_eq!(
+            opener_line(&r.opener, Comment::CSS),
+            "/* computed tree src=. */"
+        );
+    }
+
+    #[test]
+    fn strip_sums_reads_closers_in_the_files_syntax_and_html_everywhere() {
+        let sums = "in=9f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f609f3a1c0b7d2e4f60 out=41c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f71541c0d9e8b3a2f715";
+        let text = format!("  // /computed {sums}\n<!-- /computed {sums} -->\n");
+        assert_eq!(
+            &*strip_sums(Path::new("lib.rs"), text.as_bytes()),
+            b"  // /computed\n<!-- /computed -->\n"
+        );
+        let md = strip_sums(Path::new("a.md"), text.as_bytes()).into_owned();
+        assert_eq!(
+            String::from_utf8(md).unwrap(),
+            format!("  // /computed {sums}\n<!-- /computed -->\n")
+        );
     }
 }

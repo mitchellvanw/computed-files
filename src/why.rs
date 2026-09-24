@@ -304,7 +304,7 @@ fn baseline(
 /// `recorded`: by name, else by the same opener, else any region with it.
 fn held(repo: &Repo, commit: &str, region: &Region, recorded: &str) -> Option<Region> {
     let text = survey::git(&repo.root, &["show", &format!("{commit}:{}", repo.rel)]).ok()?;
-    let parsed = marker::parse(&text).ok()?;
+    let parsed = marker::parse_as(&text, region.syntax).ok()?;
     let holding: Vec<&Region> = survey::regions(&parsed)
         .filter(|r| r.sums.as_ref().is_some_and(|s| s.input == recorded))
         .collect();
@@ -336,6 +336,7 @@ fn reproduce(
     let path = dir.path().join(&repo.rel);
     let mut file = marker::File {
         segments: vec![marker::Segment::Region(base.region.clone())],
+        syntax: base.region.syntax,
     };
     let mut loaders = Production::for_file(&path, &mut file);
     if let Some(marker::Segment::Region(expanded)) = file.segments.pop() {

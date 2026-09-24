@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use crate::marker::{self, File, Opener, Segment};
+use crate::marker::{self, File, Opener, Segment, Syntax};
 
 pub const FILE_NAME: &str = "computed.toml";
 
@@ -85,9 +85,13 @@ impl Config {
         let table: toml::Table = text.parse().map_err(|e| at(format!("{e}")))?;
         let mut recipes = BTreeMap::new();
         for (key, value) in table {
+            if key == "discover" {
+                Discover::parse(value).map_err(&at)?;
+                continue;
+            }
             if key != "recipe" {
                 return Err(at(format!(
-                    "unknown key {key:?}; recipes go under [recipe.NAME]"
+                    "unknown key {key:?}; recipes go under [recipe.NAME], and discovery under [discover]"
                 )));
             }
             let toml::Value::Table(named) = value else {
@@ -106,8 +110,9 @@ impl Config {
         })
     }
 
-    /// The opener a `use` region stands for, marked as expanded from it.
-    pub fn expand(&self, opener: &Opener, line: usize) -> Result<Opener, String> {
+    /// The opener a `use` region in a file of `syntax` stands for, marked
+    /// as expanded from it.
+    pub fn expand(&self, opener: &Opener, line: usize, syntax: Syntax) -> Result<Opener, String> {
         let name = opener.attr("recipe").unwrap_or_default();
         let Some(recipe) = self.recipes.get(name) else {
             return Err(format!(
@@ -117,8 +122,10 @@ impl Config {
         };
         let region: Vec<(&str, &str)> = opener.common_attrs().collect();
         marker::opener(line, &recipe.expand(&region))
+            .map_err(|e| e.message)
+            .and_then(|o| o.placed(syntax))
             .map(|o| o.expanded_from(opener))
-            .map_err(|e| format!("[recipe.{name}]: {}", e.message))
+            .map_err(|m| format!("[recipe.{name}]: {m}"))
     }
 }
 
@@ -207,6 +214,105 @@ impl Entry {
     }
 }
 
+/// `[discover]`: the files beyond Markdown that discovery reads, by
+/// extension or by name. Each must have a comment syntax.
+///
+/// ```toml
+/// [discover]
+/// extensions = ["rs", "html"]
+/// names = ["Makefile"]
+/// ```
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Discover {
+    /// Lowercase, without the dot.
+    extensions: Vec<String>,
+    names: Vec<String>,
+}
+
+impl Discover {
+    fn parse(value: toml::Value) -> Result<Discover, String> {
+        let toml::Value::Table(table) = value else {
+            return Err("discover is not a table; write [discover]".into());
+        };
+        let mut discover = Discover::default();
+        for (key, value) in table {
+            let list = |value: toml::Value| -> Result<Vec<String>, String> {
+                let toml::Value::Array(items) = value else {
+                    return Err(format!("[discover] {key}: expected a list of strings"));
+                };
+                items
+                    .into_iter()
+                    .map(|v| match v {
+                        toml::Value::String(s) => Ok(s),
+                        _ => Err(format!("[discover] {key}: expected a list of strings")),
+                    })
+                    .collect()
+            };
+            match key.as_str() {
+                "extensions" => {
+                    for ext in list(value)? {
+                        let ext = ext.trim_start_matches('.').to_ascii_lowercase();
+                        if Syntax::of_extension(&ext).is_none() {
+                            return Err(format!(
+                                "[discover] extensions: .{ext} has no comment syntax the tool knows; it knows {}",
+                                Syntax::supported()
+                            ));
+                        }
+                        discover.extensions.push(ext);
+                    }
+                }
+                "names" => {
+                    for name in list(value)? {
+                        if Syntax::of_name(&name).is_none() {
+                            return Err(format!(
+                                "[discover] names: {name} has no comment syntax the tool knows; it knows {}",
+                                Syntax::supported()
+                            ));
+                        }
+                        discover.names.push(name);
+                    }
+                }
+                _ => {
+                    return Err(format!(
+                        "[discover] {key}: unknown key; it takes extensions and names"
+                    ));
+                }
+            }
+        }
+        Ok(discover)
+    }
+
+    /// Whether discovery reads the walked file at `path`: Markdown always,
+    /// anything else when its extension or name is listed.
+    pub fn selects(&self, path: &Path) -> bool {
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            return false;
+        };
+        let ext = path.extension().and_then(|e| e.to_str());
+        ext.is_some_and(|e| e == "md" || e == "markdown")
+            || ext.is_some_and(|e| self.extensions.contains(&e.to_ascii_lowercase()))
+            || self.names.iter().any(|n| n == name)
+    }
+}
+
+/// The `[discover]` table of the `computed.toml` in `dir`, empty when there
+/// is none. Only that table is read: a recipe's error belongs to the
+/// regions that use it, not to discovery.
+pub fn discovery(dir: &Path) -> Result<Discover, String> {
+    let path = dir.join(FILE_NAME);
+    let text = match std::fs::read_to_string(&path) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Discover::default()),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    let at = |m: String| format!("{}: {m}", path.display());
+    let mut table: toml::Table = text.parse().map_err(|e| at(format!("{e}")))?;
+    match table.remove("discover") {
+        Some(value) => Discover::parse(value).map_err(at),
+        None => Ok(Discover::default()),
+    }
+}
+
 /// What expanding a file's `use` regions came to.
 #[derive(Debug, Clone, Default)]
 pub struct Expansion {
@@ -236,7 +342,7 @@ pub fn expand(file: &mut File, region_root: &Path, repo_root: Option<&Path>) -> 
             Config::load(&path)
         });
         let expanded = match config {
-            Ok(c) => c.expand(&region.opener, region.line),
+            Ok(c) => c.expand(&region.opener, region.line, region.syntax),
             Err(e) => Err(e.clone()),
         };
         match expanded {
@@ -261,6 +367,12 @@ mod tests {
         marker::opener(1, content).unwrap()
     }
 
+    impl Config {
+        fn expand_md(&self, opener: &Opener, line: usize) -> Result<Opener, String> {
+            self.expand(opener, line, Syntax::Markdown)
+        }
+    }
+
     #[test]
     fn a_recipe_expands_to_its_loader_attributes_by_key_then_common_ones() {
         let c = config(
@@ -268,7 +380,7 @@ mod tests {
         )
         .unwrap();
         let o = c
-            .expand(&use_opener("use recipe=adrs lang=text name=d"), 1)
+            .expand_md(&use_opener("use recipe=adrs lang=text name=d"), 1)
             .unwrap();
         assert_eq!(
             o.canonical(),
@@ -278,7 +390,7 @@ mod tests {
         assert_eq!(o.lang, "text");
         assert_eq!(o.name.as_deref(), Some("d"));
         assert_eq!(
-            marker::rendered_opener(&o),
+            marker::rendered_opener(&o, marker::Comment::HTML),
             "<!-- computed use recipe=adrs lang=text name=d | do not edit; run computed -->"
         );
     }
@@ -286,7 +398,7 @@ mod tests {
     #[test]
     fn the_target_loaders_default_sink_applies() {
         let c = config("[recipe.t]\nloader = \"tree\"\ndepth = 2\nall = true\n").unwrap();
-        let o = c.expand(&use_opener("use recipe=t"), 1).unwrap();
+        let o = c.expand_md(&use_opener("use recipe=t"), 1).unwrap();
         assert_eq!(o.canonical(), "<!-- computed tree all depth=2 -->");
         assert_eq!(o.sink, marker::Sink::Fence);
     }
@@ -324,7 +436,7 @@ mod tests {
     #[test]
     fn a_missing_recipe_names_the_file_it_looked_in() {
         let c = config("").unwrap();
-        let e = c.expand(&use_opener("use recipe=x"), 1).unwrap_err();
+        let e = c.expand_md(&use_opener("use recipe=x"), 1).unwrap_err();
         assert_eq!(e, "recipe=x: computed.toml has no [recipe.x]");
     }
 

@@ -66,17 +66,18 @@ pub fn read(path: &Path) -> Result<Option<Template>, FileError> {
         path.to_path_buf()
     };
     let bytes = std::fs::read(&file).map_err(|e| fail(None, format!("unreadable: {e}")))?;
+    let syntax = marker::Syntax::for_path(&file);
     let text = match String::from_utf8(bytes) {
         Ok(text) => text,
-        Err(e) if marker::has_marker(&String::from_utf8_lossy(e.as_bytes())) => {
+        Err(e) if marker::has_marker(&String::from_utf8_lossy(e.as_bytes()), syntax) => {
             return Err(fail(None, "not UTF-8".to_string()));
         }
         Err(_) => return Ok(None),
     };
-    if !text.contains("<!--") {
+    if !syntax.may_hold(&text) {
         return Ok(None);
     }
-    let mut parsed = marker::parse(&text).map_err(|e| fail(Some(e.line), e.message))?;
+    let mut parsed = marker::parse_as(&text, syntax).map_err(|e| fail(Some(e.line), e.message))?;
     if regions(&parsed).next().is_none() {
         return Ok(None);
     }

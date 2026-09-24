@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use similar::{DiffOp, TextDiff};
 
 use crate::loader::Production;
-use crate::marker::{self, File, ParseError, Region, Segment};
+use crate::marker::{self, File, ParseError, Region, Segment, Syntax};
 use crate::render::{self, Mode, RegionReport, Rendered};
 use crate::report;
 
@@ -91,15 +91,15 @@ pub fn source(region: &Region) -> String {
 /// survive verbatim elsewhere in the proposed text (it moved), or when its
 /// opener changed too and its sums survive nowhere (it was removed whole or
 /// rewritten into a new region, which `run` renders over).
-pub fn judge(current: &str, proposed: &str) -> Verdict {
-    let Ok(before) = marker::parse(current) else {
+pub fn judge(current: &str, proposed: &str, syntax: Syntax) -> Verdict {
+    let Ok(before) = marker::parse_as(current, syntax) else {
         return Verdict::Allowed;
     };
     let before = regions(&before);
     if before.is_empty() {
         return Verdict::Allowed;
     }
-    let after = match marker::parse(proposed) {
+    let after = match marker::parse_as(proposed, syntax) {
         Ok(f) => f,
         Err(e) => return Verdict::Breaks(e),
     };
@@ -221,7 +221,8 @@ pub fn refusal(path: &Path, verdict: &Verdict) -> Option<String> {
 /// `check` of one template's text, inputs read from disk: what the hooks
 /// and the editor report after an edit. `Err` is a file-level error.
 pub fn check_text(path: &Path, text: &str) -> Result<Vec<RegionReport>, (usize, String)> {
-    let mut parsed = marker::parse(text).map_err(|e| (e.line, e.message))?;
+    let mut parsed =
+        marker::parse_as(text, Syntax::for_path(path)).map_err(|e| (e.line, e.message))?;
     let mut loaders = Production::for_file(path, &mut parsed);
     match render::file(&parsed, Mode::Check, false, &mut loaders) {
         Rendered::Error { line, message } => Err((line, message)),
@@ -303,7 +304,7 @@ fn shown(file: &Path, input: &Value) -> PathBuf {
 /// UTF-8, or one with no marker, which are none of the guard's business.
 fn template(file: &Path) -> Option<String> {
     let text = std::fs::read_to_string(file).ok()?;
-    marker::has_marker(&text).then_some(text)
+    marker::has_marker(&text, marker::Syntax::for_path(file)).then_some(text)
 }
 
 /// Answers one Claude Code hook: the hook's JSON in, the JSON to print out
@@ -330,7 +331,7 @@ pub fn hook(event: Hook, input: &str) -> Option<String> {
             let edit = edit(&input, Some(&current))?;
             let reason = refusal(
                 &shown(&edit.file, &input),
-                &judge(&current, &edit.proposed?),
+                &judge(&current, &edit.proposed?, Syntax::for_path(&edit.file)),
             )?;
             Some(
                 json!({
@@ -418,7 +419,7 @@ pub fn command(
         std::fs::read_to_string(p)
             .map_err(|e| std::io::Error::new(e.kind(), format!("{}: {e}", p.display())))
     };
-    let verdict = judge(&read(file)?, &read(proposed)?);
+    let verdict = judge(&read(file)?, &read(proposed)?, Syntax::for_path(file));
     let exit = u8::from(verdict != Verdict::Allowed);
     if json {
         let (error, regions) = match &verdict {
@@ -459,6 +460,10 @@ pub fn command(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn judge(current: &str, proposed: &str) -> Verdict {
+        super::judge(current, proposed, Syntax::Markdown)
+    }
 
     const RENDERED: &str = "# Notes\n\n<!-- computed tree src=. name=layout | do not edit; run computed -->\n```text\n.\n└── a\n```\n<!-- /computed in=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa out=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb -->\n\nTail.\n";
 

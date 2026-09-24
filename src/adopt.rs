@@ -164,7 +164,7 @@ fn write(template: &Template, adoptions: &[(usize, Adoption)], lines: &mut Vec<S
             return 2;
         }
     };
-    let same = marker::parse(&text).is_ok_and(|parsed| {
+    let same = marker::parse_as(&text, template.parsed.syntax).is_ok_and(|parsed| {
         survey::regions(&parsed)
             .zip(template.regions())
             .filter(|(_, was)| adopted.contains(&was.line))
@@ -215,7 +215,7 @@ fn adoption(template: &Template, region: &Region) -> Result<Adoption, String> {
     let path = template.ctx.region_root.join(&args.src);
     let shown = survey::normalise(&path).display().to_string();
     let old = std::fs::read_to_string(&path).map_err(|e| format!("{shown}: {e}"))?;
-    if marker::strip_sums(old.as_bytes()).as_ref() != old.as_bytes() {
+    if marker::strip_sums(&path, old.as_bytes()).as_ref() != old.as_bytes() {
         return Err(format!(
             "{shown} holds rendered regions of its own, and adopt does not write into them"
         ));
@@ -230,20 +230,14 @@ fn adoption(template: &Template, region: &Region) -> Result<Adoption, String> {
         ));
     }
     let new = splice(&old, range, &text);
-    let stripped = marker::strip_sums(new.as_bytes());
+    let stripped = marker::strip_sums(&path, new.as_bytes());
     let read = match &args.slice {
         Some(slice) => slice
             .apply(&path, &stripped)
             .map_err(|m| format!("the edit does not round-trip: {shown} written back: {m}"))?,
         None => stripped.into_owned(),
     };
-    let back = sink::body(
-        region.opener.sink,
-        &region.opener.lang,
-        region.opener.max_lines,
-        &read,
-    )
-    .map_err(|m| {
+    let back = sink::body(region, &read).map_err(|m| {
         format!("the edit does not round-trip: {shown} written back would fail to render: {m}")
     })?;
     if render::shape(region, &back) != region.body {

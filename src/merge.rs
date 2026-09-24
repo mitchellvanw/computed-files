@@ -16,7 +16,7 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::marker;
+use crate::marker::{self, Syntax};
 use crate::survey;
 
 /// Starts every placeholder line; followed by the region's key in hex.
@@ -28,6 +28,7 @@ struct Tail {
     body: String,
     closer: String,
     indent: String,
+    comment: marker::Comment,
 }
 
 impl Tail {
@@ -42,7 +43,7 @@ impl Tail {
             "{}{}{}{term}",
             self.body,
             self.indent,
-            marker::rendered_closer(None)
+            marker::rendered_closer(None, self.comment)
         )
     }
 }
@@ -55,8 +56,8 @@ struct Skeleton {
 
 /// The key a region is matched by across versions: its name, else its
 /// canonical opener, with the ordinal of a repeat.
-fn skeleton(text: &str) -> Option<Skeleton> {
-    let parsed = marker::parse(text).ok()?;
+fn skeleton(text: &str, syntax: Syntax) -> Option<Skeleton> {
+    let parsed = marker::parse_as(text, syntax).ok()?;
     let mut out = String::new();
     let mut tails = BTreeMap::new();
     for segment in &parsed.segments {
@@ -88,6 +89,7 @@ fn skeleton(text: &str) -> Option<Skeleton> {
                         body: r.body.clone(),
                         closer: r.raw_closer.clone(),
                         indent: r.indent.clone(),
+                        comment: r.comment,
                     },
                 );
             }
@@ -128,15 +130,15 @@ pub struct Merged {
     pub conflicts: usize,
 }
 
-/// Merges `ours` and `theirs` from `base`. Three versions that parse are
-/// merged by structure; anything else is merged as `git merge-file` merges
-/// text.
-pub fn merge(base: &[u8], ours: &[u8], theirs: &[u8]) -> Result<Merged, String> {
+/// Merges `ours` and `theirs` from `base`, read in `syntax`. Three versions
+/// that parse are merged by structure; anything else is merged as `git
+/// merge-file` merges text.
+pub fn merge(base: &[u8], ours: &[u8], theirs: &[u8], syntax: Syntax) -> Result<Merged, String> {
     let parse = |b: &[u8]| {
         std::str::from_utf8(b)
             .ok()
             .filter(|t| !t.contains(PLACEHOLDER))
-            .and_then(skeleton)
+            .and_then(|t| skeleton(t, syntax))
     };
     let (Some(b), Some(o), Some(t)) = (parse(base), parse(ours), parse(theirs)) else {
         return merge_file(base, ours, theirs);
@@ -212,10 +214,13 @@ fn merge_file(base: &[u8], ours: &[u8], theirs: &[u8]) -> Result<Merged, String>
 }
 
 /// The driver git runs as `computed merge %O %A %B %P`: merges into `ours`,
-/// exit 0 when no conflict is left, 1 when one is, as git expects.
-pub fn driver(base: &Path, ours: &Path, theirs: &Path) -> Result<u8, String> {
+/// exit 0 when no conflict is left, 1 when one is, as git expects. The
+/// three versions are read in the syntax `path`, the file's own name, has;
+/// git's temporary files name nothing.
+pub fn driver(base: &Path, ours: &Path, theirs: &Path, path: Option<&Path>) -> Result<u8, String> {
     let read = |p: &Path| std::fs::read(p).map_err(|e| format!("{}: {e}", p.display()));
-    let merged = merge(&read(base)?, &read(ours)?, &read(theirs)?)?;
+    let syntax = path.map_or(Syntax::Markdown, Syntax::for_path);
+    let merged = merge(&read(base)?, &read(ours)?, &read(theirs)?, syntax)?;
     std::fs::write(ours, &merged.text).map_err(|e| format!("{}: {e}", ours.display()))?;
     Ok(u8::from(merged.conflicts > 0))
 }
@@ -294,6 +299,7 @@ mod tests {
             body: body.to_string(),
             closer: "  <!-- /computed in=a out=b -->\n".to_string(),
             indent: "  ".to_string(),
+            comment: marker::Comment::HTML,
         }
     }
 
@@ -314,6 +320,7 @@ mod tests {
     fn keys_are_names_else_openers_with_the_ordinal_of_a_repeat() {
         let s = skeleton(
             "<!-- computed tree -->\n<!-- /computed -->\n<!-- computed tree -->\n<!-- /computed -->\n<!-- computed tree name=x -->\n<!-- /computed -->\n",
+            Syntax::Markdown,
         )
         .unwrap();
         let keys: Vec<&String> = s.tails.keys().collect();
@@ -322,5 +329,25 @@ mod tests {
             ["<!-- computed tree -->", "<!-- computed tree -->#1", "x"]
         );
         assert_eq!(unhex(&hex("x#1")), Some("x#1".to_string()));
+    }
+
+    #[test]
+    fn a_region_both_sides_rendered_is_unrendered_in_the_files_own_comment() {
+        let version = |body: &str, sum: char| {
+            let sum = sum.to_string().repeat(64);
+            format!("fn a() {{}}\n// computed tree\n{body}// /computed in={sum} out={sum}\n")
+        };
+        let merged = merge(
+            version("// b\n", 'b').as_bytes(),
+            version("// o\n", 'c').as_bytes(),
+            version("// t\n", 'd').as_bytes(),
+            Syntax::Slash,
+        )
+        .unwrap();
+        assert_eq!(merged.conflicts, 0);
+        assert_eq!(
+            String::from_utf8(merged.text).unwrap(),
+            "fn a() {}\n// computed tree\n// o\n// /computed\n"
+        );
     }
 }

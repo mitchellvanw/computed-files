@@ -213,7 +213,7 @@ impl Rendered {
 }
 
 mod sum {
-    use crate::marker::Opener;
+    use crate::marker::{Comment, Region};
     use sha2::{Digest, Sha256};
 
     const DOMAIN: &str = "computed-in/1\n";
@@ -222,17 +222,23 @@ mod sum {
         hash.as_ref().iter().map(|b| format!("{b:02x}")).collect()
     }
 
-    /// The indentation joins the loader line only when there is some, so
-    /// the sum of an unindented region is what it always was.
-    pub fn input(opener: &Opener, indent: &str, format_constant: u32, snapshot: &[u8]) -> String {
+    /// The indentation joins the loader line only when there is some, and
+    /// the comment only when it is not `<!--`, so the sum of an unindented
+    /// region in Markdown is what it always was. The comment is there
+    /// because the body depends on it: its leader under `as=comment`, and
+    /// the default sink outside Markdown.
+    pub fn input(region: &Region, format_constant: u32, snapshot: &[u8]) -> String {
+        let opener = &region.opener;
         let mut h = Sha256::new();
         h.update(DOMAIN.as_bytes());
-        let indent = if indent.is_empty() {
-            String::new()
-        } else {
-            format!(" indent={indent:?}")
-        };
-        h.update(format!("{}/{format_constant}{indent}\n", opener.loader).as_bytes());
+        let mut line = format!("{}/{format_constant}", opener.loader);
+        if !region.indent.is_empty() {
+            line.push_str(&format!(" indent={:?}", region.indent));
+        }
+        if region.comment != Comment::HTML {
+            line.push_str(&format!(" comment={:?}", region.comment.open));
+        }
+        h.update(format!("{line}\n").as_bytes());
         h.update(opener.canonical().as_bytes());
         h.update(b"\n");
         h.update(snapshot);
@@ -246,7 +252,7 @@ mod sum {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use crate::marker::parse;
+        use crate::marker::{Syntax, parse_as};
 
         #[test]
         fn output_sum_is_the_full_sha256_of_the_body() {
@@ -260,23 +266,47 @@ mod sum {
             );
         }
 
+        fn region(text: &str, syntax: Syntax) -> Region {
+            match parse_as(text, syntax).unwrap().segments.remove(0) {
+                crate::marker::Segment::Region(r) => r,
+                _ => unreachable!(),
+            }
+        }
+
         #[test]
         fn input_sum_is_the_full_sha256_of_the_domain_opener_and_snapshot() {
-            let file = parse("<!-- computed tree -->\n<!-- /computed -->\n").unwrap();
-            let opener = match &file.segments[0] {
-                crate::marker::Segment::Region(r) => &r.opener,
-                _ => unreachable!(),
-            };
+            let mut r = region(
+                "<!-- computed tree -->\n<!-- /computed -->\n",
+                Syntax::Markdown,
+            );
             // sha256("computed-in/1\ntree/1\n<!-- computed tree -->\n" + "snap")
             assert_eq!(
-                input(opener, "", 1, b"snap"),
+                input(&r, 1, b"snap"),
                 "606574c24273299a1ee6b2e45e8ca207180ad978ea09dc5f8cf8a42631d41a1a"
             );
             // sha256("computed-in/1\ntree/1 indent=\"  \"\n<!-- computed tree -->\n" + "snap")
-            assert_ne!(
-                input(opener, "  ", 1, b"snap"),
-                input(opener, "", 1, b"snap")
+            let flush = input(&r, 1, b"snap");
+            r.indent = "  ".into();
+            assert_ne!(input(&r, 1, b"snap"), flush);
+        }
+
+        #[test]
+        fn the_comment_joins_the_loader_line_outside_html_comments() {
+            let html = region("<!-- computed tree -->\n<!-- /computed -->\n", Syntax::Html);
+            let slash = region("// computed tree\n// /computed\n", Syntax::Slash);
+            let doc = region("//! computed tree\n//! /computed\n", Syntax::Slash);
+            let hash = region("# computed tree\n# /computed\n", Syntax::Hash);
+            // sha256("computed-in/1\ntree/1 comment=\"//\"\n<!-- computed tree -->\n" + "snap")
+            assert_eq!(
+                input(&slash, 1, b"snap"),
+                "a8bb2356ce07208e43c3bd2576624f6603e3ea7d751819da00f54861a93d7b48"
             );
+            assert_eq!(
+                input(&html, 1, b"snap"),
+                "606574c24273299a1ee6b2e45e8ca207180ad978ea09dc5f8cf8a42631d41a1a"
+            );
+            let sums = [&slash, &doc, &hash].map(|r| input(r, 1, b"snap"));
+            assert!(sums[0] != sums[1] && sums[1] != sums[2] && sums[0] != sums[2]);
         }
     }
 }
@@ -296,8 +326,7 @@ fn state_of(region: &Region, snapshot: Option<&[u8]>) -> State {
         }
         Some(snapshot) => {
             let constant = loader::format_constant(&region.opener.loader);
-            let input_ok =
-                sum::input(&region.opener, &region.indent, constant, snapshot) == sums.input;
+            let input_ok = sum::input(region, constant, snapshot) == sums.input;
             match (input_ok, body_ok) {
                 (true, true) => State::Fresh,
                 (false, true) => State::Stale,
@@ -328,7 +357,7 @@ pub fn state(region: &Region, snapshot: Option<&[u8]>) -> State {
 /// The input sum a region's opener, indentation and snapshot hash to.
 pub fn input_sum(region: &Region, snapshot: &[u8]) -> String {
     let constant = loader::format_constant(&region.opener.loader);
-    sum::input(&region.opener, &region.indent, constant, snapshot)
+    sum::input(region, constant, snapshot)
 }
 
 /// The output sum of a body as it sits between the marker lines.
@@ -528,7 +557,7 @@ pub fn file_where(
     if text == original {
         return Rendered::Unchanged { regions: reports };
     }
-    if let Err((line, message)) = parses_back(&text, &original, &regions, &pieces) {
+    if let Err((line, message)) = parses_back(&text, parsed.syntax, &original, &regions, &pieces) {
         return Rendered::Error { line, message };
     }
     let dry = mode.dry_run();
@@ -551,11 +580,12 @@ pub fn file_where(
 /// and why.
 fn parses_back(
     text: &str,
+    syntax: marker::Syntax,
     original: &str,
     regions: &[&Region],
     pieces: &[String],
 ) -> Result<(), (usize, String)> {
-    let same = marker::parse(text).is_ok_and(|file| {
+    let same = marker::parse_as(text, syntax).is_ok_and(|file| {
         let back: Vec<String> = file
             .segments
             .iter()
@@ -576,6 +606,7 @@ fn parses_back(
         .map_or(regions[0], |(r, _)| *r);
     let fence = marker::unclosed_fences(original)
         .into_iter()
+        .filter(|_| syntax.is_markdown())
         .rfind(|&l| l < culprit.line);
     Err(match fence {
         Some(l) => (
@@ -603,7 +634,12 @@ fn clean(region: &Region, state: State) -> (String, RegionReport) {
         .raw_opener
         .trim_end_matches(['\n', '\r'])
         .trim_start_matches([' ', '\t']);
-    let text = region_text(region, opener, "", &marker::rendered_closer(None));
+    let text = region_text(
+        region,
+        opener,
+        "",
+        &marker::rendered_closer(None, region.comment),
+    );
     (text, report(region, state, Some(Action::Cleaned), None))
 }
 
@@ -634,25 +670,20 @@ fn render(
         Err(LoadError::NotAllowed(message)) => return kept(Action::Disallowed, Some(message)),
         Err(LoadError::Hard(message)) => return kept(Action::Error, Some(message)),
     };
-    let body = match sink::body(
-        region.opener.sink,
-        &region.opener.lang,
-        region.opener.max_lines,
-        loaded.text.as_bytes(),
-    ) {
+    let body = match sink::body(region, loaded.text.as_bytes()) {
         Ok(b) => shape(region, &b),
         Err(message) => return kept(Action::Failed, Some(message)),
     };
     let constant = loader::format_constant(&region.opener.loader);
     let sums = Sums {
-        input: sum::input(&region.opener, &region.indent, constant, &loaded.snapshot),
+        input: sum::input(region, constant, &loaded.snapshot),
         output: sum::output(&body),
     };
     let text = region_text(
         region,
-        &marker::rendered_opener(&region.opener),
+        &marker::rendered_opener(&region.opener, region.comment),
         &body,
-        &marker::rendered_closer(Some(&sums)),
+        &marker::rendered_closer(Some(&sums), region.comment),
     );
     (text, report(region, state, Some(Action::Written), None))
 }

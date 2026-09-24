@@ -102,6 +102,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── sandbox
     ├── stats.rs
     ├── symbol.rs
+    ├── syntax.rs
     ├── table.rs
     ├── toc.rs
     ├── trace.rs
@@ -110,7 +111,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── watch.rs
     └── why.rs
 ```
-<!-- /computed in=34b6b3659887aaac05bd9087ad0ec4f7d58ac8d26038cf3688c7cf0726ca43d5 out=51f71397645e174c40e2b360d7caaa80ba30219c387f8b00e2ea0d3954edff90 -->
+<!-- /computed in=2000195b1a1851b20ab96703deeecab98ddd9b6ccc29d68777c669eb2281d67b out=62f061a1be3c5be3fbdabb17c2bb58c412f3f599cc0003b347d75417b474e03b -->
 
 ## Decisions
 

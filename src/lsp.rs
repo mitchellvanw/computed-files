@@ -30,7 +30,7 @@ use lsp_types::{
 use crate::allow;
 use crate::guard;
 use crate::loader::{Ctx, Production};
-use crate::marker::{self, Region, Segment};
+use crate::marker::{self, Region, Segment, Syntax};
 use crate::render::{self, Action, Loaders, Mode, RegionReport, Rendered, State};
 use crate::trust::{self, Store};
 
@@ -302,7 +302,7 @@ impl Server<'_> {
     }
 
     fn diagnostics(&self, doc: &Doc) -> Vec<Diagnostic> {
-        if !marker::has_marker(&doc.text) {
+        if !marker::has_marker(&doc.text, Syntax::for_path(&doc.path)) {
             return Vec::new();
         }
         let reports = match guard::check_text(&doc.path, &doc.text) {
@@ -318,7 +318,7 @@ impl Server<'_> {
                 }];
             }
         };
-        let Ok(parsed) = marker::parse(&doc.text) else {
+        let Ok(parsed) = marker::parse_as(&doc.text, Syntax::for_path(&doc.path)) else {
             return Vec::new();
         };
         let trusted = self.trusted(&doc.path);
@@ -379,7 +379,7 @@ impl Server<'_> {
             .docs
             .get(p.text_document_position_params.text_document.uri.as_str())?;
         let line = p.text_document_position_params.position.line;
-        let mut parsed = marker::parse(&doc.text).ok()?;
+        let mut parsed = marker::parse_as(&doc.text, Syntax::for_path(&doc.path)).ok()?;
         let mut loaders = Production::for_file(&doc.path, &mut parsed);
         let reports = guard::check_text(&doc.path, &doc.text).unwrap_or_default();
         let described = describe(&parsed, &reports);
@@ -463,7 +463,7 @@ impl Server<'_> {
         let Some(doc) = self.docs.get(key) else {
             return Vec::new();
         };
-        let Ok(parsed) = marker::parse(&doc.text) else {
+        let Ok(parsed) = marker::parse_as(&doc.text, Syntax::for_path(&doc.path)) else {
             return Vec::new();
         };
         let reports = guard::check_text(&doc.path, &doc.text).unwrap_or_default();
@@ -503,7 +503,7 @@ impl Server<'_> {
             );
             return;
         };
-        let mut parsed = match marker::parse(&doc.text) {
+        let mut parsed = match marker::parse_as(&doc.text, Syntax::for_path(&doc.path)) {
             Ok(p) => p,
             Err(e) => {
                 self.show(

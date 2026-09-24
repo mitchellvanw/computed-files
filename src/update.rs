@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use crate::allow::Allowed;
 use crate::config;
 use crate::loader::Ctx;
-use crate::marker::{self, Region, Segment};
+use crate::marker::{self, Comment, Region, Segment, Syntax};
 use crate::remote::{self, RemoteArgs};
 use crate::render::{Action, Mode, RegionReport, State};
 use crate::{fs, report};
@@ -102,20 +102,21 @@ fn file(path: &Path, dry_run: bool, only: &[String], allowed: &Allowed) -> Outco
         error: Some((line, message)),
         ..Outcome::default()
     };
+    let syntax = marker::Syntax::for_path(path);
     let text = match std::fs::read(path) {
         Ok(bytes) => match String::from_utf8(bytes) {
             Ok(text) => text,
-            Err(e) if marker::has_marker(&String::from_utf8_lossy(e.as_bytes())) => {
+            Err(e) if marker::has_marker(&String::from_utf8_lossy(e.as_bytes()), syntax) => {
                 return error(None, "not UTF-8".to_string());
             }
             Err(_) => return Outcome::default(),
         },
         Err(e) => return error(None, format!("unreadable: {e}")),
     };
-    if !text.contains("<!--") {
+    if !syntax.may_hold(&text) {
         return Outcome::default();
     }
-    let mut parsed = match marker::parse(&text) {
+    let mut parsed = match marker::parse_as(&text, syntax) {
         Ok(p) => p,
         Err(e) => return error(Some(e.line), e.message),
     };
@@ -201,7 +202,7 @@ fn pin_region(region: &mut Region, dry_run: bool, allowed: &Allowed) -> RegionRe
     if args.sha256.as_deref() == Some(got.as_str()) {
         return report(State::Fresh, Action::Fresh, None);
     }
-    let Some(line) = repin(&region.raw_opener, &got) else {
+    let Some(line) = repin(&region.raw_opener, &got, region.syntax, region.comment) else {
         return report(
             State::Error,
             Action::Error,
@@ -265,7 +266,7 @@ fn recipe_pin(region: &Region, allowed: &Allowed) -> RegionReport {
 /// none, `sha256=pin` added after the `url=` value. Everything else on the
 /// line stays as written. `None` when the result would not parse back to
 /// the same opener with the new pin.
-fn repin(raw: &str, pin: &str) -> Option<String> {
+fn repin(raw: &str, pin: &str, syntax: Syntax, comment: Comment) -> Option<String> {
     let value_end = |from: usize| -> usize {
         let rest = &raw[from..];
         if let Some(quoted) = rest.strip_prefix('"') {
@@ -298,7 +299,8 @@ fn repin(raw: &str, pin: &str) -> Option<String> {
     };
     let region = |opener: &str| {
         let eol = if opener.ends_with('\n') { "" } else { "\n" };
-        marker::parse(&format!("{opener}{eol}<!-- /computed -->\n")).ok()
+        let closer = comment.wrap("/computed");
+        marker::parse_as(&format!("{opener}{eol}{closer}\n"), syntax).ok()
     };
     let (before, after) = (region(raw)?, region(&line)?);
     let opener = |f: &marker::File| match f.segments.first() {
@@ -323,13 +325,17 @@ fn repin(raw: &str, pin: &str) -> Option<String> {
 mod tests {
     use super::*;
 
+    fn repin_md(raw: &str, pin: &str) -> Option<String> {
+        repin(raw, pin, Syntax::Markdown, Comment::HTML)
+    }
+
     const A: &str = "0000000000000000000000000000000000000000000000000000000000000000";
     const B: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 
     #[test]
     fn repin_replaces_or_adds_the_pin_and_keeps_the_rest_of_the_line() {
         assert_eq!(
-            repin(
+            repin_md(
                 &format!("  <!--  computed remote  url=https://a/x?sha256=q  sha256={A} name=n | do not edit; run computed -->\r\n"),
                 B
             )
@@ -337,7 +343,7 @@ mod tests {
             format!("  <!--  computed remote  url=https://a/x?sha256=q  sha256={B} name=n | do not edit; run computed -->\r\n")
         );
         assert_eq!(
-            repin(
+            repin_md(
                 &format!("<!-- computed remote sha256=\"{A}\" url=https://a -->\n"),
                 B
             )
@@ -345,11 +351,11 @@ mod tests {
             format!("<!-- computed remote sha256={B} url=https://a -->\n")
         );
         assert_eq!(
-            repin("<!-- computed remote url=\"https://a/b c\" name=n -->\n", B).unwrap(),
+            repin_md("<!-- computed remote url=\"https://a/b c\" name=n -->\n", B).unwrap(),
             format!("<!-- computed remote url=\"https://a/b c\" sha256={B} name=n -->\n")
         );
         assert_eq!(
-            repin("<!-- computed remote url=https://a -->", B).unwrap(),
+            repin_md("<!-- computed remote url=https://a -->", B).unwrap(),
             format!("<!-- computed remote url=https://a sha256={B} -->")
         );
     }
