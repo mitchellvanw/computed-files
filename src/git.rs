@@ -176,13 +176,13 @@ const CLEARED: &[&str] = &[
     "GIT_GRAFT_FILE",
 ];
 
-/// Runs `git` in the region root with what changes its output pinned:
-/// the C locale and UTC, no replace refs, pathspecs taken literally,
-/// settings that reshape `log` overridden on the command line, and no
-/// fsmonitor, which would run a configured command. The user's and the
-/// system's configuration still load, so `safe.directory` keeps working.
-/// Any failure is hard: the tool could not read the history.
-fn git(ctx: &Ctx, args: &[&str]) -> Result<String, LoadError> {
+/// `git` in `dir` with what changes its output pinned: the C locale and
+/// UTC, no replace refs, pathspecs taken literally, settings that reshape
+/// `log` overridden on the command line, no fsmonitor, which would run a
+/// configured command, and none of the environment a hook sets. The user's
+/// and the system's configuration still load, so `safe.directory` keeps
+/// working. Every command that asks the repository something builds on it.
+pub(crate) fn command(dir: &Path) -> Command {
     let mut command = Command::new("git");
     command
         .args([
@@ -199,8 +199,7 @@ fn git(ctx: &Ctx, args: &[&str]) -> Result<String, LoadError> {
             "-c",
             "i18n.logOutputEncoding=UTF-8",
         ])
-        .args(args)
-        .current_dir(&ctx.region_root)
+        .current_dir(dir)
         .stdin(Stdio::null())
         .env("LC_ALL", "C")
         .env("LANGUAGE", "")
@@ -209,6 +208,14 @@ fn git(ctx: &Ctx, args: &[&str]) -> Result<String, LoadError> {
     for var in CLEARED {
         command.env_remove(var);
     }
+    command
+}
+
+/// Runs `git` in the region root through [`command`]. Any failure is hard:
+/// the tool could not read the history.
+fn git(ctx: &Ctx, args: &[&str]) -> Result<String, LoadError> {
+    let mut command = command(&ctx.region_root);
+    command.args(args);
     let out = command
         .output()
         .map_err(|e| LoadError::Hard(format!("git: {e}")))?;

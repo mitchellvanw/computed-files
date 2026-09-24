@@ -357,8 +357,7 @@ fn materialise(root: &Path, commit: &str) -> Result<tempfile::TempDir, String> {
         .prefix("computed-why-")
         .tempdir()
         .map_err(|e| format!("temporary directory: {e}"))?;
-    let mut archive = Command::new("git")
-        .current_dir(root)
+    let mut archive = crate::git::command(root)
         .args(["archive", "--format=tar", commit])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

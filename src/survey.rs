@@ -3,7 +3,6 @@
 //! paths they print, and the `git` binary.
 
 use std::path::{Component, Path, PathBuf};
-use std::process::Command;
 
 use crate::config::{self, Expansion};
 use crate::loader::{Ctx, Production};
@@ -193,10 +192,10 @@ pub fn display(path: &Path) -> String {
     }
 }
 
-/// Runs `git` in `dir` and returns its stdout; its stderr is the error.
+/// Runs `git` in `dir`, pinned as the `git` loader runs it, and returns its
+/// stdout; its stderr is the error.
 pub fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
-    let out = Command::new("git")
-        .current_dir(dir)
+    let out = crate::git::command(dir)
         .args(args)
         .output()
         .map_err(|e| format!("git: {e}"))?;

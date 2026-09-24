@@ -106,6 +106,31 @@ fn a_stale_tree_names_the_render_commit_the_paths_and_the_commits_since() {
 }
 
 #[test]
+fn a_hook_s_git_environment_does_not_point_why_at_another_repository() {
+    // A pre-commit hook runs with GIT_DIR and GIT_INDEX_FILE set.
+    let (dir, rendered, _) = repo();
+    let other = tempfile::tempdir().unwrap();
+    git(other.path(), &["init", "-q"]);
+    let out = Command::cargo_bin("computed")
+        .unwrap()
+        .current_dir(dir.path())
+        .env("XDG_CONFIG_HOME", dir.path().join(".git/config-home"))
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_DIR", other.path().join(".git"))
+        .env("GIT_INDEX_FILE", other.path().join(".git/index"))
+        .args(["why", "CLAUDE.md", "--only", "layout"])
+        .output()
+        .unwrap();
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(
+        stdout(&out).contains(&format!("rendered from {rendered} ")),
+        "{}",
+        stdout(&out)
+    );
+}
+
+#[test]
 fn a_stale_exec_region_names_files_added_removed_and_changed() {
     let (dir, _, _) = repo();
     let out = computed(dir.path(), &["why", "CLAUDE.md", "--line", "11"]);
