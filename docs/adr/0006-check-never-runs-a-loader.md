@@ -13,3 +13,7 @@ The alternative, rendering in memory and diffing, is what the logic prototype di
 - **`check` renders and diffs** (cog, the prototype). Rejected: runs untrusted commands to answer a yes/no question, and pays the full loader cost on every commit.
 - **`check` compares sums, `run` always renders.** Rejected: declaring `inputs=` would then buy nothing at `run` time, and the pre-commit hook still pays for every query.
 - **`check` compares sums, `run` skips fresh regions.** Chosen. Cost: `check` cannot show the pending diff, and a loader whose output changes without an input or format-constant change is invisible until `--force`.
+
+## Amended
+
+[ADR 0018](0018-the-git-snapshot-runs-git-under-check.md): the `git` loader's snapshot runs the `git` binary under `check`, because history cannot be snapshotted without it. The rule now reads: `check` never runs a command from the repository. `computed doctor` finds the regions whose output moved without their inputs, the cost accepted above.

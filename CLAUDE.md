@@ -131,5 +131,15 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 - [A region the tool cannot answer skips only itself](docs/adr/0013-a-region-the-tool-cannot-answer-skips-only-itself.md)
 - [Snapshots ignore closer sums, and `run` settles templates that read each other](docs/adr/0014-snapshots-ignore-sums-and-run-settles-across-files.md)
 - [The `file` loader](docs/adr/0015-the-file-loader.md)
+- [A projection snapshots only the part it reads](docs/adr/0016-a-projection-snapshots-only-the-part-it-reads.md)
+- [Trust gates running repository code, and nothing else](docs/adr/0017-trust-gates-running-repository-code-and-nothing-else.md)
+- [The `git` loader's snapshot runs `git` under `check`](docs/adr/0018-the-git-snapshot-runs-git-under-check.md)
+- [Remote regions are pinned by SHA-256 and fetch only under a per-machine allowlist](docs/adr/0019-remote-regions-are-pinned-and-allowlisted.md)
+- [The sandbox enforces `inputs=` and does not replace trust](docs/adr/0020-the-sandbox-enforces-inputs-and-does-not-replace-trust.md)
+- [`trace` reads the macOS sandbox's own reports](docs/adr/0021-trace-reads-the-macos-sandbox-reports.md)
+- [Recipes live in `computed.toml`, the first configuration file](docs/adr/0022-recipes-in-computed-toml.md)
+- [`on-stale=warn` softens only staleness](docs/adr/0023-on-stale-warn-softens-only-staleness.md)
+- [The merge driver merges by structure and leaves a region both sides re-rendered unrendered](docs/adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md)
+- [The Claude Code guard refuses an edit to a region before it lands](docs/adr/0025-the-guard-refuses-an-edit-before-it-lands.md)
 
-<!-- /computed in=7889c53daa593b8da7ee057aaefb8a89a5b0ffe62cbe79d0df3496843c3a0765 out=1d5d18700a303ecb8aa4e56252ba741d3b04a292cec7d258a2712448d332b8b2 -->
+<!-- /computed in=28758c2a4380ca4770246c30e4614849da043167a43212d4f5a9541311193496 out=fa9e6d48384ba65b1e77ebce943b38b872f2ea088545155b478bf15993829755 -->
