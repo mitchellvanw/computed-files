@@ -310,8 +310,19 @@ mod platform {
         };
         let read = AccessFs::from_read(ABI::V9);
         for dir in &a.system {
+            // A system path, or one listed around the repository, that is
+            // gone by now grants nothing: skipping it narrows the sandbox.
+            let fd = match PathFd::new(dir) {
+                Ok(fd) => fd,
+                Err(landlock::PathFdError::OpenCall { source, .. })
+                    if source.kind() == io::ErrorKind::NotFound =>
+                {
+                    continue;
+                }
+                Err(e) => return Err(format!("{}: {e}", dir.display())),
+            };
             created = created
-                .add_rule(rule(dir, read)?)
+                .add_rule(PathBeneath::new(fd, read))
                 .map_err(|e| e.to_string())?;
         }
         for file in &a.files {
