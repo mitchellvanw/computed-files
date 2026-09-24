@@ -100,6 +100,19 @@ enum Cmd {
         #[arg(long, value_name = "N")]
         line: Option<usize>,
     },
+    /// A merge driver: merge a template, leaving regions both sides re-rendered unrendered.
+    Merge {
+        /// Route Markdown through this driver in the repository's .gitattributes and this clone's config.
+        #[arg(long, conflicts_with = "files")]
+        install: bool,
+        /// git's %O %A %B %P: the base, ours (written), theirs, and the path, unused.
+        #[arg(
+            value_names = ["BASE", "OURS", "THEIRS", "PATH"],
+            num_args = 3..=4,
+            required_unless_present = "install"
+        )]
+        files: Vec<PathBuf>,
+    },
 }
 
 /// Runs the command line and returns the exit code.
@@ -201,6 +214,15 @@ fn dispatch(cli: Cli) -> Result<u8> {
         Cmd::Why { file, only, line } => {
             text_only(cli.format, "why")?;
             crate::why::main(file, only.as_deref(), *line, cli.verbose).map_err(anyhow::Error::msg)
+        }
+        Cmd::Merge { install, files } => {
+            text_only(cli.format, "merge")?;
+            match files.as_slice() {
+                _ if *install => crate::merge::install(),
+                [base, ours, theirs, ..] => crate::merge::driver(base, ours, theirs),
+                _ => unreachable!("clap requires three files or --install"),
+            }
+            .map_err(anyhow::Error::msg)
         }
     }
 }

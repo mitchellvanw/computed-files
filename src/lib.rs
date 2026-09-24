@@ -12,6 +12,7 @@ pub mod fs;
 pub mod graph;
 pub mod loader;
 pub mod marker;
+pub mod merge;
 pub mod render;
 pub mod report;
 pub mod sink;
