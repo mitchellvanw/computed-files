@@ -27,6 +27,7 @@ pub fn format_constant(loader: &str) -> u32 {
         "exec" => 1,
         "file" => 1,
         "symbol" => 1,
+        "git" => 1,
         other => panic!("unknown loader {other:?} reached the format table"),
     }
 }
@@ -133,6 +134,7 @@ pub enum Loader {
     Exec(ExecArgs),
     File(FileArgs),
     Symbol(crate::symbol::SymbolArgs),
+    Git(crate::git::GitArgs),
 }
 
 impl Loader {
@@ -186,6 +188,7 @@ impl Loader {
             "symbol" => Ok(Loader::Symbol(crate::symbol::SymbolArgs::from_opener(
                 opener,
             )?)),
+            "git" => Ok(Loader::Git(crate::git::GitArgs::from_opener(opener)?)),
             other => Err(hard(format!("unknown loader {other:?}"))),
         }
     }
@@ -196,6 +199,7 @@ impl Loader {
             Loader::Exec(_) => format_constant("exec"),
             Loader::File(_) => format_constant("file"),
             Loader::Symbol(_) => format_constant("symbol"),
+            Loader::Git(_) => format_constant("git"),
         }
     }
 }
@@ -296,6 +300,7 @@ impl Loaders for Production {
             Loader::Symbol(args) => Ok(Some(
                 crate::symbol::load(&self.ctx, &args, &mut self.read)?.snapshot,
             )),
+            Loader::Git(args) => Ok(Some(crate::git::load(&self.ctx, &args)?.snapshot)),
         }
     }
 
@@ -312,6 +317,7 @@ impl Loaders for Production {
             }
             Loader::File(args) => self.file(&args),
             Loader::Symbol(args) => crate::symbol::load(&self.ctx, &args, &mut self.read),
+            Loader::Git(args) => crate::git::load(&self.ctx, &args),
         }
     }
 }

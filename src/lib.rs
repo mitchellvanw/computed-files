@@ -8,6 +8,7 @@
 
 pub mod cli;
 pub mod fs;
+pub mod git;
 pub mod loader;
 pub mod marker;
 pub mod render;
