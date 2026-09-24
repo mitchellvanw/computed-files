@@ -71,5 +71,6 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 - [Loader text is normalised and exec runs in a pinned environment](docs/adr/0009-loader-text-is-normalised-and-exec-runs-pinned.md)
 - [Sums are full SHA-256](docs/adr/0010-sha-256-sums.md)
 - [The tree loader honours `.gitignore` without a flag](docs/adr/0011-gitignore-is-not-a-flag.md)
+- [Wildcards in `inputs=` do not reach ignored paths](docs/adr/0012-wildcards-in-inputs-do-not-reach-ignored-paths.md)
 
-<!-- /computed in=4d544b7ec342748f58355895359cb7a8f1a194b60b1f4449c6e7f6a17684cb85 out=dab14b7f7c1f04840e7bf094746072bf01bbf2b3acf25cbec5ee2569764f48f4 -->
+<!-- /computed in=4752ebbbebed96c3535e892f67ddf24f65ff3c9a53765218ea25f9ec46294723 out=840bb45ce57e51b21c3ff896536f8da9f01e6264d709ac4284f4986d4b2b00d9 -->

@@ -1,7 +1,10 @@
-//! The walk, the repository root, and the atomic write.
+//! The walk, the ignore rules, the repository root, and the atomic write.
 
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use ignore::gitignore::Gitignore;
 
 /// Options for a walk, named after the `tree` loader's attributes.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -61,6 +64,76 @@ pub fn walk(root: &Path, opts: WalkOpts) -> impl Iterator<Item = Entry> {
             depth: entry.depth(),
         })
     })
+}
+
+/// The `.gitignore` rules in force in one directory, read as [`walk`] reads
+/// them: the root and nested `.gitignore` files from the repository root
+/// down, a deeper file deciding before a shallower one, nothing per-clone or
+/// per-user. Outside a repository there are none. For matching path by path
+/// where a walk cannot decide alone what to skip.
+#[derive(Debug, Clone, Default)]
+pub struct Ignores {
+    in_repo: bool,
+    innermost: Option<Arc<Layer>>,
+}
+
+#[derive(Debug)]
+struct Layer {
+    rules: Gitignore,
+    outer: Option<Arc<Layer>>,
+}
+
+impl Ignores {
+    /// The rules in force in `dir`, canonical, under `repo_root` when there
+    /// is one.
+    pub fn at(repo_root: Option<&Path>, dir: &Path) -> Ignores {
+        let Some(root) = repo_root.filter(|r| dir.starts_with(r)) else {
+            return Ignores::default();
+        };
+        let mut chain: Vec<&Path> = dir
+            .ancestors()
+            .take_while(|a| a.starts_with(root))
+            .collect();
+        chain.reverse();
+        let inside = Ignores {
+            in_repo: true,
+            innermost: None,
+        };
+        chain
+            .into_iter()
+            .fold(inside, |ignores, d| ignores.enter(d))
+    }
+
+    /// The rules in force in `dir`, a directory directly inside the one
+    /// these are for.
+    pub fn enter(&self, dir: &Path) -> Ignores {
+        if !self.in_repo {
+            return self.clone();
+        }
+        // A `.gitignore` that is missing or has bad lines contributes what
+        // parses, as it does to the walk.
+        let (rules, _) = Gitignore::new(dir.join(".gitignore"));
+        if rules.is_empty() {
+            return self.clone();
+        }
+        Ignores {
+            in_repo: true,
+            innermost: Some(Arc::new(Layer {
+                rules,
+                outer: self.innermost.clone(),
+            })),
+        }
+    }
+
+    /// Whether `path`, directly inside the directory these are for, is
+    /// ignored by its own name. Being inside an ignored directory does not
+    /// count: a walk that honours the rules never enters one.
+    pub fn ignores(&self, path: &Path, is_dir: bool) -> bool {
+        std::iter::successors(self.innermost.as_deref(), |l| l.outer.as_deref())
+            .map(|l| l.rules.matched(path, is_dir))
+            .find(|m| !m.is_none())
+            .is_some_and(|m| m.is_ignore())
+    }
 }
 
 /// The canonical root of the repository containing `path`: the nearest
