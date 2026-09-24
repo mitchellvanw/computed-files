@@ -15,3 +15,4 @@ pub mod render;
 pub mod report;
 pub mod sink;
 pub mod trust;
+pub mod watch;

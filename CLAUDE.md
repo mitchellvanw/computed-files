@@ -52,14 +52,16 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── render.rs
 │   ├── report.rs
 │   ├── sink.rs
-│   └── trust.rs
+│   ├── trust.rs
+│   └── watch.rs
 └── tests
     ├── cli.rs
     ├── fixtures
     ├── guard.rs
-    └── render.rs
+    ├── render.rs
+    └── watch.rs
 ```
-<!-- /computed in=06a823e4b26a7a9cb5f6af622e15f6ea97e4130b17158b6e36531e624d36ff8e out=8be5b2b9bb28f1609095bdd3a8b5caa48d8d39723f2380994b67a9529467a4f6 -->
+<!-- /computed in=b26a2041be10638d936e89f6fb1f5b5f65452db3ebca6b561eecf09eaffd17f3 out=bd05de917c2f130d07c6d96ba20ab272258453fd8be2748920af9d16e5326d79 -->
 
 ## Decisions
 

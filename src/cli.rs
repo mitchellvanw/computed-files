@@ -91,6 +91,13 @@ enum Cmd {
         #[arg(long, value_enum, conflicts_with_all = ["file", "proposed"])]
         hook: Option<crate::guard::Hook>,
     },
+    /// Run again whenever a template or a file its regions read changes.
+    Watch {
+        paths: Vec<PathBuf>,
+        /// Treat every file as trusted for this invocation without writing the store.
+        #[arg(long)]
+        trust: bool,
+    },
 }
 
 /// Runs the command line and returns the exit code.
@@ -182,6 +189,18 @@ fn dispatch(cli: Cli) -> Result<u8> {
             *hook,
             cli.format == Format::Json,
         )?),
+        Cmd::Watch { paths, trust } => {
+            let job = job(Mode::Run { force: false }, *trust, &[]);
+            let pass = || {
+                let s = settle(paths, &job).map_err(|e| format!("{e:#}"))?;
+                Ok(crate::watch::Pass {
+                    files: s.files,
+                    read: s.read,
+                    written: s.written,
+                })
+            };
+            crate::watch::watch(paths, cli.format == Format::Text, pass).map_err(anyhow::Error::msg)
+        }
     }
 }
 
@@ -363,6 +382,20 @@ impl Printer {
 /// order the two sort in. Files that keep changing each other are an error
 /// once every file has had a pass of its own.
 fn process(paths: &[PathBuf], job: &Job<'_>) -> Result<u8> {
+    Ok(settle(paths, job)?.tier)
+}
+
+/// What [`process`] came to, which `watch` re-derives what it watches from.
+struct Settled {
+    tier: u8,
+    files: Vec<PathBuf>,
+    /// The canonical files every template's snapshots read.
+    read: BTreeSet<PathBuf>,
+    /// The canonical files written, over every pass.
+    written: BTreeSet<PathBuf>,
+}
+
+fn settle(paths: &[PathBuf], job: &Job<'_>) -> Result<Settled> {
     let files = discover(paths)?;
     let store = Store::at(Store::default_path()?);
     let mut printer = Printer {
@@ -378,6 +411,7 @@ fn process(paths: &[PathBuf], job: &Job<'_>) -> Result<u8> {
     let mut reads: BTreeMap<PathBuf, BTreeSet<PathBuf>> = BTreeMap::new();
     let mut queue = files.clone();
     let settles = matches!(job.mode, Mode::Run { .. });
+    let mut all_written = BTreeSet::new();
     for pass in 1.. {
         let mut written = BTreeSet::new();
         for path in &queue {
@@ -388,6 +422,7 @@ fn process(paths: &[PathBuf], job: &Job<'_>) -> Result<u8> {
             written.extend(outcome.written.clone());
             reads.insert(path.clone(), outcome.read);
         }
+        all_written.extend(written.iter().cloned());
         if !settles || written.is_empty() {
             break;
         }
@@ -420,7 +455,12 @@ fn process(paths: &[PathBuf], job: &Job<'_>) -> Result<u8> {
         tier = 2;
     }
     printer.finish(tier);
-    Ok(tier)
+    Ok(Settled {
+        tier,
+        read: reads.values().flatten().cloned().collect(),
+        files,
+        written: all_written,
+    })
 }
 
 fn process_file(path: &Path, job: &Job<'_>, store: &Store) -> Outcome {
