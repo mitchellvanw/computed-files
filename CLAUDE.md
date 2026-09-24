@@ -30,6 +30,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── catalogue.html
 │   ├── how-it-works.html
 │   ├── index.html
+│   ├── integrations.md
 │   ├── regions.js
 │   ├── research
 │   └── spec
@@ -110,7 +111,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── watch.rs
     └── why.rs
 ```
-<!-- /computed in=34b6b3659887aaac05bd9087ad0ec4f7d58ac8d26038cf3688c7cf0726ca43d5 out=51f71397645e174c40e2b360d7caaa80ba30219c387f8b00e2ea0d3954edff90 -->
+<!-- /computed in=de8865cf9017fd79f79db56bdfbc9a17b0401b8138b5748839079097578ad506 out=3293f43798edb3455bd0f38fb6b1f46a0e8491a6c3253239991fa606caba6858 -->
 
 ## Decisions
 
