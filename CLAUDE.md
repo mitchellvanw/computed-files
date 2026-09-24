@@ -21,6 +21,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 ├── Cargo.toml
 ├── LICENSE-MIT
 ├── README.md
+├── action.yml
 ├── claude-code-plugin
 │   ├── hooks
 │   └── skills
@@ -36,6 +37,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── computed-markdown.prototype.html
 │   └── hand-edit.prototype.html
 ├── scripts
+│   ├── action
 │   ├── adr-index.sh
 │   ├── cli-commands.sh
 │   └── site-install.sh
@@ -57,7 +59,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── guard.rs
     └── render.rs
 ```
-<!-- /computed in=5e3ee17d60f4f6174085d1c82ee1cb5c74ac776131c3f62da701f7e974e44f5b out=8fd4603e5f2e58f0994369a4711ae651078f84c81631e3089d3a7a21c632899d -->
+<!-- /computed in=06a823e4b26a7a9cb5f6af622e15f6ea97e4130b17158b6e36531e624d36ff8e out=8be5b2b9bb28f1609095bdd3a8b5caa48d8d39723f2380994b67a9529467a4f6 -->
 
 ## Decisions
 

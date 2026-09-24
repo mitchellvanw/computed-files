@@ -1,0 +1,55 @@
+name: computed
+description: Check that computed regions are fresh, or suggest on a pull request what `computed run` would write.
+author: Mitchell van Wijngaarden
+branding:
+  icon: refresh-cw
+  color: gray-dark
+
+inputs:
+  version:
+    description: >-
+      The computed release to install: `latest`, or a tag such as `v0.2.0`.
+      `installed` skips the download and uses the computed already on PATH.
+    default: latest
+  command:
+    description: >-
+      `check` reports every region that is not fresh and fails on drift.
+      `suggest` also posts, on a pull request, what `computed run` would
+      write: review suggestions on the lines the pull request touched, one
+      summary comment for the rest. It needs `pull-requests: write`, and the
+      pull request's head commit checked out for inline suggestions.
+    default: check
+  paths:
+    description: Space-separated files and directories to process. Empty means the repository, as `computed` discovers it.
+    default: ""
+  trust:
+    description: >-
+      `true` runs exec regions under `suggest` (`computed run --trust`). Only
+      for repositories whose pull requests you would run the commands of
+      anyway. `check` never runs a command and ignores it.
+    default: "false"
+  token:
+    description: The token `gh` downloads the release and posts comments with.
+    default: ${{ github.token }}
+
+outputs:
+  version:
+    description: The computed version that ran.
+    value: ${{ steps.install.outputs.version }}
+
+runs:
+  using: composite
+  steps:
+    - id: install
+      shell: sh
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: sh "$GITHUB_ACTION_PATH/scripts/action/install.sh"
+    - shell: sh
+      env:
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_PATHS: ${{ inputs.paths }}
+        INPUT_TRUST: ${{ inputs.trust }}
+        GH_TOKEN: ${{ inputs.token }}
+      run: sh "$GITHUB_ACTION_PATH/scripts/action/run.sh"

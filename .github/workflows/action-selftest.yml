@@ -1,0 +1,50 @@
+name: action-selftest
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # The action as a user runs it: the latest release, downloaded and checked
+  # against its SHA256SUMS. CLAUDE.md only, whose regions the released
+  # grammar reads; the rest of the repository may use what is not released.
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: computed
+        uses: ./
+        with:
+          command: check
+          paths: CLAUDE.md
+      - run: echo "computed ${{ steps.computed.outputs.version }}"
+
+  # This checkout's binary through the action, over what CI checks.
+  built:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release && echo "$PWD/target/release" >> "$GITHUB_PATH"
+      - uses: ./
+        with:
+          version: installed
+          command: check
+          paths: . docs/index.html
+      - uses: ./
+        with:
+          version: installed
+          command: suggest
+          paths: . docs/index.html
+          # This repository's own pull requests; CI runs their code anyway.
+          trust: "true"
