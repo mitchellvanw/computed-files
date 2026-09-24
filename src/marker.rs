@@ -62,8 +62,17 @@ impl Sink {
     }
 }
 
+/// What `check` makes of a region that is only stale: drift that fails, or,
+/// with `on-stale=warn`, a line that does not raise the exit code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OnStale {
+    Fail,
+    Warn,
+}
+
 /// The parsed opener. `attrs` holds the loader's own attributes in the order
-/// written; the common attributes `name=`, `as=` and `lang=` are lifted out.
+/// written; the common attributes `name=`, `as=`, `lang=` and `on-stale=`
+/// are lifted out.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Opener {
     pub loader: String,
@@ -72,6 +81,7 @@ pub struct Opener {
     pub name: Option<String>,
     pub sink: Sink,
     pub lang: String,
+    pub on_stale: OnStale,
     /// Every token as written, in order, for the canonical form.
     tokens: Vec<Token>,
 }
@@ -203,7 +213,7 @@ const GRAMMAR: &[LoaderGrammar] = &[
     },
 ];
 
-const COMMON_ATTRS: &[&str] = &["name", "as", "lang"];
+const COMMON_ATTRS: &[&str] = &["name", "as", "lang", "on-stale"];
 
 /// One physical line of the file with its terminator.
 struct Line<'a> {
@@ -596,6 +606,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
     let mut name = None;
     let mut sink = grammar.sink;
     let mut lang = String::new();
+    let mut on_stale = OnStale::Fail;
     let mut seen: Vec<&str> = Vec::new();
     for t in iter {
         match t {
@@ -623,6 +634,17 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
                             .ok_or_else(|| error(line, format!("unknown sink {v:?}")))?;
                     }
                     "lang" => lang = v.clone(),
+                    "on-stale" => {
+                        on_stale = match v.as_str() {
+                            "warn" => OnStale::Warn,
+                            _ => {
+                                return Err(error(
+                                    line,
+                                    format!("on-stale={v}: the only value is warn"),
+                                ));
+                            }
+                        };
+                    }
                     _ if grammar.attrs.contains(&k.as_str()) => attrs.push((k.clone(), v.clone())),
                     _ => {
                         return Err(error(
@@ -642,6 +664,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
         name,
         sink,
         lang,
+        on_stale,
         tokens,
     };
     validate(line, &opener)?;

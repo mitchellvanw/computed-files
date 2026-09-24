@@ -52,9 +52,10 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 └── tests
     ├── cli.rs
     ├── fixtures
+    ├── on_stale.rs
     └── render.rs
 ```
-<!-- /computed in=78aaac611c004a503bdd9b79b7ca352f8deef8b6dbc7b64285c2328a03fbdf4a out=4a04076276ffdfc5c22d7758125ddec3abb18caf6c3ea1df4c4bcc964d6198d1 -->
+<!-- /computed in=27b6bbc79afbb4ad7eb8b5f0b25b8a9690bb611e994373644ed9016512807f60 out=7f80e957b4fc6a574c0abd3ab0e52c3f9266f37679dbba634279104c55b92322 -->
 
 ## Decisions
 
