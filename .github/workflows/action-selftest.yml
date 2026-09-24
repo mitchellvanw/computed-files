@@ -7,8 +7,9 @@ on:
 
 jobs:
   # The action as a user runs it: the latest release, downloaded and checked
-  # against its SHA256SUMS. CLAUDE.md only, whose regions the released
-  # grammar reads; the rest of the repository may use what is not released.
+  # against its SHA256SUMS. It checks .github/action-selftest.md, whose
+  # regions use only grammar the latest release reads; the rest of the
+  # repository, CLAUDE.md included, may use what is not released yet.
   release:
     strategy:
       fail-fast: false
@@ -21,7 +22,7 @@ jobs:
         uses: ./
         with:
           command: check
-          paths: CLAUDE.md
+          paths: .github/action-selftest.md
       - run: echo "computed ${{ steps.computed.outputs.version }}"
 
   # This checkout's binary through the action, over what CI checks.
