@@ -27,6 +27,7 @@ pub fn format_constant(loader: &str) -> u32 {
         "exec" => 1,
         "file" => 1,
         "value" => 1,
+        "index" => 1,
         other => panic!("unknown loader {other:?} reached the format table"),
     }
 }
@@ -42,6 +43,7 @@ use std::time::{Duration, Instant};
 use globset::GlobMatcher;
 
 use crate::fs::{self, Ignores, WalkOpts};
+use crate::index::{self, Title};
 use crate::marker::{self, Opener, Region};
 use crate::project::{self, Projection};
 use crate::render::Loaders;
@@ -129,6 +131,13 @@ pub struct ValueArgs {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IndexArgs {
+    /// Comma-separated globs, expanded as `inputs=` is.
+    pub src: Vec<String>,
+    pub title: Title,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecArgs {
     pub cmd: String,
     /// Comma-separated globs, or `None` when volatile.
@@ -143,6 +152,7 @@ pub enum Loader {
     Exec(ExecArgs),
     File(FileArgs),
     Value(ValueArgs),
+    Index(IndexArgs),
 }
 
 impl Loader {
@@ -204,6 +214,18 @@ impl Loader {
                     key,
                 }))
             }
+            "index" => {
+                let src = opener.attr("src").ok_or_else(|| hard("index needs src="))?;
+                let title = match opener.attr("title") {
+                    None => Title::H1,
+                    Some(t) => Title::parse(t)
+                        .ok_or_else(|| hard(format!("title={t}: expected h1 or filename")))?,
+                };
+                Ok(Loader::Index(IndexArgs {
+                    src: src.split(',').map(str::to_string).collect(),
+                    title,
+                }))
+            }
             other => Err(hard(format!("unknown loader {other:?}"))),
         }
     }
@@ -214,6 +236,7 @@ impl Loader {
             Loader::Exec(_) => format_constant("exec"),
             Loader::File(_) => format_constant("file"),
             Loader::Value(_) => format_constant("value"),
+            Loader::Index(_) => format_constant("index"),
         }
     }
 }
@@ -324,6 +347,33 @@ impl Production {
         Ok(Loaded { text, snapshot })
     }
 
+    /// The `index` loader: a link per file the globs select, in byte order
+    /// of path. The snapshot is each path with the title taken from it, the
+    /// only part of a file the list depends on.
+    fn index(&mut self, args: &IndexArgs) -> Result<Loaded, LoadError> {
+        let mut text = String::new();
+        let mut snapshot = Vec::new();
+        for (rel, file) in expand(&self.ctx, "src", &args.src)? {
+            let rel = String::from_utf8_lossy(&rel).into_owned();
+            let content = if args.title.reads(Path::new(&rel)) {
+                let read = present(std::fs::read(&file))
+                    .map_err(|e| hard(format!("src: {}: {e}", file.display())))?;
+                let Some(content) = read else {
+                    continue;
+                };
+                self.read.insert(file);
+                Some(content)
+            } else {
+                None
+            };
+            let title = index::title(Path::new(&rel), content.as_deref());
+            text.push_str(&index::line(&title, &rel));
+            text.push('\n');
+            push_entry(&mut snapshot, rel.as_bytes(), title.as_bytes());
+        }
+        Ok(Loaded { text, snapshot })
+    }
+
     fn region_name(&self, region: &Region) -> String {
         region
             .opener
@@ -344,6 +394,7 @@ impl Loaders for Production {
             }) => Ok(Some(inputs_snapshot(&self.ctx, &globs, &mut self.read)?)),
             Loader::File(args) => Ok(Some(self.file(&args)?.snapshot)),
             Loader::Value(args) => Ok(Some(self.value(&args)?.snapshot)),
+            Loader::Index(args) => Ok(Some(self.index(&args)?.snapshot)),
         }
     }
 
@@ -360,6 +411,7 @@ impl Loaders for Production {
             }
             Loader::File(args) => self.file(&args),
             Loader::Value(args) => self.value(&args),
+            Loader::Index(args) => self.index(&args),
         }
     }
 }
@@ -681,18 +733,30 @@ fn inputs_snapshot(
     globs: &[String],
     read: &mut BTreeSet<PathBuf>,
 ) -> Result<Vec<u8>, LoadError> {
+    content_snapshot(expand(ctx, "inputs", globs)?, read)
+}
+
+/// The files a list of globs selects, keyed by their path from the region
+/// root in byte order, each with its canonical path; the template is left
+/// out. A glob that matches nothing is an error. `attr` names the attribute
+/// the globs came from, for messages.
+fn expand(
+    ctx: &Ctx,
+    attr: &str,
+    globs: &[String],
+) -> Result<BTreeMap<Vec<u8>, PathBuf>, LoadError> {
     let template = ctx.template.canonicalize().ok();
     let bound = ctx.bound()?;
     let mut matched: BTreeMap<Vec<u8>, PathBuf> = BTreeMap::new();
     for glob in globs {
         // `docs/` names the directory `docs` names.
         let glob = glob.trim().trim_end_matches('/');
-        let input = InputGlob::new(glob).map_err(|e| hard(format!("inputs={glob}: {e}")))?;
+        let input = InputGlob::new(glob).map_err(|e| hard(format!("{attr}={glob}: {e}")))?;
         let prefix = glob_prefix(glob);
         if !ctx.region_root.join(&prefix).exists() {
-            return Err(hard(format!("inputs={glob} matches nothing")));
+            return Err(hard(format!("{attr}={glob} matches nothing")));
         }
-        let dir = ctx.resolve("inputs=", &prefix)?;
+        let dir = ctx.resolve(&format!("{attr}="), &prefix)?;
         let rel = lexical(&prefix);
         let below = if input.matches(&rel) {
             Below::Everything
@@ -705,14 +769,14 @@ fn inputs_snapshot(
         let mut expansion = Expansion::new(&input, &bound, ctx.repo_root.as_deref());
         expansion
             .walk(&dir, &rel, &below, &ignores)
-            .map_err(|e| hard(format!("inputs={glob}: {e}")))?;
+            .map_err(|e| hard(format!("{attr}={glob}: {e}")))?;
         if expansion.files.is_empty() {
             let why = if expansion.ignored {
                 " that is not ignored"
             } else {
                 ""
             };
-            return Err(hard(format!("inputs={glob} matches nothing{why}")));
+            return Err(hard(format!("{attr}={glob} matches nothing{why}")));
         }
         for (rel, file) in expansion.files {
             if template.as_ref() != Some(&file) {
@@ -720,7 +784,7 @@ fn inputs_snapshot(
             }
         }
     }
-    content_snapshot(matched, read)
+    Ok(matched)
 }
 
 /// The snapshot bytes over the matched files. A file deleted since

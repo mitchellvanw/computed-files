@@ -41,6 +41,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 ├── src
 │   ├── cli.rs
 │   ├── fs.rs
+│   ├── index.rs
 │   ├── lib.rs
 │   ├── loader.rs
 │   ├── main.rs
@@ -54,11 +55,12 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── cli.rs
     ├── file_slice.rs
     ├── fixtures
+    ├── index.rs
     ├── render.rs
     ├── sandbox
     └── value.rs
 ```
-<!-- /computed in=0a43a8ce458d800fe757a8020dbd22d7d2ae33cf9e5c96db7d7da3587289e040 out=11239933143a52d188c4a87e8346c5149ba6c4a8864fe826617f8168df4f4b45 -->
+<!-- /computed in=fad9703b69ea514877697ba2922e3bdf4feb33039003fc5ea8ca8f1308d0f750 out=eda5e1356305be53863db848abbc77f6a78cbbc7a86be0148d7fa828c73e77d0 -->
 
 ## Decisions
 

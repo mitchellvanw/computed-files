@@ -207,6 +207,12 @@ const GRAMMAR: &[LoaderGrammar] = &[
         flags: &[],
         sink: Sink::Raw,
     },
+    LoaderGrammar {
+        name: "index",
+        attrs: &["src", "title"],
+        flags: &[],
+        sink: Sink::Raw,
+    },
 ];
 
 const COMMON_ATTRS: &[&str] = &["name", "as", "lang"];
@@ -713,6 +719,31 @@ fn validate(line: usize, opener: &Opener) -> Result<(), ParseError> {
                 .map(|_| ())
                 .map_err(|e| error(line, e)),
         },
+        "index" => {
+            let Some(src) = opener.attr("src") else {
+                return Err(error(line, "index needs src="));
+            };
+            for glob in src.split(',') {
+                if glob.trim().trim_end_matches('/').is_empty() {
+                    return Err(error(
+                        line,
+                        format!("src={src}: an entry is empty; remove the stray comma"),
+                    ));
+                }
+                if let Ok((_, Some(_))) | Err(_) = crate::project::split_input(glob) {
+                    return Err(error(
+                        line,
+                        format!("src={src}: index takes globs, not a projection"),
+                    ));
+                }
+            }
+            match opener.attr("title") {
+                Some(t) if crate::index::Title::parse(t).is_none() => {
+                    Err(error(line, format!("title={t}: expected h1 or filename")))
+                }
+                _ => Ok(()),
+            }
+        }
         _ => Ok(()),
     }
 }
