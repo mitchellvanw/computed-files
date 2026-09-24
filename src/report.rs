@@ -146,7 +146,7 @@ fn optional(s: Option<&str>) -> String {
 }
 
 /// A JSON string literal.
-fn string(s: &str) -> String {
+pub(crate) fn string(s: &str) -> String {
     let mut out = String::from("\"");
     for c in s.chars() {
         match c {

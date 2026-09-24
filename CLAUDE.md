@@ -48,6 +48,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 │   ├── render.rs
 │   ├── report.rs
 │   ├── sink.rs
+│   ├── stats.rs
 │   ├── truncate.rs
 │   └── trust.rs
 └── tests
@@ -55,9 +56,10 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
     ├── fixtures
     ├── max_lines.rs
     ├── on_stale.rs
-    └── render.rs
+    ├── render.rs
+    └── stats.rs
 ```
-<!-- /computed in=77416faad1e2bd33363db20ed53341612eb052baa5303ecaf7abef0832ed3f5f out=f3730c1439f1b410dd5294bd5a0b4c31a6995d3697dcb3454c0052a33ed7c8f1 -->
+<!-- /computed in=352ae02c7afc45d87004227174e2c918a2e9db6953138a787d5d00649044a20b out=4e743d783c0ebdd198087bcb7351327becb41b76b2d9d43287ddaa0c9a89be0e -->
 
 ## Decisions
 

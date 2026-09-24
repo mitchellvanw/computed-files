@@ -79,6 +79,9 @@ enum Cmd {
     Trust { path: Option<PathBuf> },
     /// Remove the grant for the repository containing PATH.
     Untrust { path: Option<PathBuf> },
+    /// Count every region's lines, bytes and estimated tokens, and the share
+    /// of each file that is computed, without running a loader.
+    Stats { paths: Vec<PathBuf> },
 }
 
 /// Runs the command line and returns the exit code.
@@ -160,6 +163,10 @@ fn dispatch(cli: Cli) -> Result<u8> {
             }
             Ok(0)
         }
+        Cmd::Stats { paths } => Ok(crate::stats::run(
+            &discover(paths)?,
+            cli.format == Format::Json,
+        )),
     }
 }
 
