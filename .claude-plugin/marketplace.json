@@ -1,6 +1,6 @@
 {
   "name": "computed",
-  "description": "The computed CLI: keep marked spans of a Markdown file current by computation.",
+  "description": "The computed CLI: keep marked spans of Markdown and code files current by computation.",
   "owner": {
     "name": "Mitchell van Wijngaarden",
     "url": "https://github.com/mitchellvanw"
@@ -9,7 +9,7 @@
     {
       "name": "computed",
       "source": "./claude-code-plugin",
-      "description": "Install, wire up and write regions for computed, the CLI that keeps marked spans of a Markdown file current by computation."
+      "description": "Install, wire up and write regions for computed, the CLI that keeps marked spans of Markdown and code files current by computation."
     }
   ]
 }

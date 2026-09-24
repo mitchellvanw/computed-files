@@ -148,7 +148,7 @@
       <h1 class="text-[2.35rem] sm:text-[2.8rem] leading-[1.08] mt-3 mb-5">Markdown sections that know when they are stale.</h1>
       <p class="text-ink-2 text-[1.05rem]"><code>computed</code> fills a marked region of a Markdown file from a directory tree, another file, the git history or a command, and writes down what it read and what it wrote. When the code moves on, <code>computed check</code> says so. It never runs the command to find out.</p>
       <p class="text-ink-2 text-[1.05rem] mt-4">Built for <code>CLAUDE.md</code> and <code>AGENTS.md</code>. One binary, no runtime, no cache directory.</p>
-<pre class="mt-6 rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install computed   <span class="text-ink-2"># v<!-- computed value src=../Cargo.toml key=package.version name=install -->0.2.0<!-- /computed in=8ae54fb8e06ee959e6fa9739310b5c50556c1dba3aeb0b7790666592fbd307dd out=911fc0c48cb0c70601db5775a9bef1b740dc4cc9f9b46389b9f0563fe7eb94d7 --></span>
+<pre class="mt-6 rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install computed   <span class="text-ink-2"># v<!-- computed value src=../Cargo.toml key=package.version name=install -->0.3.0<!-- /computed in=570d5ea76a49547737d6d210ed9d7312e45b19c5f2e9601e746ae17a987dc48c out=550613537fc488f3b372af74a4001879f012c8465b816f1b85c6d3446b2cfb49 --></span>
 computed run             <span class="text-ink-2"># fill what moved</span>
 computed check           <span class="text-ink-2"># exit 1 on drift</span></code></pre>
       <p class="mt-2 text-ink-3 text-[0.85rem] font-mono">↑ a computed region of this page, rendered from Cargo.toml and checked in CI</p>
@@ -410,7 +410,7 @@ NOTES.md:3 env exec <span class="bad">stale</span> failed; body kept
     <div>
       <h2 class="text-2xl mb-3">Get started</h2>
       <p class="font-mono text-xs text-ink-2 m-0 mb-2">the tool, then the command that makes the artifact</p>
-<pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install computed   <span class="text-ink-2"># v<!-- computed value src=../Cargo.toml key=package.version name=start -->0.2.0<!-- /computed in=cb6b97d63af42baf08bc9af4c737b6a344167c536b318b4cfb7f883e61c6f042 out=911fc0c48cb0c70601db5775a9bef1b740dc4cc9f9b46389b9f0563fe7eb94d7 --></span>
+<pre class="rounded border border-line bg-ground-2 p-4 text-[13px] leading-relaxed overflow-x-auto m-0"><code>cargo install computed   <span class="text-ink-2"># v<!-- computed value src=../Cargo.toml key=package.version name=start -->0.3.0<!-- /computed in=8375e1f945597ac9cbfd67d61b3bbdb76c97a0c797f32913fe8d3bb0edc773be out=550613537fc488f3b372af74a4001879f012c8465b816f1b85c6d3446b2cfb49 --></span>
 computed run</code></pre>
       <p class="mt-2 text-sm text-ink-2">Without a Rust toolchain, take a prebuilt macOS or Linux binary from the <a href="https://github.com/mitchellvanw/computed-files/releases/latest" class="underline decoration-line underline-offset-4 hover:text-sum hover:decoration-sum">latest release</a>, checked against its published SHA-256.</p>
 
