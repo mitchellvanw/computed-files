@@ -143,5 +143,7 @@ Read `CONTEXT.md` for the vocabulary and `docs/spec/computed-v0.md` for the desi
 - [`on-stale=warn` softens only staleness](docs/adr/0023-on-stale-warn-softens-only-staleness.md)
 - [The merge driver merges by structure and leaves a region both sides re-rendered unrendered](docs/adr/0024-the-merge-driver-leaves-doubly-rendered-regions-unrendered.md)
 - [The Claude Code guard refuses an edit to a region before it lands](docs/adr/0025-the-guard-refuses-an-edit-before-it-lands.md)
+- [A marker is a comment in the file's own syntax, and discovery reads code only when asked](docs/adr/0026-a-marker-is-a-comment-in-the-files-own-syntax.md)
+- [A region can sit inside a line, in Markdown and HTML](docs/adr/0027-a-region-inside-a-line.md)
 
-<!-- /computed in=d620c03695928af311145a87f4e46eba0bc57b62c10c0132b37f665d805de117 out=fa9e6d48384ba65b1e77ebce943b38b872f2ea088545155b478bf15993829755 -->
+<!-- /computed in=1f3d0afb4af212f03cea2bdc0cac95e32f74e72a46b5b2f4f6374e9590231f04 out=dd593d1c610a64457a37bbf244f49c442c4678c8626b8f303911381a8a71b9b2 -->

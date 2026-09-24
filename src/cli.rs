@@ -634,7 +634,7 @@ impl Printer {
 /// snapshots read a file the last pass wrote, until a pass writes nothing.
 /// A template that reads another is then fresh after one `run`, whatever
 /// order the two sort in. Files that keep changing each other are an error
-/// once every file has had a pass of its own.
+/// once every file has had a pass of its own, and one more.
 fn process(paths: &[PathBuf], job: &Job<'_>) -> Result<u8> {
     Ok(settle(paths, job)?.tier)
 }

@@ -82,7 +82,7 @@ computed dupes    [paths] [--min-lines N]
 computed doctor   [paths] [--trust] [--allow PREFIX] [--only NAME]
 computed trace    [paths] [--trust] [--only NAME] [--write]
 ```
-<!-- /computed in=9e8d06456e0ca1090bfd60d12fb9a3af15f6fcff4cf522c5e7078dcae6c8eb0f out=bc0b59dc0cb69dca6d6c9db06e24b96bb529455e921031023662129eea9f69fc -->
+<!-- /computed in=e0ae0abb237cdd381bb9bb94a4bc501d341b5f329d56ce9d763c42eb1ef1dc53 out=bc0b59dc0cb69dca6d6c9db06e24b96bb529455e921031023662129eea9f69fc -->
 
 With no paths, the current directory is walked with the tree loader's ignore settings, dot-directories such as `.claude/` included, and every `.md` and `.markdown` file is read. An explicit file is read whatever its extension. `run --dry-run` prints the diff `run` would write and writes nothing. `--only NAME` narrows a command to the regions with that name. `--format json` prints one JSON document on stdout instead of the report.
 

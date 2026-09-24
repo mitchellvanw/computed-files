@@ -30,3 +30,7 @@ The sums are the tool's own bookkeeping. They move when the file renders, not wh
 - A genuine feedback loop, where each render changes what the other reads, is a tier-2 error after one pass per file, not a hang.
 - A region block reported identically by more than one pass is printed once. `--dry-run`, `check` and `clean` write nothing, so they make one pass.
 - The `file` loader applies the same stripping to the text it includes ([ADR 0015](0015-the-file-loader.md)), so an included body never shows sums that no longer match.
+
+## Amended
+
+[ADR 0027](0027-a-region-inside-a-line.md): settling now allows one pass per file plus one before it calls the files a loop. A `toc` whose heading holds an inline region reads its own template. The value renders in the first pass and changes the heading, and the toc catches up in the second. The second pass writes the file again, so with one file "one pass per file" called it a loop and exited 2, although a third pass writes nothing. A cycle with no fixed point is still exit 2, one pass later.

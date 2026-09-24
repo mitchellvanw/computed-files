@@ -40,3 +40,7 @@ The constraints were already fixed. A file in the repository cannot grant trust.
 - A recipe cannot use another recipe. Any other top-level key is an error, so the file cannot grow a second discovery or trust mechanism unnoticed.
 - Every code path that renders or snapshots has to expand recipes first, through `Production::for_file`. A command that skips it reports every `use` region as an error. `why` expands a historic region with that commit's `computed.toml`.
 - A volatile recipe behaves like any volatile region: a change to it is not visible to `check`.
+
+## Amended
+
+[ADR 0026](0026-a-marker-is-a-comment-in-the-files-own-syntax.md): `computed.toml` also holds a `[discover]` table, the extensions and file names beyond Markdown that discovery reads. Discovery reads it from the repository root's file only, and reads nothing else in the file, so a broken recipe does not stop a walk. The recipe reader validates it too, so a bad `[discover]` makes `use` regions `error`. Any other top-level key is still an error.
