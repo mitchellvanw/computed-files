@@ -1,7 +1,8 @@
-//! The two sinks, `raw` and `fence`, and the normalisation every loader's
+//! The sinks, `raw`, `fence` and `table`, and the normalisation every loader's
 //! text goes through before a sink shapes it. Pure: text in, body out.
 
 use crate::marker::{self, Sink};
+use crate::table;
 
 /// Normalises loader output before a sink shapes it: invalid UTF-8 or a C0
 /// control other than tab, LF and CR is a failure; CRLF and lone CR become
@@ -77,6 +78,7 @@ pub fn body(sink: Sink, lang: &str, bytes: &[u8]) -> Result<String, String> {
             raw(&text)
         }
         Sink::Fence => fence(&text, lang),
+        Sink::Table(from) => raw(&table::table(&text, from)?),
     };
     let probe = format!("<!-- computed exec cmd=x volatile -->\n{body}<!-- /computed -->\n");
     match marker::parse(&probe) {

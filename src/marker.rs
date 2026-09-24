@@ -7,6 +7,8 @@
 
 use std::fmt;
 
+use crate::table::TableFrom;
+
 /// A parsed template: prose and regions in file order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct File {
@@ -50,6 +52,8 @@ pub struct Sums {
 pub enum Sink {
     Raw,
     Fence,
+    /// `as=table`, with what the text is written in.
+    Table(TableFrom),
 }
 
 impl Sink {
@@ -57,13 +61,15 @@ impl Sink {
         match s {
             "raw" => Some(Sink::Raw),
             "fence" => Some(Sink::Fence),
+            "table" => Some(Sink::Table(TableFrom::Delimited(b','))),
             _ => None,
         }
     }
 }
 
 /// The parsed opener. `attrs` holds the loader's own attributes in the order
-/// written; the common attributes `name=`, `as=` and `lang=` are lifted out.
+/// written; the common attributes `name=`, `as=` and `lang=` are lifted out,
+/// and so are `delim=` and `from=`, which shape `as=table` into `sink`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Opener {
     pub loader: String,
@@ -621,6 +627,8 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
     let mut sink = grammar.sink;
     let mut lang = String::new();
     let mut seen: Vec<&str> = Vec::new();
+    // `delim=` and `from=`, which only `as=table` takes.
+    let mut table: Vec<(&str, &str)> = Vec::new();
     for t in iter {
         match t {
             Token::Bare(w) => {
@@ -648,6 +656,7 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
                     }
                     "lang" => lang = v.clone(),
                     _ if grammar.attrs.contains(&k.as_str()) => attrs.push((k.clone(), v.clone())),
+                    "delim" | "from" => table.push((k, v)),
                     _ => {
                         return Err(error(
                             line,
@@ -657,6 +666,23 @@ fn parse_opener(line: usize, content: &str) -> Result<Opener, ParseError> {
                 }
             }
         }
+    }
+    match (sink, table.first()) {
+        (Sink::Table(_), _) => {
+            let attr = |key| table.iter().find(|(k, _)| *k == key).map(|(_, v)| *v);
+            sink = Sink::Table(
+                TableFrom::parse(attr("delim"), attr("from")).map_err(|e| error(line, e))?,
+            );
+        }
+        (_, Some((k, _))) => {
+            return Err(error(
+                line,
+                format!(
+                    "unknown attribute {k}= for loader {loader}: it applies only with as=table"
+                ),
+            ));
+        }
+        _ => {}
     }
     debug_assert!(COMMON_ATTRS.iter().all(|c| !grammar.attrs.contains(c)));
     let opener = Opener {
@@ -1065,7 +1091,7 @@ mod tests {
                 "unterminated",
             ),
             (
-                "<!-- computed tree as=table -->\n<!-- /computed -->\n",
+                "<!-- computed tree as=bogus -->\n<!-- /computed -->\n",
                 1,
                 "unknown sink",
             ),
