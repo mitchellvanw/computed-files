@@ -560,7 +560,7 @@ mod tests {
         let p = format!(
             "{}{}\n{region}",
             &RENDERED[..start],
-            &RENDERED[end..].trim_end()
+            RENDERED[end..].trim_end()
         );
         assert_eq!(judge(RENDERED, &p), Verdict::Allowed);
     }
